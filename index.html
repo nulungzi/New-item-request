@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>자재 구매이력 검색</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root{--bg:#f6f7f9;--fg:#1d2330;--card:#fff;--line:#e2e5ea;--accent:#2f6fec;--muted:#6b7280}
+@media (prefers-color-scheme:dark){:root{--bg:#14171c;--fg:#e8eaee;--card:#1d2128;--line:#2d333c;--accent:#6a9bff;--muted:#9aa3af}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif}
+main{max-width:900px;margin:0 auto;padding:16px}
+h1{font-size:1.3rem}input[type=search]{width:100%;padding:12px;font-size:1rem;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:12px;overflow-x:auto}
+h2{font-size:1rem;margin:0 0 8px}table{width:100%;border-collapse:collapse;font-size:.9rem}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}td.n{text-align:right}
+.muted{color:var(--muted);font-size:.85rem}label.btn{display:inline-block;margin:8px 0;padding:8px 12px;border:1px solid var(--line);border-radius:8px;cursor:pointer}
+</style>
+</head>
+<body><main>
+<h1>신규 자재 소요제기 · 구매이력 검색</h1>
+<label class="btn">📂 구매이력 파일 불러오기 (CSV / XLSX)<input id="file" type="file" accept=".csv,.xlsx,.xls" hidden></label>
+<div class="muted" id="status">샘플 데이터 로드 중…</div>
+<input id="q" type="search" placeholder="품번, 품명, 규격으로 검색 (예: 6204, 베어링)" autofocus>
+<div id="out"></div>
+</main>
+<script>
+const COLS={part:["품번","자재코드","part no","pn"],name:["품명","자재명","description"],spec:["규격","spec"],vendor:["구매처","업체","공급사","vendor","supplier"],mfg:["제조사(mfg)","제조사","mfg","maker","manufacturer"],qty:["수량","qty"],price:["단가","price"],date:["구매일","일자","date"]};
+let rows=[];
+const norm=s=>String(s??"").trim().toLowerCase();
+function mapRows(raw){
+  if(!raw.length)return[];
+  const keys=Object.keys(raw[0]);const m={};
+  for(const [k,alts] of Object.entries(COLS))m[k]=keys.find(h=>alts.includes(norm(h)));
+  return raw.map(r=>{const o={};for(const k in m)o[k]=m[k]?r[m[k]]:"";o.qty=+String(o.qty).replace(/,/g,"")||0;o.price=+String(o.price).replace(/,/g,"")||0;return o});
+}
+function load(wb,label){
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  rows=mapRows(XLSX.utils.sheet_to_json(ws,{defval:""}));
+  document.getElementById("status").textContent=`${label}: ${rows.length}건 로드됨`;render();
+}
+fetch("data/sample.csv").then(r=>r.text()).then(t=>load(XLSX.read(t,{type:"string"}),"샘플 데이터")).catch(()=>{document.getElementById("status").textContent="파일을 불러와 주세요."});
+document.getElementById("file").onchange=async e=>{const f=e.target.files[0];if(!f)return;load(XLSX.read(await f.arrayBuffer()),f.name)};
+document.getElementById("q").oninput=render;
+const fmt=n=>n.toLocaleString("ko-KR");
+function group(list,key){
+  const g={};for(const r of list){const k=r[key]||"(미상)";g[k]??={cnt:0,qty:0,amt:0,last:""};const x=g[k];x.cnt++;x.qty+=r.qty;x.amt+=r.qty*r.price;if(String(r.date)>x.last)x.last=String(r.date)}
+  return Object.entries(g).sort((a,b)=>b[1].cnt-a[1].cnt||b[1].amt-a[1].amt);
+}
+function table(title,entries){
+  return `<div class="card"><h2>${title}</h2><table><tr><th>이름</th><th>구매횟수</th><th>총수량</th><th>총금액</th><th>최근구매</th></tr>${entries.map(([k,v])=>`<tr><td>${esc(k)}</td><td class=n>${v.cnt}</td><td class=n>${fmt(v.qty)}</td><td class=n>${fmt(v.amt)}</td><td>${esc(v.last)}</td></tr>`).join("")}</table></div>`;
+}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function render(){
+  const q=norm(document.getElementById("q").value),out=document.getElementById("out");
+  if(!q){out.innerHTML="";return}
+  const terms=q.split(/\s+/);
+  const hit=rows.filter(r=>{const s=norm(`${r.part} ${r.name} ${r.spec}`);return terms.every(t=>s.includes(t))});
+  if(!hit.length){out.innerHTML=`<div class="card muted">검색 결과가 없습니다.</div>`;return}
+  out.innerHTML=table("🏪 구매처별 (많이 구매한 순)",group(hit,"vendor"))+table("🏭 제조사(MFG)별",group(hit,"mfg"))+
+  `<div class="card"><h2>상세 이력 (${hit.length}건)</h2><table><tr><th>구매일</th><th>품번</th><th>품명</th><th>규격</th><th>구매처</th><th>MFG</th><th>수량</th><th>단가</th></tr>${[...hit].sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.part)}</td><td>${esc(r.name)}</td><td>${esc(r.spec)}</td><td>${esc(r.vendor)}</td><td>${esc(r.mfg)}</td><td class=n>${fmt(r.qty)}</td><td class=n>${fmt(r.price)}</td></tr>`).join("")}</table></div>`;
+}
+</script>
+</body></html>
