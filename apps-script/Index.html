@@ -34,10 +34,10 @@ a{color:var(--accent)}
 
 <div class="card">
   <h2>1. 소요제기 입력</h2>
-  <p class="muted">엑셀에서 <b>품번 · 수량 · Program</b> 순서로 복사해 붙여넣으세요. 한 줄에 한 품목, Program은 생략 가능합니다.</p>
-  <textarea id="req" placeholder="KERC00016	300	787AB / 737WL&#10;KERC00058	1296	787AB&#10;KERN99999	10"></textarea>
+  <p class="muted">엑셀에서 <b>Item · 수량 · Need-by-date</b> 순서로 복사해 붙여넣으세요. 한 줄에 한 품목입니다. 4번째 칸에 Program을 넣으면 함께 적힙니다.</p>
+  <textarea id="req" placeholder="KERC00016	300	2027-01-15&#10;KERC00058	1296	2027-02-01	787AB&#10;KERN99999	10	2026-12-20"></textarea>
   <div class="row" style="margin-top:10px">
-    <label>기준일 <input type="date" id="base"></label>
+    <label>기준일(PO 예정일) <input type="date" id="base"></label>
     <button id="btnClassify">판정하기</button>
   </div>
   <div id="msg1" class="err"></div>
@@ -59,8 +59,8 @@ a{color:var(--accent)}
   </div>
 
   <div class="card" id="spotCard" hidden>
-    <h2>4. Spot 품목 → 견적요청</h2>
-    <p class="muted">견적요청서 양식과 업체목록을 받으면 이 단계가 추가됩니다. 지금은 대상 목록만 보여줍니다.</p>
+    <h2>4. Spot 품목 (계약 없음 · 견적 필요)</h2>
+    <p class="muted">구매내역서에는 들어가지 않습니다.</p>
     <div class="scroll"><table id="spotTbl"></table></div>
   </div>
 </div>
@@ -94,7 +94,7 @@ function render() {
   var ok = rs.filter(function (r) { return r.status === '계약'; }), spot = rs.filter(function (r) { return r.status === 'Spot'; });
   $('counts').textContent = '전체 ' + rs.length + '건 · 계약 ' + ok.length + '건 · Spot ' + spot.length + '건';
 
-  $('tbl').innerHTML = '<tr><th>판정</th><th>품번</th><th>수량</th><th>Program</th><th>업체 / 단가</th><th>계약기간</th><th>Description</th><th>비고</th></tr>' +
+  $('tbl').innerHTML = '<tr><th>판정</th><th>품번</th><th>수량</th><th>Need-by</th><th>업체 / 단가</th><th>계약기간</th><th>Description</th><th>비고</th></tr>' +
     rs.map(function (r) {
       var c = r.candidates;
       var sup = !c.length ? '' : c.length === 1 ? esc(c[0].supplier) + ' · ' + fmt(c[0].price) + ' ' + esc(c[0].cur) + ' / ' + esc(c[0].uom)
@@ -103,14 +103,14 @@ function render() {
           }).join('') + '</select>';
       var c0 = c[0] || {};
       return '<tr><td><span class="badge ' + (r.status === '계약' ? 'b-ok' : 'b-spot') + '">' + (r.status === '계약' ? esc(c0.priceMode || '계약') : 'Spot') + '</span></td>' +
-        '<td>' + esc(r.item) + '</td><td class="n">' + fmt(r.qty) + '</td><td>' + esc(r.program) + '</td><td>' + sup + '</td>' +
-        '<td>' + (c0.start ? esc(c0.start) + ' ~ ' + esc(c0.end) : '') + '</td><td>' + esc(c0.desc || r.desc || '') + '</td><td class="muted">' + esc(r.reason) + '</td></tr>';
+        '<td>' + esc(r.item) + (r.program ? '<div class="muted">' + esc(r.program) + '</div>' : '') + '</td><td class="n">' + fmt(r.qty) + '</td><td>' + esc(r.needBy) + '</td><td>' + sup + '</td>' +
+        '<td>' + (c0.start ? esc(c0.start) + ' ~ ' + esc(c0.end) : '') + '</td><td>' + esc(c0.desc || r.desc || '') + '</td><td class="muted">' + esc(r.reason) + (r.warnings && r.warnings.length ? '<div class="err">⚠ ' + esc(r.warnings.join(' · ')) + '</div>' : '') + '</td></tr>';
     }).join('');
   rs.forEach(function (r) { var s = $('pick-' + r.line); if (s) s.onchange = renderPurchase; });
 
   $('spotCard').hidden = !spot.length;
-  $('spotTbl').innerHTML = '<tr><th>품번</th><th>수량</th><th>Program</th><th>사유</th></tr>' + spot.map(function (r) {
-    return '<tr><td>' + esc(r.item) + '</td><td class="n">' + fmt(r.qty) + '</td><td>' + esc(r.program) + '</td><td class="muted">' + esc(r.reason) + '</td></tr>';
+  $('spotTbl').innerHTML = '<tr><th>Item</th><th>수량</th><th>Need-by</th><th>사유</th></tr>' + spot.map(function (r) {
+    return '<tr><td>' + esc(r.item) + '</td><td class="n">' + fmt(r.qty) + '</td><td>' + esc(r.needBy) + '</td><td class="muted">' + esc(r.reason) + '</td></tr>';
   }).join('');
   renderPurchase();
 }
@@ -145,7 +145,7 @@ $('btnCreate').onclick = function () {
   document.querySelectorAll('[data-rate]').forEach(function (el) { rates[el.dataset.rate] = el.value; });
   document.querySelectorAll('[data-remark]').forEach(function (el) { remarks[el.dataset.remark] = el.value; });
   var lines = state.results.filter(function (r) { return r.status === '계약'; }).map(function (r) {
-    return { item: r.item, qty: r.qty, program: r.program, contractRow: chosen(r).row };
+    return { item: r.item, qty: r.qty, needBy: r.needBy, program: r.program, contractRow: chosen(r).row };
   });
   call('apiCreatePurchase', { baseDate: $('base').value, rates: rates, remarks: remarks, lines: lines }).then(function (d) {
     state.rates = Object.assign(state.rates, rates);

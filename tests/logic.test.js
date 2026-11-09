@@ -50,3 +50,24 @@ test('업체·통화별 요약', () => {
   assert.strictEqual(g.length, 1);
   assert.deepStrictEqual([g[0].count, g[0].qty, g[0].amount, g[0].mainMaterial], [3, 410, 530, 'Sealant']);
 });
+
+test('Need-by-date 여러 표기 인식, Program은 나머지 칸', () => {
+  const p = L.parseRequest_('KERC00067\t5\t2027-01-15\nKERC00016\t3\t2027. 2. 1.\t787AB\nKERC00016 3 12/20/2026 737WL FSF\nKERC00016 1');
+  assert.deepStrictEqual(p.requests.map(r => [L.fmtDate_(r.needBy), r.program]),
+    [['2027-01-15', ''], ['2027-02-01', '787AB'], ['2026-12-20', '737WL FSF'], ['', '']]);
+});
+
+test('리드타임·계약종료 기준 Need-by 경고', () => {
+  assert.strictEqual(L.leadDays_('10-12wks'), 84);
+  assert.strictEqual(L.leadDays_('30 days'), 30);
+  assert.strictEqual(L.leadDays_(''), null);
+  const c = L.parseContracts_([
+    ['Item', '계약 구분', '업체명', '단가', 'CUR', '계약시작', '계약종료', 'Leadtime'],
+    ['A1', 'LTA', 'PPG', 1, 'USD', '2025-01-01', '2026-12-31', '10-12wks'],
+  ]);
+  const base = L.toDate_('2026-10-07');
+  const r = L.classify_(L.parseRequest_('A1 1 2026-11-01\nA1 1 2027-02-01\nA1 1 2026-12-31').requests, c, base);
+  assert.deepStrictEqual(r[0].warnings, ['리드타임(10-12wks) 부족']);
+  assert.deepStrictEqual(r[1].warnings, ['Need-by가 계약종료(2026-12-31) 이후']);
+  assert.deepStrictEqual(r[2].warnings, []);
+});

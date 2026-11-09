@@ -67,6 +67,7 @@ function apiClassify(text, baseDateStr) {
   var parsed = parseRequest_(text);
   var base = toDate_(baseDateStr) || toDate_(new Date());
   var result = classify_(parsed.requests, loadContracts_(), base).map(function (r) {
+    r.needBy = fmtDate_(r.needBy);
     r.candidates = r.candidates.map(function (c) {
       var o = {};
       Object.keys(c).forEach(function (k) { o[k] = c[k] instanceof Date ? fmtDate_(c[k]) : c[k]; });
@@ -79,7 +80,7 @@ function apiClassify(text, baseDateStr) {
 
 /**
  * 구매내역서 생성.
- * payload = { baseDate, rates: {USD: 1339.3, ...}, remarks: {업체명: '비고'}, lines: [{item, qty, program, contractRow}] }
+ * payload = { baseDate, rates: {USD: 1339.3, ...}, remarks: {업체명: '비고'}, lines: [{item, qty, needBy, program, contractRow}] }
  * contractRow 로 자재정보 행을 다시 읽어 단가를 서버에서 확정한다(화면 값 신뢰 안 함).
  */
 function apiCreatePurchase(payload) {
@@ -92,6 +93,7 @@ function apiCreatePurchase(payload) {
     Object.keys(c).forEach(function (k) { o[k] = c[k]; });
     o.qty = Number(l.qty);
     o.program = l.program || '';
+    o.needBy = toDate_(l.needBy);
     o.remark = (payload.remarks || {})[c.supplier] || '';
     return o;
   });
@@ -124,7 +126,7 @@ function apiCreatePurchase(payload) {
 }
 
 var DETAIL_HEADERS = ['L/I', 'Program', 'Item No.', 'Material', 'Description', 'Product\nName', 'Qty', 'CUR',
-  'Unit Price', 'Amount', 'Ship From', 'Leadtime', 'UoM', 'Shelf Life', 'Supplier', 'Tax\nCode', 'Price\nMode', '비고'];
+  'Unit Price', 'Amount', 'Ship From', 'Leadtime', 'UoM', 'Shelf Life', 'Supplier', 'Tax\nCode', 'Price\nMode', '비고', 'Need-by\nDate'];
 
 /** 구매세부내역 탭. 열 배치는 예시 양식과 같다 (B=L/I … S=비고). */
 function writeDetail_(sh, lines, curs, rates, base) {
@@ -167,11 +169,12 @@ function writeDetail_(sh, lines, curs, rates, base) {
   var rows = lines.map(function (l, i) {
     var n = first + i;
     return [i + 1, l.program, l.item, l.material, l.desc, l.product, l.qty, l.cur, l.price, '=J' + n + '*H' + n,
-      l.shipFrom, l.leadtime, l.uom, l.shelfLife, l.supplier, l.taxCode, l.priceMode, l.remark];
+      l.shipFrom, l.leadtime, l.uom, l.shelfLife, l.supplier, l.taxCode, l.priceMode, l.remark, l.needBy || ''];
   });
   sh.getRange(first, 2, rows.length, rows[0].length).setValues(rows);
   sh.getRange(first, 3, rows.length, 2).setNumberFormat('@');      // Program, Item No.는 텍스트
   sh.getRange(first, 8, rows.length, 1).setNumberFormat('#,##0');
+  sh.getRange(first, 20, rows.length, 1).setNumberFormat('yyyy-mm-dd');
   sh.getRange(first, 10, rows.length, 2).setNumberFormat('#,##0.00');
   sh.getRange(header, 2, rows.length + 1, DETAIL_HEADERS.length).setBorder(true, true, true, true, true, true);
   sh.setFrozenRows(header);

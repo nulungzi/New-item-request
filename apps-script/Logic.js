@@ -95,21 +95,54 @@ function parseContracts_(values) {
   return out;
 }
 
+/** 날짜 표기 통일: 2026-12-15, 2026.12.15, 2026. 12. 15., 2026/12/15, 12/15/2026 → 2026-12-15 */
+function normDates_(line) {
+  return line
+    .replace(/(\d{4})\s*[-./]\s*(\d{1,2})\s*[-./]\s*(\d{1,2})\.?/g, '$1-$2-$3')
+    .replace(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/g, '$3-$1-$2');
+}
+
 /**
- * 소요제기 붙여넣기 파싱. 한 줄에 "품번  수량  Program(선택)".
+ * 소요제기 붙여넣기 파싱. 한 줄에 "Item  수량  Need-by-date  Program(선택)".
  * 엑셀에서 복사한 탭 구분, 쉼표, 공백 구분 모두 허용. 수량이 숫자가 아닌 줄(머리글 등)은 건너뛴다.
+ * 날짜처럼 생긴 칸은 위치와 상관없이 Need-by-date로 본다.
  */
 function parseRequest_(text) {
   var out = [], skipped = [];
   String(text || '').split(/\r?\n/).forEach(function (line, n) {
     if (!line.trim()) return;
+    line = normDates_(line);
     var cells = line.indexOf('\t') >= 0 ? line.split('\t') : line.split(/\s*,\s*|\s+/);
     cells = cells.map(function (c) { return c.trim(); });
     var qty = toNumber_(cells[1]);
     if (!cells[0] || qty === null) { skipped.push(n + 1); return; }
-    out.push({ line: n + 1, item: itemKey_(cells[0]), qty: qty, program: cells.slice(2).join(' ').trim() });
+    var needBy = null, rest = [];
+    cells.slice(2).forEach(function (c) {
+      var d = !needBy && /^\d{4}-\d{1,2}-\d{1,2}$/.test(c) ? toDate_(c) : null;
+      if (d) needBy = d; else if (c) rest.push(c);
+    });
+    out.push({ line: n + 1, item: itemKey_(cells[0]), qty: qty, needBy: needBy, program: rest.join(' ') });
   });
   return { requests: out, skipped: skipped };
+}
+
+/** "10-12wks", "8 weeks", "30 days" → 최대 일수. 모르면 null */
+function leadDays_(s) {
+  var m = String(s || '').toLowerCase().match(/(\d+)(?:\s*[-~]\s*(\d+))?\s*(wk|week|w\b|day|d\b|주|일)/);
+  if (!m) return null;
+  var n = +(m[2] || m[1]);
+  return /^(day|d|일)/.test(m[3]) ? n : n * 7;
+}
+
+/** 계약 품목의 Need-by-date 확인 메시지 */
+function needByWarnings_(needBy, c, baseDate) {
+  var w = [];
+  if (!needBy) return w;
+  if (needBy < baseDate) w.push('Need-by가 기준일보다 이전');
+  var ld = leadDays_(c.leadtime);
+  if (ld && needBy - baseDate < ld * 86400000) w.push('리드타임(' + c.leadtime + ') 부족');
+  if (c.end && needBy > c.end) w.push('Need-by가 계약종료(' + fmtDate_(c.end) + ') 이후');
+  return w;
 }
 
 /** 각 소요 품목을 기준일 기준으로 계약/Spot 판정. 유효 계약이 여럿이면 단가 낮은 순으로 후보를 준다. */
@@ -121,10 +154,11 @@ function classify_(requests, contracts, baseDate) {
     var valid = all.filter(function (c) {
       return (!c.start || c.start <= baseDate) && (!c.end || baseDate <= c.end);
     }).sort(function (a, b) { return (a.price || 0) - (b.price || 0); });
-    var res = { line: q.line, item: q.item, qty: q.qty, program: q.program, candidates: valid };
+    var res = { line: q.line, item: q.item, qty: q.qty, needBy: q.needBy, program: q.program, candidates: valid, warnings: [] };
     if (valid.length) {
       res.status = '계약';
       res.reason = valid.length > 1 ? '유효 계약 ' + valid.length + '건 — 업체 선택 필요' : '';
+      res.warnings = needByWarnings_(q.needBy, valid[0], baseDate);
     } else {
       res.status = 'Spot';
       if (!all.length) {
@@ -164,5 +198,5 @@ function summarize_(lines) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { parseContracts_: parseContracts_, parseRequest_: parseRequest_, classify_: classify_, summarize_: summarize_, toDate_: toDate_, fmtDate_: fmtDate_ };
+  module.exports = { leadDays_: leadDays_, parseContracts_: parseContracts_, parseRequest_: parseRequest_, classify_: classify_, summarize_: summarize_, toDate_: toDate_, fmtDate_: fmtDate_ };
 }
