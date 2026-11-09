@@ -73,3 +73,11 @@ test('리드타임 기준 Need-by 경고', () => {
   const r = L.classify_(L.parseRequest_('A1 1 2026-11-01\nA1 1 2027-02-01\nA1 1 2026-10-01').requests, c, L.toDate_('2026-10-07'));
   assert.deepStrictEqual(r.map(x => x.warnings), [['리드타임(10-12wks) 부족'], [], ['Need-by가 작성일보다 이전']]);
 });
+
+test('Program·Ship Form·Lead Time 열 이름 인식', () => {
+  const c = L.parseContracts_([
+    ['Item', '업체명', 'Program', 'Ship Form', 'Lead Time', 'Material'],
+    ['A1', 'PPG', '787AB / 737WL', 'Ocean', '10-12wks', 'Primer'],
+  ])[0];
+  assert.deepStrictEqual([c.program, c.shipFrom, c.leadtime, c.material], ['787AB / 737WL', 'Ocean', '10-12wks', 'Primer']);
+});

@@ -93,7 +93,7 @@ function apiCreatePurchase(payload) {
     var o = {};
     Object.keys(c).forEach(function (k) { o[k] = c[k]; });
     o.qty = Number(l.qty);
-    o.program = l.program || '';
+    o.program = l.program || c.program || '';   // 소요제기에 적으면 우선, 없으면 자재정보 값
     o.needBy = toDate_(l.needBy);
     o.remark = (payload.remarks || {})[c.supplier] || '';
     return o;

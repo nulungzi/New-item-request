@@ -15,9 +15,10 @@ var MASTER_COLUMNS = {
   uom: ['UOM'],
   desc: ['Description'],
   material: ['Material'],
+  program: ['Program'],
   product: ['Product Name'],
-  shipFrom: ['Ship From'],
-  leadtime: ['Leadtime'],
+  shipFrom: ['Ship From', 'Ship Form', 'Shipment'],
+  leadtime: ['Leadtime', 'Lead Time', 'L/T'],
   shelfLife: ['Shelf Life'],
   taxCode: ['Tax Code']
 };
@@ -85,6 +86,7 @@ function parseContracts_(values) {
       uom: String(get('uom')).trim(),
       desc: String(get('desc')).trim(),
       material: String(get('material')).trim(),
+      program: String(get('program')).trim(),
       product: String(get('product')).trim(),
       shipFrom: String(get('shipFrom')).trim(),
       leadtime: String(get('leadtime')).trim(),

@@ -22,7 +22,8 @@
 
 - **`자재정보`**: 머리글은 상위 10행 안 어디에 있어도 됩니다. 열 순서는 자유이고 이름으로 찾습니다.
   - 필수: `Item`, `계약 구분`, `업체명`, `단가`, `CUR`, `계약시작`, `계약종료`
-  - 선택: `MOQ`, `UOM`, `Description`, `Material`, `Product Name`, `Ship From`, `Leadtime`, `Shelf Life`, `Tax Code`
+  - 선택: `MOQ`, `UOM`, `Description`, `Material`, `Program`, `Product Name`, `Ship From`, `Lead Time`, `Shelf Life`, `Tax Code`
+    (띄어쓰기·대소문자는 무시. `Ship Form`, `Leadtime` 같은 표기도 인식)
     (있으면 구매내역서에 그대로 들어갑니다)
 - **`환율`**: 처음 구매내역서를 만들 때 자동으로 생깁니다. 화면에서 입력한 통화별 환율이 저장되어 다음에 다시 채워집니다.
 
