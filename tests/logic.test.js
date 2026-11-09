@@ -93,3 +93,31 @@ test('MOQ 미달 경고', () => {
   const r = L.classify_(L.parseRequest_('A1 50 2027-06-10\nA1 6000 2027-06-10\nB1 1 2027-06-10').requests, c, L.toDate_('2026-11-09'));
   assert.deepStrictEqual(r.map(x => x.warnings), [['수량 50 < MOQ 6000'], [], []]);
 });
+
+test('구매내역서 계획: 통화 2개, 업체 2개', () => {
+  const base = L.toDate_('2026-11-10');
+  const lines = [
+    { item: 'A', qty: 10, needBy: L.toDate_('2027-06-10'), supplier: 'AKZO', cur: 'USD', price: 2, priceMode: 'LTA', material: 'Primer', shipFrom: 'Air', leadtime: '10-12wks' },
+    { item: 'B', qty: 5, needBy: L.toDate_('2027-06-10'), supplier: 'Mapaero', cur: 'EUR', price: 3, priceMode: 'LTA', material: 'Base', shipFrom: '', leadtime: '' },
+  ];
+  const ops = L.buildPurchasePlan_(lines, ['USD', 'EUR'], { USD: 1350, EUR: 1500 }, base);
+  const get = (s, r, c) => (ops.filter(o => o.op === 'set' && o.s === s && o.r === r && o.c === c).pop() || {}).v;
+  // 세부내역: 통화 2개 → 머리글 8행, 데이터 9~10행
+  assert.strictEqual(get('구매세부내역', 8, 2), 'L/I');
+  assert.strictEqual(get('구매세부내역', 9, 4), 'A');
+  assert.strictEqual(get('구매세부내역', 5, 11), '=SUMIF($I$9:$I$10,"KRW",$K$9:$K$10)');
+  assert.strictEqual(get('구매세부내역', 6, 11), '=K3*$P$2+K4*$Q$2+K5');
+  assert.deepStrictEqual(get('구매세부내역', 9, 20), { date: '2027-06-10' });
+  // 비어 있는 Ship From·Leadtime·Program은 노란 칸
+  const bg = ops.filter(o => o.op === 'bg' && o.s === '구매세부내역').map(o => o.r + ',' + o.c);
+  assert.deepStrictEqual(bg, ['9,3', '10,3', '10,12', '10,13']);
+  // 요약: 업체 2줄, CUR 합계 2줄, 총합계
+  assert.strictEqual(get('구매요약', 3, 8), '구매금액');
+  assert.strictEqual(get('구매요약', 6, 2), 'CUR 별 합계');
+  assert.strictEqual(get('구매요약', 8, 8), "=H6*'구매세부내역'!$P$2+H7*'구매세부내역'!$Q$2");
+  // 구매일정: 11월부터 11개월, 2026년(2개월) / 2027년(9개월)
+  assert.strictEqual(get('구매일정', 5, 5), 11);
+  assert.strictEqual(get('구매일정', 5, 25), 9);
+  const merges = ops.filter(o => o.op === 'merge' && o.s === '구매일정').map(o => [o.c1, o.c2]);
+  assert.deepStrictEqual(merges, [[5, 8], [9, 26]]);
+});

@@ -3,12 +3,11 @@
  *
  * 스크립트 속성(선택):
  *   SHEET_ID         자재정보가 있는 스프레드시트 ID (없으면 이 스크립트가 붙은 시트 사용)
- *   OUTPUT_FOLDER_ID 생성한 구매내역서를 넣을 드라이브 폴더 ID (없으면 내 드라이브 루트)
+ *   TEMPLATE_ID      (필수) 구매내역서 템플릿 구글 시트 ID — templates/구매내역서_템플릿.xlsx 를 드라이브에 올려 구글 시트로 변환
+ *   OUTPUT_FOLDER_ID 생성한 구매내역서를 넣을 드라이브 폴더 ID (권장)
  */
 var SHEET_MASTER = '자재정보';
 var SHEET_RATE = '환율';
-var DETAIL_TAB = '구매세부내역';
-var SUMMARY_TAB = '구매요약';
 
 function doGet() {
   return HtmlService.createHtmlOutputFromFile('Index')
@@ -115,136 +114,65 @@ function apiCreatePurchase(payload) {
   var suppliers = [];
   lines.forEach(function (l) { if (suppliers.indexOf(l.supplier) < 0) suppliers.push(l.supplier); });
   var ymd = fmtDate_(base).replace(/-/g, '').slice(2);
-  var ss = SpreadsheetApp.create(ymd + ' 구매내역서_' + suppliers.join('_'));
+  var name = ymd + ' 구매내역서_' + suppliers.join('_');
 
-  var detail = ss.getSheets()[0].setName(DETAIL_TAB);
-  var info = writeDetail_(detail, lines, curs, rates, base);
-  writeSummary_(ss.insertSheet(SUMMARY_TAB, 0), lines, curs, info);
+  var props = PropertiesService.getScriptProperties();
+  var templateId = props.getProperty('TEMPLATE_ID');
+  if (!templateId) throw new Error('스크립트 속성 TEMPLATE_ID(구매내역서 템플릿 시트 ID)를 설정해 주세요. README 참고.');
+  var folderId = props.getProperty('OUTPUT_FOLDER_ID');
+  var file = folderId
+    ? DriveApp.getFileById(templateId).makeCopy(name, DriveApp.getFolderById(folderId))
+    : DriveApp.getFileById(templateId).makeCopy(name);
+  var ss = SpreadsheetApp.openById(file.getId());
 
-  var folderId = PropertiesService.getScriptProperties().getProperty('OUTPUT_FOLDER_ID');
-  if (folderId) DriveApp.getFileById(ss.getId()).moveTo(DriveApp.getFolderById(folderId));
-  return { url: ss.getUrl(), name: ss.getName() };
+  applyPlan_(ss, buildPurchasePlan_(lines, curs, rates, base));
+  var proto = ss.getSheetByName(TPL.PROTO);
+  if (proto) ss.deleteSheet(proto);
+  ss.setActiveSheet(ss.getSheetByName(TPL.SUMMARY));
+  return { url: ss.getUrl(), name: name };
 }
 
-var DETAIL_HEADERS = ['L/I', 'Program', 'Item No.', 'Material', 'Description', 'Product\nName', 'Qty', 'CUR',
-  'Unit Price', 'Amount', 'Ship From', 'Leadtime', 'UoM', 'Shelf Life', 'Supplier', 'Tax\nCode', 'Price\nMode', '비고', 'Need-by\nDate'];
-
-/** 구매세부내역 탭. 열 배치는 예시 양식과 같다 (B=L/I … S=비고). */
-function writeDetail_(sh, lines, curs, rates, base) {
-  // 기준일과 통화별 환율: O1 기준일, P1.. 통화, P2.. 환율
-  sh.getRange('N1').setValue('작성일');
-  sh.getRange('O1').setValue(base).setNumberFormat('yyyy-mm-dd');
-  sh.getRange('N2').setValue('환율(KRW)');
-  curs.forEach(function (c, i) {
-    sh.getRange(1, 16 + i).setValue(c);
-    sh.getRange(2, 16 + i).setValue(rates[c]).setNumberFormat('#,##0.00');
+/** buildPurchasePlan_ 의 작업 목록을 시트에 적용 */
+function applyPlan_(ss, ops) {
+  var sheets = {};
+  var sh = function (n) {
+    if (!sheets[n]) {
+      sheets[n] = ss.getSheetByName(n);
+      if (!sheets[n]) throw new Error('템플릿에 "' + n + '" 탭이 없습니다.');
+    }
+    return sheets[n];
+  };
+  var FORMAT = SpreadsheetApp.CopyPasteType.PASTE_FORMAT;
+  ops.forEach(function (o) {
+    switch (o.op) {
+      case 'fmt':
+        sh(TPL.PROTO).getRange(o.from, o.c1, 1, o.c2 - o.c1 + 1).copyTo(sh(o.s).getRange(o.r, o.c1), FORMAT, false);
+        break;
+      case 'cellFmt':
+        sh(o.fs).getRange(o.fr, o.fc).copyTo(sh(o.s).getRange(o.r, o.c), FORMAT, false);
+        break;
+      case 'set': {
+        var cell = sh(o.s).getRange(o.r, o.c);
+        if (o.v && typeof o.v === 'object' && o.v.date) cell.setValue(toDate_(o.v.date));
+        else if (typeof o.v === 'string' && o.v.charAt(0) === '=') cell.setFormula(o.v);
+        else cell.setValue(o.v);
+        break;
+      }
+      case 'nf': sh(o.s).getRange(o.r, o.c).setNumberFormat(o.f); break;
+      case 'bg': sh(o.s).getRange(o.r, o.c).setBackground(o.color); break;
+      case 'merge': sh(o.s).getRange(o.r1, o.c1, o.r2 - o.r1 + 1, o.c2 - o.c1 + 1).merge(); break;
+      case 'unmerge': sh(o.s).getRange(o.r1, o.c1, o.r2 - o.r1 + 1, o.c2 - o.c1 + 1).breakApart(); break;
+      case 'height': sh(o.s).setRowHeight(o.r, Math.round(o.pt * 4 / 3)); break;
+      case 'bottom':
+        sh(o.s).getRange(o.r, o.c1, 1, o.c2 - o.c1 + 1)
+          .setBorder(null, null, true, null, null, null, '#000000', SpreadsheetApp.BorderStyle.SOLID);
+        break;
+      case 'list':
+        sh(o.s).getRange(o.r1, o.c, o.r2 - o.r1 + 1, 1).setDataValidation(
+          SpreadsheetApp.newDataValidation().requireValueInList(o.items, true).setAllowInvalid(true).build());
+        break;
+      case 'freeze': sh(o.s).setFrozenRows(o.rows); sh(o.s).setFrozenColumns(o.cols); break;
+      default: throw new Error('알 수 없는 작업: ' + o.op);
+    }
   });
-  var rateCell = {};
-  curs.forEach(function (c, i) { rateCell[c] = sh.getRange(2, 16 + i).getA1Notation().replace(/(\D+)(\d+)/, '$$$1$$$2'); });
-
-  var header = 6 + curs.length;            // 통화 1개면 7행 (예시와 동일)
-  var first = header + 1, last = header + lines.length;
-  var I = '$I$' + first + ':$I$' + last, K = '$K$' + first + ':$K$' + last;
-
-  // 합계: TTL(통화별), TTL(KRW), Total(KRW 환산)
-  var r = 3, totalParts = [];
-  curs.forEach(function (c) {
-    sh.getRange(r, 10, 1, 2).setValues([['TTL(' + c + ')', '=SUMIF(' + I + ',"' + c + '",' + K + ')']]);
-    totalParts.push('K' + r + '*' + rateCell[c]);
-    r++;
-  });
-  sh.getRange(r, 10, 1, 2).setValues([['TTL(KRW)', '=SUMIF(' + I + ',"KRW",' + K + ')']]);
-  totalParts.push('K' + r);
-  r++;
-  sh.getRange(r, 10, 1, 2).setValues([['Total', '=' + totalParts.join('+')]]);
-  var note = '※ 적용환율: ' + curs.map(function (c) {
-    return 'KRW ' + Number(rates[c]).toLocaleString('en-US', { minimumFractionDigits: 2 }) + '/' + c;
-  }).join(', ') + ' (' + fmtDate_(base).replace(/-/g, '/') + ' 기준)';
-  sh.getRange(r, 12).setValue(note);
-  sh.getRange(3, 11, r - 2, 1).setNumberFormat('#,##0.00');
-  var totalRow = r;
-
-  sh.getRange(header, 2, 1, DETAIL_HEADERS.length).setValues([DETAIL_HEADERS])
-    .setFontWeight('bold').setBackground('#d9e1f2').setWrap(true).setHorizontalAlignment('center').setVerticalAlignment('middle');
-
-  var rows = lines.map(function (l, i) {
-    var n = first + i;
-    return [i + 1, l.program, l.item, l.material, l.desc, l.product, l.qty, l.cur, l.price, '=J' + n + '*H' + n,
-      l.shipFrom, l.leadtime, l.uom, l.shelfLife, l.supplier, l.taxCode, l.priceMode, l.remark, l.needBy || ''];
-  });
-  sh.getRange(first, 2, rows.length, rows[0].length).setValues(rows);
-  sh.getRange(first, 3, rows.length, 2).setNumberFormat('@');      // Program, Item No.는 텍스트
-  sh.getRange(first, 8, rows.length, 1).setNumberFormat('#,##0');
-  sh.getRange(first, 20, rows.length, 1).setNumberFormat('yyyy-mm-dd');
-  sh.getRange(first, 10, rows.length, 2).setNumberFormat('#,##0.00');
-  sh.getRange(header, 2, rows.length + 1, DETAIL_HEADERS.length).setBorder(true, true, true, true, true, true);
-  markToFill_(sh, first, lines);
-  sh.setFrozenRows(header);
-  sh.autoResizeColumns(2, DETAIL_HEADERS.length);
-  sh.setColumnWidth(6, 320);
-  sh.setColumnWidth(19, 280);
-  return { first: first, last: last, rateCell: rateCell, totalRow: totalRow, note: note };
-}
-
-/** 구매요약 탭: 업체·통화별 한 줄 + 통화별 합계 + KRW 총합 */
-function writeSummary_(sh, lines, curs, info) {
-  var D = "'" + DETAIL_TAB + "'!";
-  var P = D + '$P$' + info.first + ':$P$' + info.last;
-  var I = D + '$I$' + info.first + ':$I$' + info.last;
-  var H = D + '$H$' + info.first + ':$H$' + info.last;
-  var K = D + '$K$' + info.first + ':$K$' + info.last;
-
-  sh.getRange('B1').setValue('▣ 구매 요약').setFontWeight('bold').setFontSize(12);
-  var head = ['L/I', '구매업체', '대표품목', '품목수', '구매량', 'CUR', '구매금액', '업체선정사유'];
-  sh.getRange(3, 2, 1, head.length).setValues([head]).setFontWeight('bold').setBackground('#d9e1f2').setHorizontalAlignment('center');
-
-  var groups = summarize_(lines);
-  var rows = groups.map(function (g, i) {
-    var crit = P + ',"' + g.supplier + '",' + I + ',"' + g.cur + '"';
-    return [i + 1, g.supplier, g.mainMaterial, '=COUNTIFS(' + crit + ')', '=SUMIFS(' + H + ',' + crit + ')', g.cur,
-      '=SUMIFS(' + K + ',' + crit + ')', g.priceMode];
-  });
-  sh.getRange(4, 2, rows.length, head.length).setValues(rows);
-  var gEnd = 3 + rows.length;
-
-  // CUR 별 합계
-  var r = gEnd + 1, krwParts = [];
-  var allCurs = curs.slice();
-  if (lines.some(function (l) { return l.cur === 'KRW'; })) allCurs.push('KRW');
-  allCurs.forEach(function (c) {
-    var rng = function (col) { return col + '4:' + col + gEnd; };
-    sh.getRange(r, 2).setValue('CUR 별 합계');
-    sh.getRange(r, 5, 1, 4).setValues([['=SUMIF(' + rng('G') + ',"' + c + '",' + rng('E') + ')',
-      '=SUMIF(' + rng('G') + ',"' + c + '",' + rng('F') + ')', c,
-      '=SUMIF(' + rng('G') + ',"' + c + '",' + rng('H') + ')']]);
-    krwParts.push(c === 'KRW' ? 'H' + r : 'H' + r + '*' + D + info.rateCell[c]);
-    r++;
-  });
-  sh.getRange(r, 2).setValue('총 합계 (KRW 표기)').setFontWeight('bold');
-  sh.getRange(r, 8).setFormula('=' + krwParts.join('+')).setFontWeight('bold');
-  sh.getRange(r + 1, 6).setValue(info.note);
-
-  sh.getRange(4, 6, r - 3, 1).setNumberFormat('#,##0');
-  sh.getRange(4, 8, r - 3, 1).setNumberFormat('#,##0.00');
-  sh.getRange(r, 8).setNumberFormat('#,##0');
-  sh.getRange(3, 2, r - 2, head.length).setBorder(true, true, true, true, true, true);
-  sh.autoResizeColumns(2, head.length);
-}
-
-/**
- * 담당자가 채울 칸 표시: Program(항상), Ship From·Leadtime(자재정보에 없을 때)을 노란색으로.
- * Ship From은 Air/Ocean 드롭다운(다른 값도 입력 가능).
- */
-var FILL_COLOR = '#fff2cc';
-function markToFill_(sh, first, lines) {
-  var n = lines.length;
-  sh.getRange(first, 3, n, 1).setBackground(FILL_COLOR);                       // C: Program
-  lines.forEach(function (l, i) {
-    if (!l.shipFrom) sh.getRange(first + i, 12).setBackground(FILL_COLOR);     // L: Ship From
-    if (!l.leadtime) sh.getRange(first + i, 13).setBackground(FILL_COLOR);     // M: Leadtime
-  });
-  var rule = SpreadsheetApp.newDataValidation().requireValueInList(['Air', 'Ocean'], true).setAllowInvalid(true).build();
-  sh.getRange(first, 12, n, 1).setDataValidation(rule);
-  sh.getRange(first + n + 1, 2).setValue('※ 노란 칸은 담당자가 직접 입력 (Program, 자재정보에 없는 Ship From·Leadtime)')
-    .setFontColor('#b45309');
 }
