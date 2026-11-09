@@ -63,6 +63,7 @@ function apiInit() {
 }
 
 /** 판정. Date는 문자열로 바꿔서 돌려준다 (google.script.run 직렬화 안전). */
+/** baseDateStr = 작성일 (파일명·환율 기준일·리드타임 계산). 계약 판정은 품목별 Need-by-date 기준. */
 function apiClassify(text, baseDateStr) {
   var parsed = parseRequest_(text);
   var base = toDate_(baseDateStr) || toDate_(new Date());
@@ -131,7 +132,7 @@ var DETAIL_HEADERS = ['L/I', 'Program', 'Item No.', 'Material', 'Description', '
 /** 구매세부내역 탭. 열 배치는 예시 양식과 같다 (B=L/I … S=비고). */
 function writeDetail_(sh, lines, curs, rates, base) {
   // 기준일과 통화별 환율: O1 기준일, P1.. 통화, P2.. 환율
-  sh.getRange('N1').setValue('기준일');
+  sh.getRange('N1').setValue('작성일');
   sh.getRange('O1').setValue(base).setNumberFormat('yyyy-mm-dd');
   sh.getRange('N2').setValue('환율(KRW)');
   curs.forEach(function (c, i) {

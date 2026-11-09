@@ -134,40 +134,43 @@ function leadDays_(s) {
   return /^(day|d|일)/.test(m[3]) ? n : n * 7;
 }
 
-/** 계약 품목의 Need-by-date 확인 메시지 */
-function needByWarnings_(needBy, c, baseDate) {
+/** 계약 품목의 Need-by-date 확인 메시지 (today = 작성일) */
+function needByWarnings_(q, c, today) {
   var w = [];
-  if (!needBy) return w;
-  if (needBy < baseDate) w.push('Need-by가 기준일보다 이전');
+  if (!q.needBy) { w.push('Need-by-date 없음 — 작성일 기준으로 판정'); return w; }
+  if (q.needBy < today) { w.push('Need-by가 작성일보다 이전'); return w; }
   var ld = leadDays_(c.leadtime);
-  if (ld && needBy - baseDate < ld * 86400000) w.push('리드타임(' + c.leadtime + ') 부족');
-  if (c.end && needBy > c.end) w.push('Need-by가 계약종료(' + fmtDate_(c.end) + ') 이후');
+  if (ld && q.needBy - today < ld * 86400000) w.push('리드타임(' + c.leadtime + ') 부족');
   return w;
 }
 
-/** 각 소요 품목을 기준일 기준으로 계약/Spot 판정. 유효 계약이 여럿이면 단가 낮은 순으로 후보를 준다. */
-function classify_(requests, contracts, baseDate) {
+/**
+ * 각 소요 품목을 그 품목의 Need-by-date(출고일) 기준으로 계약/Spot 판정.
+ * Need-by-date가 없으면 today(작성일)로 판정. 유효 계약이 여럿이면 단가 낮은 순으로 후보를 준다.
+ */
+function classify_(requests, contracts, today) {
   var byItem = {};
   contracts.forEach(function (c) { (byItem[c.item] = byItem[c.item] || []).push(c); });
   return requests.map(function (q) {
+    var d = q.needBy || today;
     var all = byItem[q.item] || [];
     var valid = all.filter(function (c) {
-      return (!c.start || c.start <= baseDate) && (!c.end || baseDate <= c.end);
+      return (!c.start || c.start <= d) && (!c.end || d <= c.end);
     }).sort(function (a, b) { return (a.price || 0) - (b.price || 0); });
     var res = { line: q.line, item: q.item, qty: q.qty, needBy: q.needBy, program: q.program, candidates: valid, warnings: [] };
     if (valid.length) {
       res.status = '계약';
       res.reason = valid.length > 1 ? '유효 계약 ' + valid.length + '건 — 업체 선택 필요' : '';
-      res.warnings = needByWarnings_(q.needBy, valid[0], baseDate);
+      res.warnings = needByWarnings_(q, valid[0], today);
     } else {
       res.status = 'Spot';
       if (!all.length) {
         res.reason = '계약 없음';
       } else {
         var last = all.reduce(function (a, b) { return (b.end || 0) > (a.end || 0) ? b : a; });
-        res.reason = last.end && last.end < baseDate
-          ? '계약 만료 (' + last.supplier + ', ' + fmtDate_(last.end) + ' 종료)'
-          : '계약 시작 전 (' + last.supplier + ', ' + fmtDate_(last.start) + ' 시작)';
+        res.reason = last.end && last.end < d
+          ? 'Need-by 시점 계약 만료 (' + last.supplier + ', ' + fmtDate_(last.end) + ' 종료)'
+          : 'Need-by 시점 계약 시작 전 (' + last.supplier + ', ' + fmtDate_(last.start) + ' 시작)';
         res.desc = last.desc;
       }
     }
