@@ -93,7 +93,7 @@ function apiCreatePurchase(payload) {
     var o = {};
     Object.keys(c).forEach(function (k) { o[k] = c[k]; });
     o.qty = Number(l.qty);
-    o.program = l.program || c.program || '';   // 소요제기에 적으면 우선, 없으면 자재정보 값
+    o.program = '';   // Program은 생성된 시트에서 담당자가 입력
     o.needBy = toDate_(l.needBy);
     o.remark = (payload.remarks || {})[c.supplier] || '';
     return o;
@@ -178,6 +178,7 @@ function writeDetail_(sh, lines, curs, rates, base) {
   sh.getRange(first, 20, rows.length, 1).setNumberFormat('yyyy-mm-dd');
   sh.getRange(first, 10, rows.length, 2).setNumberFormat('#,##0.00');
   sh.getRange(header, 2, rows.length + 1, DETAIL_HEADERS.length).setBorder(true, true, true, true, true, true);
+  markToFill_(sh, first, lines);
   sh.setFrozenRows(header);
   sh.autoResizeColumns(2, DETAIL_HEADERS.length);
   sh.setColumnWidth(6, 320);
@@ -228,4 +229,22 @@ function writeSummary_(sh, lines, curs, info) {
   sh.getRange(r, 8).setNumberFormat('#,##0');
   sh.getRange(3, 2, r - 2, head.length).setBorder(true, true, true, true, true, true);
   sh.autoResizeColumns(2, head.length);
+}
+
+/**
+ * 담당자가 채울 칸 표시: Program(항상), Ship From·Leadtime(자재정보에 없을 때)을 노란색으로.
+ * Ship From은 Air/Ocean 드롭다운(다른 값도 입력 가능).
+ */
+var FILL_COLOR = '#fff2cc';
+function markToFill_(sh, first, lines) {
+  var n = lines.length;
+  sh.getRange(first, 3, n, 1).setBackground(FILL_COLOR);                       // C: Program
+  lines.forEach(function (l, i) {
+    if (!l.shipFrom) sh.getRange(first + i, 12).setBackground(FILL_COLOR);     // L: Ship From
+    if (!l.leadtime) sh.getRange(first + i, 13).setBackground(FILL_COLOR);     // M: Leadtime
+  });
+  var rule = SpreadsheetApp.newDataValidation().requireValueInList(['Air', 'Ocean'], true).setAllowInvalid(true).build();
+  sh.getRange(first, 12, n, 1).setDataValidation(rule);
+  sh.getRange(first + n + 1, 2).setValue('※ 노란 칸은 담당자가 직접 입력 (Program, 자재정보에 없는 Ship From·Leadtime)')
+    .setFontColor('#b45309');
 }
