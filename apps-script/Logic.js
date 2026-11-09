@@ -28,11 +28,11 @@ function headerKey_(s) {
 }
 
 function itemKey_(s) {
-  return String(s == null ? '' : s).trim().toUpperCase();
+  return String(s == null ? '' : s).trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
 function toDate_(v) {
-  if (v instanceof Date) return new Date(v.getFullYear(), v.getMonth(), v.getDate());
+  if (Object.prototype.toString.call(v) === '[object Date]') return isNaN(v) ? null : new Date(v.getFullYear(), v.getMonth(), v.getDate());
   var m = String(v == null ? '' : v).trim().match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
   return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
 }
@@ -114,8 +114,21 @@ function parseRequest_(text) {
   String(text || '').split(/\r?\n/).forEach(function (line, n) {
     if (!line.trim()) return;
     line = normDates_(line);
-    var cells = line.indexOf('\t') >= 0 ? line.split('\t') : line.split(/\s*,\s*|\s+/);
-    cells = cells.map(function (c) { return c.trim(); });
+    var cells;
+    if (line.indexOf('\t') >= 0) {
+      cells = line.split('\t').map(function (c) { return c.trim(); });
+    } else {
+      // 공백 구분: 품번에 공백이 있을 수 있음 (예: "10-60754-279 42L 50 2027-06-10").
+      // 날짜 바로 앞(날짜가 없으면 둘째 이후 첫) 숫자 칸을 수량으로 보고, 그 앞은 모두 품번으로 합친다.
+      var t = line.trim().split(/\s*,\s*|\s+/);
+      var isNum = function (x) { return /^\d[\d,]*(\.\d+)?$/.test(x); };
+      var di = -1;
+      t.forEach(function (x, i) { if (di < 0 && i > 0 && /^\d{4}-\d{1,2}-\d{1,2}$/.test(x)) di = i; });
+      var k = -1;
+      if (di > 1 && isNum(t[di - 1])) k = di - 1;
+      for (var i = 1; k < 0 && i < t.length; i++) if (isNum(t[i])) k = i;
+      cells = k > 0 ? [t.slice(0, k).join(' ')].concat(t.slice(k)) : t;
+    }
     var qty = toNumber_(cells[1]);
     if (!cells[0] || qty === null) { skipped.push(n + 1); return; }
     var needBy = null, rest = [];
@@ -136,9 +149,11 @@ function leadDays_(s) {
   return /^(day|d|일)/.test(m[3]) ? n : n * 7;
 }
 
-/** 계약 품목의 Need-by-date 확인 메시지 (today = 작성일) */
+/** 계약 품목 확인 메시지: MOQ 미달, Need-by 누락·지남, 리드타임 부족 (today = 작성일) */
 function needByWarnings_(q, c, today) {
   var w = [];
+  var moq = toNumber_(c.moq);
+  if (moq && q.qty < moq) w.push('수량 ' + q.qty + ' < MOQ ' + moq);
   if (!q.needBy) { w.push('Need-by-date 없음 — 작성일 기준으로 판정'); return w; }
   if (q.needBy < today) { w.push('Need-by가 작성일보다 이전'); return w; }
   var ld = leadDays_(c.leadtime);

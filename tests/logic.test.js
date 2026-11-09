@@ -81,3 +81,15 @@ test('Program·Ship Form·Lead Time 열 이름 인식', () => {
   ])[0];
   assert.deepStrictEqual([c.program, c.shipFrom, c.leadtime, c.material], ['787AB / 737WL', 'Ocean', '10-12wks', 'Primer']);
 });
+
+test('공백이 들어간 품번 (탭·공백 붙여넣기 모두)', () => {
+  const p = L.parseRequest_('10-60754-279 42L\t50\t2027-06-10\n10-60754-279  42L 50 2027-06-10 787AB\nKERC00053 50 2027-06-10');
+  assert.deepStrictEqual(p.requests.map(r => [r.item, r.qty, L.fmtDate_(r.needBy), r.program]),
+    [['10-60754-279 42L', 50, '2027-06-10', ''], ['10-60754-279 42L', 50, '2027-06-10', '787AB'], ['KERC00053', 50, '2027-06-10', '']]);
+});
+
+test('MOQ 미달 경고', () => {
+  const c = L.parseContracts_([['Item', '업체명', '계약시작', '계약종료', 'MOQ'], ['A1', 'S', '2026-01-01', '2028-12-31', '6,000'], ['B1', 'S', '2026-01-01', '2028-12-31', '-']]);
+  const r = L.classify_(L.parseRequest_('A1 50 2027-06-10\nA1 6000 2027-06-10\nB1 1 2027-06-10').requests, c, L.toDate_('2026-11-09'));
+  assert.deepStrictEqual(r.map(x => x.warnings), [['수량 50 < MOQ 6000'], [], []]);
+});
