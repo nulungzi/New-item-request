@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+:root{--bg:#f6f7f9;--fg:#1d2330;--card:#fff;--line:#e2e5ea;--accent:#2f6fec;--muted:#6b7280;--ok:#1f8a4c;--spot:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#14171c;--fg:#e8eaee;--card:#1d2128;--line:#2d333c;--accent:#6a9bff;--muted:#9aa3af;--ok:#4ade80;--spot:#fb923c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif;font-size:15px}
+main{max-width:1000px;margin:0 auto;padding:16px}
+h1{font-size:1.25rem;margin:4px 0 12px}h2{font-size:1rem;margin:0 0 10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+textarea,input,select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px}
+textarea{width:100%;min-height:140px;font-family:ui-monospace,Consolas,monospace;font-size:13px}
+button{font:inherit;border:0;border-radius:8px;padding:10px 16px;background:var(--accent);color:#fff;cursor:pointer}
+button:disabled{opacity:.5}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.muted{color:var(--muted);font-size:.85rem}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+td.n{text-align:right;white-space:nowrap}
+.badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:.8rem;font-weight:600;white-space:nowrap}
+.b-ok{color:var(--ok);border:1px solid var(--ok)}.b-spot{color:var(--spot);border:1px solid var(--spot)}
+.rates label,.remarks label{display:block;margin-bottom:8px}
+.remarks textarea{min-height:48px;font-family:inherit}
+.err{color:#dc2626;white-space:pre-wrap}
+a{color:var(--accent)}
+</style>
+</head>
+<body><main>
+<h1>소요제기 판정 · 구매내역서</h1>
+
+<div class="card">
+  <h2>1. 소요제기 입력</h2>
+  <p class="muted">엑셀에서 <b>품번 · 수량 · Program</b> 순서로 복사해 붙여넣으세요. 한 줄에 한 품목, Program은 생략 가능합니다.</p>
+  <textarea id="req" placeholder="KERC00016	300	787AB / 737WL&#10;KERC00058	1296	787AB&#10;KERN99999	10"></textarea>
+  <div class="row" style="margin-top:10px">
+    <label>기준일 <input type="date" id="base"></label>
+    <button id="btnClassify">판정하기</button>
+  </div>
+  <div id="msg1" class="err"></div>
+</div>
+
+<div id="result" hidden>
+  <div class="card">
+    <h2>2. 판정 결과</h2>
+    <div id="counts" class="muted"></div>
+    <div class="scroll"><table id="tbl"></table></div>
+  </div>
+
+  <div class="card" id="purchaseCard" hidden>
+    <h2>3. 계약 품목 → 구매내역서</h2>
+    <div class="rates" id="rates"></div>
+    <div class="remarks" id="remarks"></div>
+    <button id="btnCreate">구매내역서 만들기</button>
+    <div id="msg2" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card" id="spotCard" hidden>
+    <h2>4. Spot 품목 → 견적요청</h2>
+    <p class="muted">견적요청서 양식과 업체목록을 받으면 이 단계가 추가됩니다. 지금은 대상 목록만 보여줍니다.</p>
+    <div class="scroll"><table id="spotTbl"></table></div>
+  </div>
+</div>
+
+<script>
+var state = { results: [], rates: {} };
+var $ = function (id) { return document.getElementById(id); };
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function fmt(n) { return n == null ? '' : Number(n).toLocaleString('ko-KR', { maximumFractionDigits: 4 }); }
+function call(fn) {
+  var args = [].slice.call(arguments, 1);
+  return new Promise(function (ok, fail) { google.script.run.withSuccessHandler(ok).withFailureHandler(fail)[fn].apply(null, args); });
+}
+
+call('apiInit').then(function (d) { $('base').value = d.today; state.rates = d.rates || {}; });
+
+$('btnClassify').onclick = function () {
+  var b = this; b.disabled = true; $('msg1').textContent = '';
+  call('apiClassify', $('req').value, $('base').value).then(function (d) {
+    state.results = d.results; state.rates = d.rates || state.rates;
+    if (d.skipped.length) $('msg1').textContent = '건너뛴 줄 (품번/수량 확인): ' + d.skipped.join(', ') + '행';
+    render();
+  }).catch(function (e) { $('msg1').textContent = e.message || e; }).finally(function () { b.disabled = false; });
+};
+
+function chosen(r) { var s = $('pick-' + r.line); return r.candidates[s ? +s.value : 0]; }
+
+function render() {
+  var rs = state.results;
+  $('result').hidden = !rs.length;
+  var ok = rs.filter(function (r) { return r.status === '계약'; }), spot = rs.filter(function (r) { return r.status === 'Spot'; });
+  $('counts').textContent = '전체 ' + rs.length + '건 · 계약 ' + ok.length + '건 · Spot ' + spot.length + '건';
+
+  $('tbl').innerHTML = '<tr><th>판정</th><th>품번</th><th>수량</th><th>Program</th><th>업체 / 단가</th><th>계약기간</th><th>Description</th><th>비고</th></tr>' +
+    rs.map(function (r) {
+      var c = r.candidates;
+      var sup = !c.length ? '' : c.length === 1 ? esc(c[0].supplier) + ' · ' + fmt(c[0].price) + ' ' + esc(c[0].cur) + ' / ' + esc(c[0].uom)
+        : '<select id="pick-' + r.line + '">' + c.map(function (x, i) {
+            return '<option value="' + i + '">' + esc(x.supplier) + ' · ' + fmt(x.price) + ' ' + esc(x.cur) + ' (' + esc(x.priceMode) + ')</option>';
+          }).join('') + '</select>';
+      var c0 = c[0] || {};
+      return '<tr><td><span class="badge ' + (r.status === '계약' ? 'b-ok' : 'b-spot') + '">' + (r.status === '계약' ? esc(c0.priceMode || '계약') : 'Spot') + '</span></td>' +
+        '<td>' + esc(r.item) + '</td><td class="n">' + fmt(r.qty) + '</td><td>' + esc(r.program) + '</td><td>' + sup + '</td>' +
+        '<td>' + (c0.start ? esc(c0.start) + ' ~ ' + esc(c0.end) : '') + '</td><td>' + esc(c0.desc || r.desc || '') + '</td><td class="muted">' + esc(r.reason) + '</td></tr>';
+    }).join('');
+  rs.forEach(function (r) { var s = $('pick-' + r.line); if (s) s.onchange = renderPurchase; });
+
+  $('spotCard').hidden = !spot.length;
+  $('spotTbl').innerHTML = '<tr><th>품번</th><th>수량</th><th>Program</th><th>사유</th></tr>' + spot.map(function (r) {
+    return '<tr><td>' + esc(r.item) + '</td><td class="n">' + fmt(r.qty) + '</td><td>' + esc(r.program) + '</td><td class="muted">' + esc(r.reason) + '</td></tr>';
+  }).join('');
+  renderPurchase();
+}
+
+function renderPurchase() {
+  var ok = state.results.filter(function (r) { return r.status === '계약'; });
+  $('purchaseCard').hidden = !ok.length;
+  if (!ok.length) return;
+  var keep = {}; // 입력 중인 값 유지
+  document.querySelectorAll('[data-rate],[data-remark]').forEach(function (el) { keep[el.id] = el.value; });
+
+  var curs = [], sups = [];
+  ok.forEach(function (r) {
+    var c = chosen(r);
+    if (c.cur !== 'KRW' && curs.indexOf(c.cur) < 0) curs.push(c.cur);
+    if (sups.indexOf(c.supplier) < 0) sups.push(c.supplier);
+  });
+  $('rates').innerHTML = '<p class="muted">통화별 환율 (1 단위당 KRW)</p>' + curs.map(function (c) {
+    var id = 'rate-' + c;
+    var v = keep[id] != null ? keep[id] : (state.rates[c] || '');
+    return '<label>' + esc(c) + ' <input type="number" step="0.01" inputmode="decimal" data-rate="' + esc(c) + '" id="' + id + '" value="' + esc(v) + '"></label>';
+  }).join('');
+  $('remarks').innerHTML = '<p class="muted">업체별 비고 (구매세부내역 비고 열에 들어갑니다)</p>' + sups.map(function (s, i) {
+    var id = 'remark-' + i;
+    return '<label>' + esc(s) + '<textarea data-remark="' + esc(s) + '" id="' + id + '">' + esc(keep[id] || '') + '</textarea></label>';
+  }).join('');
+}
+
+$('btnCreate').onclick = function () {
+  var b = this; b.disabled = true; $('msg2').innerHTML = '만드는 중…';
+  var rates = {}, remarks = {};
+  document.querySelectorAll('[data-rate]').forEach(function (el) { rates[el.dataset.rate] = el.value; });
+  document.querySelectorAll('[data-remark]').forEach(function (el) { remarks[el.dataset.remark] = el.value; });
+  var lines = state.results.filter(function (r) { return r.status === '계약'; }).map(function (r) {
+    return { item: r.item, qty: r.qty, program: r.program, contractRow: chosen(r).row };
+  });
+  call('apiCreatePurchase', { baseDate: $('base').value, rates: rates, remarks: remarks, lines: lines }).then(function (d) {
+    state.rates = Object.assign(state.rates, rates);
+    $('msg2').innerHTML = '✅ 만들었습니다: <a href="' + esc(d.url) + '" target="_blank">' + esc(d.name) + '</a>';
+  }).catch(function (e) { $('msg2').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; })
+    .finally(function () { b.disabled = false; });
+};
+</script>
+</main></body></html>

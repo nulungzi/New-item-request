@@ -1,0 +1,8 @@
+{
+  "name": "new-item-request",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "push": "clasp push"
+  }
+}
