@@ -58,7 +58,13 @@ function saveRates_(rates) {
 
 /** 웹앱이 처음 열릴 때 */
 function apiInit() {
-  return { today: fmtDate_(new Date()), rates: loadRates_() };
+  var items = {};
+  loadContracts_().forEach(function (c) { items[c.item] = c.desc; });
+  return {
+    today: fmtDate_(new Date()),
+    rates: loadRates_(),
+    items: Object.keys(items).sort().map(function (k) { return [k, items[k]]; })   // Item 자동완성용
+  };
 }
 
 /** 판정. Date는 문자열로 바꿔서 돌려준다 (google.script.run 직렬화 안전). */
@@ -129,7 +135,7 @@ function apiCreatePurchase(payload) {
   var proto = ss.getSheetByName(TPL.PROTO);
   if (proto) ss.deleteSheet(proto);
   ss.setActiveSheet(ss.getSheetByName(TPL.SUMMARY));
-  return { url: ss.getUrl(), name: name };
+  return { url: ss.getUrl(), name: name, id: ss.getId() };
 }
 
 /** buildPurchasePlan_ 의 작업 목록을 시트에 적용 */
@@ -175,4 +181,83 @@ function applyPlan_(ss, ops) {
       default: throw new Error('알 수 없는 작업: ' + o.op);
     }
   });
+}
+
+/* ------------------------------------------------------------------
+ * 미리보기: 만든 구매내역서의 탭을 HTML로 돌려준다.
+ * 1순위: 구글 시트의 "웹페이지(zip)" 내보내기 — 시트 화면과 거의 같다.
+ * 실패하면: 값·배경·굵기·병합만 읽어 간단한 표로 그린다.
+ * ------------------------------------------------------------------ */
+var PREVIEW_TABS = [TPL.SUMMARY, TPL.DETAIL, TPL.SCHEDULE, TPL.CONFIRM];
+
+function apiPreview(id) {
+  SpreadsheetApp.flush();
+  var exported = {};
+  try { exported = exportHtml_(id); } catch (e) { console.warn('zip 내보내기 실패: ' + e); }
+  var ss = SpreadsheetApp.openById(id);
+  return PREVIEW_TABS.map(function (name) {
+    if (exported[name]) return { name: name, html: exported[name], mode: 'export' };
+    var sh = ss.getSheetByName(name);
+    return { name: name, html: sh ? simpleHtml_(sh) : '<p>탭이 없습니다.</p>', mode: 'simple' };
+  });
+}
+
+function exportHtml_(id) {
+  var resp = UrlFetchApp.fetch('https://docs.google.com/spreadsheets/d/' + id + '/export?format=zip', {
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true
+  });
+  if (resp.getResponseCode() !== 200) throw new Error('HTTP ' + resp.getResponseCode());
+  var files = Utilities.unzip(resp.getBlob().setContentType('application/zip'));
+  var css = '', pages = {};
+  files.forEach(function (f) {
+    var n = f.getName();
+    if (/\.css$/i.test(n)) css += f.getDataAsString('UTF-8');
+    else if (/\.html$/i.test(n)) pages[n.replace(/^.*\//, '').replace(/\.html$/i, '')] = f.getDataAsString('UTF-8');
+  });
+  var extra = 'body{margin:8px;background:#fff}.row-headers-background,.column-headers-background,' +
+    '.row-header-wrapper,.freezebar-cell,.freezebar-origin-ltr{display:none!important}';
+  Object.keys(pages).forEach(function (k) {
+    pages[k] = pages[k].replace(/<link[^>]+sheet\.css[^>]*>/i, '')
+      .replace(/<\/head>/i, '<style>' + css + extra + '</style></head>');
+  });
+  return pages;
+}
+
+function esc_(s) {
+  return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
+}
+
+function simpleHtml_(sh) {
+  var nr = Math.min(sh.getLastRow(), 80), nc = Math.min(sh.getLastColumn(), 26);
+  if (!nr || !nc) return '<p>내용 없음</p>';
+  var rg = sh.getRange(1, 1, nr, nc);
+  var v = rg.getDisplayValues(), bg = rg.getBackgrounds(), fw = rg.getFontWeights(), fc = rg.getFontColors(),
+    al = rg.getHorizontalAlignments(), fs = rg.getFontSizes(), wrap = rg.getWraps();
+  var skip = {}, span = {};
+  rg.getMergedRanges().forEach(function (m) {
+    var r0 = m.getRow(), c0 = m.getColumn();
+    if (r0 > nr || c0 > nc) return;
+    span[r0 + ',' + c0] = [Math.min(m.getNumRows(), nr - r0 + 1), Math.min(m.getNumColumns(), nc - c0 + 1)];
+    for (var i = 0; i < m.getNumRows(); i++) for (var j = 0; j < m.getNumColumns(); j++) if (i || j) skip[(r0 + i) + ',' + (c0 + j)] = 1;
+  });
+  var html = '<table style="border-collapse:collapse;font-family:Malgun Gothic,Arial,sans-serif;font-size:12px;table-layout:fixed">';
+  html += '<colgroup>';
+  for (var c = 1; c <= nc; c++) html += '<col style="width:' + sh.getColumnWidth(c) + 'px">';
+  html += '</colgroup>';
+  for (var r = 0; r < nr; r++) {
+    html += '<tr style="height:' + sh.getRowHeight(r + 1) + 'px">';
+    for (var c2 = 0; c2 < nc; c2++) {
+      var key = (r + 1) + ',' + (c2 + 1);
+      if (skip[key]) continue;
+      var sp = span[key], filled = v[r][c2] !== '' || (bg[r][c2] && bg[r][c2] !== '#ffffff');
+      var st = 'padding:2px 4px;vertical-align:middle;overflow:hidden;' +
+        (wrap[r][c2] ? 'white-space:pre-wrap;' : 'white-space:nowrap;') +
+        'background:' + bg[r][c2] + ';color:' + fc[r][c2] + ';font-weight:' + fw[r][c2] + ';font-size:' + fs[r][c2] + 'pt;' +
+        'text-align:' + (al[r][c2] || 'general').replace('general-', '').replace('general', 'left') + ';' +
+        (filled ? 'border:1px solid #bbb;' : '');
+      html += '<td' + (sp ? ' rowspan="' + sp[0] + '" colspan="' + sp[1] + '"' : '') + ' style="' + st + '">' + esc_(v[r][c2]) + '</td>';
+    }
+    html += '</tr>';
+  }
+  return html + '</table>';
 }

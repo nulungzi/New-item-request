@@ -27,6 +27,32 @@ td.n{text-align:right;white-space:nowrap}
 .remarks textarea{min-height:48px;font-family:inherit}
 .err{color:#dc2626;white-space:pre-wrap}
 a{color:var(--accent)}
+/* 입력 표 */
+.req-head,.req-row{display:grid;grid-template-columns:28px minmax(0,1fr) 90px 150px 36px;gap:6px;align-items:start}
+.req-head{font-size:.8rem;color:var(--muted);padding:0 0 4px}
+.req-row{margin-bottom:6px}
+.req-row input{width:100%;min-width:0}
+.req-no{padding-top:10px;text-align:right;color:var(--muted);font-size:.8rem}
+.req-desc{grid-column:2/-1;font-size:.75rem;color:var(--muted);margin-top:-2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.req-desc.bad{color:var(--spot)}
+.btn-x{background:transparent;color:var(--muted);border:1px solid var(--line);padding:8px 0}
+.btn-sub{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+@media (max-width:560px){
+  .req-head{display:none}
+  .req-row{grid-template-columns:24px 1fr 1fr 36px;border-bottom:1px solid var(--line);padding-bottom:8px}
+  .req-row .req-no{grid-row:1;grid-column:1}
+  .req-row .f-item{grid-row:1;grid-column:2/-1}
+  .req-row .f-qty{grid-row:2;grid-column:2}
+  .req-row .f-need{grid-row:2;grid-column:3}
+  .req-row .btn-x{grid-row:2;grid-column:4}
+  .req-row .req-desc{grid-row:3}
+  .req-desc{grid-column:2/-1}
+}
+/* 미리보기 */
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.tabs button{background:transparent;color:var(--fg);border:1px solid var(--line);padding:6px 12px}
+.tabs button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.pv{width:100%;height:70vh;border:1px solid var(--line);border-radius:8px;background:#fff}
 </style>
 </head>
 <body><main>
@@ -34,9 +60,16 @@ a{color:var(--accent)}
 
 <div class="card">
   <h2>1. 소요제기 입력</h2>
-  <p class="muted">엑셀에서 <b>Item · 수량 · Need-by-date</b> 순서로 복사해 붙여넣으세요. 한 줄에 한 품목이며, 계약 여부는 <b>Need-by-date(출고일)</b> 기준으로 판정합니다. Program과 비어 있는 Ship From·Lead Time은 만들어진 시트에서 노란 칸에 직접 입력하면 됩니다.</p>
-  <textarea id="req" placeholder="KERC00016	300	2027-01-15&#10;KERC00058	1296	2027-02-01	787AB&#10;KERN99999	10	2026-12-20"></textarea>
-  <div class="row" style="margin-top:10px">
+  <p class="muted">품목마다 <b>Item · 수량 · Need-by</b>를 입력하세요. 엑셀에서 여러 줄을 복사해 아무 칸에나 붙여넣으면 표가 자동으로 채워집니다.
+    계약 여부는 <b>Need-by(출고일)</b> 기준으로 판정합니다.</p>
+  <div class="req-head"><span></span><span>Item</span><span>수량</span><span>Need-by</span><span></span></div>
+  <div id="reqRows"></div>
+  <datalist id="itemList"></datalist>
+  <div class="row" style="margin-top:6px">
+    <button class="btn-sub" id="btnAdd" type="button">+ 행 추가</button>
+    <button class="btn-sub" id="btnClear" type="button">모두 지우기</button>
+  </div>
+  <div class="row" style="margin-top:14px">
     <label>작성일 <input type="date" id="base"></label>
     <button id="btnClassify">판정하기</button>
   </div>
@@ -63,6 +96,13 @@ a{color:var(--accent)}
     <p class="muted">구매내역서에는 들어가지 않습니다.</p>
     <div class="scroll"><table id="spotTbl"></table></div>
   </div>
+
+  <div class="card" id="previewCard" hidden>
+    <h2>5. 구매내역서 미리보기</h2>
+    <div class="tabs" id="pvTabs"></div>
+    <iframe class="pv" id="pvFrame" sandbox="allow-same-origin" title="구매내역서 미리보기"></iframe>
+    <p class="muted" id="pvNote"></p>
+  </div>
 </div>
 
 <script>
@@ -75,14 +115,103 @@ function call(fn) {
   return new Promise(function (ok, fail) { google.script.run.withSuccessHandler(ok).withFailureHandler(fail)[fn].apply(null, args); });
 }
 
-call('apiInit').then(function (d) { $('base').value = d.today; state.rates = d.rates || {}; });
+/* ---------- 소요제기 입력 표 ---------- */
+var itemDesc = {};
+function normDate(t) {
+  t = String(t || '').trim();
+  var m = t.match(/^(\d{4})\s*[-./]\s*(\d{1,2})\s*[-./]\s*(\d{1,2})/) ;
+  if (m) return m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2);
+  m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return m[3] + '-' + ('0' + m[1]).slice(-2) + '-' + ('0' + m[2]).slice(-2);
+  return '';
+}
+function addRow(v) {
+  v = v || {};
+  var row = document.createElement('div');
+  row.className = 'req-row';
+  row.innerHTML = '<span class="req-no"></span>' +
+    '<input class="f-item" list="itemList" placeholder="Item (예: KERC00053)" autocomplete="off" autocapitalize="characters">' +
+    '<input class="f-qty" type="number" min="0" step="any" inputmode="decimal" placeholder="수량">' +
+    '<input class="f-need" type="date">' +
+    '<button class="btn-x" type="button" title="행 삭제">✕</button>' +
+    '<div class="req-desc"></div>';
+  $('reqRows').appendChild(row);
+  row.querySelector('.f-item').value = v.item || '';
+  row.querySelector('.f-qty').value = v.qty || '';
+  row.querySelector('.f-need').value = v.need || '';
+  row.querySelector('.btn-x').onclick = function () { row.remove(); if (!rows().length) addRow(); renumber(); };
+  row.querySelector('.f-item').oninput = function () { showDesc(row); };
+  row.querySelectorAll('input').forEach(function (inp) { inp.addEventListener('paste', onPaste); });
+  showDesc(row); renumber();
+  return row;
+}
+function rows() { return [].slice.call(document.querySelectorAll('.req-row')); }
+function renumber() { rows().forEach(function (r, i) { r.querySelector('.req-no').textContent = i + 1; }); }
+function showDesc(row) {
+  var k = row.querySelector('.f-item').value.trim().replace(/\s+/g, ' ').toUpperCase(), el = row.querySelector('.req-desc');
+  if (!k) { el.textContent = ''; return; }
+  var d = itemDesc[k];
+  el.textContent = d != null ? d : '자재정보에 없는 Item → Spot';
+  el.className = 'req-desc' + (d != null ? '' : ' bad');
+}
+// 엑셀에서 여러 칸/줄 붙여넣기 → 현재 칸부터 채움
+function onPaste(e) {
+  var t = (e.clipboardData || window.clipboardData).getData('text');
+  if (!/[\t\n]/.test(t.replace(/\n$/, ''))) {
+    if (e.target.classList.contains('f-need')) { var d = normDate(t); if (d) { e.preventDefault(); e.target.value = d; } }
+    return;
+  }
+  e.preventDefault();
+  var lines = t.replace(/\r/g, '').replace(/\n+$/, '').split('\n');
+  var all = rows(), start = all.indexOf(e.target.closest('.req-row'));
+  var fields = ['f-item', 'f-qty', 'f-need'], col = fields.findIndex(function (f) { return e.target.classList.contains(f); });
+  lines.forEach(function (line, i) {
+    var row = all[start + i] || addRow();
+    all = rows();
+    line.split('\t').forEach(function (cell, j) {
+      var f = fields[col + j];
+      if (!f) return;
+      cell = cell.trim();
+      if (f === 'f-qty') cell = cell.replace(/,/g, '');
+      if (f === 'f-need') cell = normDate(cell);
+      row.querySelector('.' + f).value = cell;
+    });
+    showDesc(row);
+  });
+}
+function requestText() {
+  return rows().map(function (r) {
+    return [r.querySelector('.f-item').value.trim(), r.querySelector('.f-qty').value.trim(), r.querySelector('.f-need').value].join('\t');
+  }).filter(function (l) { return l.replace(/\t/g, '').trim(); }).join('\n');
+}
+$('btnAdd').onclick = function () { addRow().querySelector('.f-item').focus(); };
+$('btnClear').onclick = function () { $('reqRows').innerHTML = ''; for (var i = 0; i < 3; i++) addRow(); };
+for (var i = 0; i < 3; i++) addRow();
+
+call('apiInit').then(function (d) {
+  $('base').value = d.today; state.rates = d.rates || {};
+  (d.items || []).forEach(function (x) { itemDesc[x[0]] = x[1]; });
+  $('itemList').innerHTML = (d.items || []).map(function (x) {
+    return '<option value="' + esc(x[0]) + '">' + esc(String(x[1]).slice(0, 60)) + '</option>';
+  }).join('');
+  rows().forEach(showDesc);
+});
 
 $('btnClassify').onclick = function () {
-  var b = this; b.disabled = true; $('msg1').textContent = '';
-  call('apiClassify', $('req').value, $('base').value).then(function (d) {
+  var b = this; $('msg1').textContent = '';
+  var text = requestText();
+  var bad = rows().filter(function (r) {
+    var it = r.querySelector('.f-item').value.trim(), q = r.querySelector('.f-qty').value.trim();
+    return (it || q) && !(it && Number(q) > 0);
+  });
+  if (bad.length) { $('msg1').textContent = 'Item과 수량을 확인해 주세요: ' + bad.map(function (r) { return r.querySelector('.req-no').textContent; }).join(', ') + '행'; return; }
+  if (!text) { $('msg1').textContent = 'Item을 입력해 주세요.'; return; }
+  b.disabled = true;
+  call('apiClassify', text, $('base').value).then(function (d) {
     state.results = d.results; state.rates = d.rates || state.rates;
-    if (d.skipped.length) $('msg1').textContent = '건너뛴 줄 (품번/수량 확인): ' + d.skipped.join(', ') + '행';
+    $('previewCard').hidden = true;
     render();
+    $('result').scrollIntoView({ behavior: 'smooth' });
   }).catch(function (e) { $('msg1').textContent = e.message || e; }).finally(function () { b.disabled = false; });
 };
 
@@ -94,7 +223,7 @@ function render() {
   var ok = rs.filter(function (r) { return r.status === '계약'; }), spot = rs.filter(function (r) { return r.status === 'Spot'; });
   $('counts').textContent = '전체 ' + rs.length + '건 · 계약 ' + ok.length + '건 · Spot ' + spot.length + '건';
 
-  $('tbl').innerHTML = '<tr><th>판정</th><th>품번</th><th>수량</th><th>Need-by</th><th>업체 / 단가</th><th>계약기간</th><th>Description</th><th>비고</th></tr>' +
+  $('tbl').innerHTML = '<tr><th>판정</th><th>Item</th><th>수량</th><th>Need-by</th><th>업체 / 단가</th><th>계약기간</th><th>Description</th><th>비고</th></tr>' +
     rs.map(function (r) {
       var c = r.candidates;
       var sup = !c.length ? '' : c.length === 1 ? esc(c[0].supplier) + ' · ' + fmt(c[0].price) + ' ' + esc(c[0].cur) + ' / ' + esc(c[0].uom)
@@ -150,8 +279,30 @@ $('btnCreate').onclick = function () {
   call('apiCreatePurchase', { baseDate: $('base').value, rates: rates, remarks: remarks, lines: lines }).then(function (d) {
     state.rates = Object.assign(state.rates, rates);
     $('msg2').innerHTML = '✅ 만들었습니다: <a href="' + esc(d.url) + '" target="_blank">' + esc(d.name) + '</a>';
+    loadPreview(d);
   }).catch(function (e) { $('msg2').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; })
     .finally(function () { b.disabled = false; });
 };
+
+/* ---------- 미리보기 ---------- */
+function loadPreview(d) {
+  $('previewCard').hidden = false;
+  $('pvTabs').innerHTML = '';
+  $('pvNote').textContent = '미리보기 불러오는 중…';
+  $('pvFrame').srcdoc = '';
+  call('apiPreview', d.id).then(function (tabs) {
+    $('pvTabs').innerHTML = tabs.map(function (t, i) { return '<button type="button" data-i="' + i + '">' + esc(t.name) + '</button>'; }).join('');
+    var show = function (i) {
+      var t = tabs[i];
+      document.querySelectorAll('#pvTabs button').forEach(function (b) { b.classList.toggle('on', +b.dataset.i === i); });
+      $('pvFrame').srcdoc = /<html/i.test(t.html) ? t.html
+        : '<!doctype html><html><head><meta charset="utf-8"><style>body{margin:8px;background:#fff;color:#000}</style></head><body>' + t.html + '</body></html>';
+      $('pvNote').textContent = (t.mode === 'simple' ? '간단 보기(테두리는 실제와 다를 수 있음). ' : '') + '수정은 위 링크에서 구글 시트로 여세요.';
+    };
+    document.querySelectorAll('#pvTabs button').forEach(function (b) { b.onclick = function () { show(+b.dataset.i); }; });
+    show(0);
+    $('previewCard').scrollIntoView({ behavior: 'smooth' });
+  }).catch(function (e) { $('pvNote').textContent = '미리보기를 불러오지 못했습니다: ' + (e.message || e); });
+}
 </script>
 </main></body></html>
