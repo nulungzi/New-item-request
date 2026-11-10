@@ -23,6 +23,13 @@ var MASTER_COLUMNS = {
   taxCode: ['Tax Code']
 };
 
+/** 중복 없이 처음 나온 순서대로 (빈 값 제외) */
+function uniq_(arr) {
+  var out = [];
+  (arr || []).forEach(function (x) { if (x !== '' && x !== null && x !== undefined && out.indexOf(x) < 0) out.push(x); });
+  return out;
+}
+
 function headerKey_(s) {
   return String(s == null ? '' : s).replace(/\s+/g, '').toLowerCase();
 }
@@ -305,6 +312,22 @@ function newItemRow_(headers, rec) {
   });
 }
 
+/** 화면 Item 안내용 목록: [Item, Description, Ship From, 계약 구분들('LTA/SPOT'), Shelf Life] (Item 순) */
+function itemIndex_(contracts) {
+  var items = {};
+  contracts.forEach(function (c) {
+    var x = items[c.item] = items[c.item] || { desc: '', ship: '', shelf: '', modes: [] };
+    if (!x.desc && c.desc) x.desc = c.desc;
+    if (!x.ship && c.shipFrom) x.ship = c.shipFrom;
+    if (!x.shelf && c.shelfLife) x.shelf = c.shelfLife;
+    x.modes = uniq_(x.modes.concat([c.priceMode.toUpperCase()]));
+  });
+  return Object.keys(items).sort().map(function (k) {
+    var x = items[k];
+    return [k, x.desc, x.ship, x.modes.join('/'), x.shelf];
+  });
+}
+
 /** 구매내역서에 들어갈 업체·통화별 요약 (L/I 순서 = 업체 등장 순서). */
 function summarize_(lines) {
   var groups = [], map = {};
@@ -559,5 +582,5 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule, extra) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { normPerson_: normPerson_, isPersonFormat_: isPersonFormat_, purchaseFileName_: purchaseFileName_, keyForHeader_: keyForHeader_, validateNewItem_: validateNewItem_, newItemRow_: newItemRow_, isSpotMode_: isSpotMode_, normSchedule_: normSchedule_, SCHEDULE_EXAMPLE: SCHEDULE_EXAMPLE, parseRows_: parseRows_, buildPurchasePlan_: buildPurchasePlan_, curFmt_: curFmt_, leadDays_: leadDays_, parseContracts_: parseContracts_, parseRequest_: parseRequest_, classify_: classify_, summarize_: summarize_, toDate_: toDate_, fmtDate_: fmtDate_ };
+  module.exports = { uniq_: uniq_, itemIndex_: itemIndex_, MASTER_COLUMNS: MASTER_COLUMNS, normPerson_: normPerson_, isPersonFormat_: isPersonFormat_, purchaseFileName_: purchaseFileName_, keyForHeader_: keyForHeader_, validateNewItem_: validateNewItem_, newItemRow_: newItemRow_, isSpotMode_: isSpotMode_, normSchedule_: normSchedule_, SCHEDULE_EXAMPLE: SCHEDULE_EXAMPLE, parseRows_: parseRows_, buildPurchasePlan_: buildPurchasePlan_, curFmt_: curFmt_, leadDays_: leadDays_, parseContracts_: parseContracts_, parseRequest_: parseRequest_, classify_: classify_, summarize_: summarize_, toDate_: toDate_, fmtDate_: fmtDate_ };
 }

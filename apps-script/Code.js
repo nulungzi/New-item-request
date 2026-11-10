@@ -1,33 +1,55 @@
 /**
  * 소요제기 판정 웹앱 — 계약(LTA/3PP) 품목은 구매내역서를 만들고, Spot 품목은 견적 대상으로 분류한다.
+ * 판정·계산은 Logic.js(순수 함수), 이 파일은 시트·드라이브 입출력만 맡는다.
  *
- * 스크립트 속성(선택):
- *   SHEET_ID         자재정보가 있는 스프레드시트 ID (없으면 이 스크립트가 붙은 시트 사용)
- *   TEMPLATE_ID      (필수) 구매내역서 템플릿 구글 시트 ID — templates/구매내역서_템플릿.xlsx 를 드라이브에 올려 구글 시트로 변환
- *   OUTPUT_FOLDER_ID 생성한 구매내역서를 넣을 드라이브 폴더 ID (권장)
+ * 스크립트 속성
+ *   TEMPLATE_ID      (필수) 구매내역서 템플릿 구글 시트 ID — templates/구매내역서_템플릿.xlsx 를 드라이브에 올려 구글 시트로 저장
+ *   OUTPUT_FOLDER_ID (권장) 생성한 구매내역서를 넣을 드라이브 폴더 ID
+ *   SHEET_ID         (선택) 자재정보가 있는 스프레드시트 ID (없으면 이 스크립트가 붙은 시트)
+ *
+ * 주의: Apps Script는 파일을 순서대로 읽는다. Logic.js 의 값(TPL 등)은 파일 맨 위가 아니라 함수 안에서만 쓴다.
  */
 var SHEET_MASTER = '자재정보';
 var SHEET_RATE = '환율';
 
-function doGet() {
-  return HtmlService.createHtmlOutputFromFile('Index')
-    .setTitle('소요제기 판정')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
-}
+/* ================================================================
+ * 설정·시트 접근
+ * ================================================================ */
+function prop_(key) { return PropertiesService.getScriptProperties().getProperty(key); }
 
 function db_() {
-  var id = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
+  var id = prop_('SHEET_ID');
   return id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActive();
 }
 
-function loadContracts_() {
-  return parseContracts_(masterSheet_().getDataRange().getValues());
+function masterSheet_() {
+  var sh = db_().getSheetByName(SHEET_MASTER);
+  if (!sh) throw new Error('"' + SHEET_MASTER + '" 시트가 없습니다.');
+  return sh;
 }
 
-/** 환율 시트: A열 통화, B열 환율(KRW). 없으면 만든다. */
+function masterValues_() { return masterSheet_().getDataRange().getValues(); }
+
+function loadContracts_() { return parseContracts_(masterValues_()); }
+
+/** 자재정보 머리글 위치 {row(1부터), headers} */
+function masterHeader_(values) {
+  for (var r = 0; r < Math.min(values.length, 10); r++) {
+    if (values[r].some(function (h) { return keyForHeader_(h) === 'item'; })) return { row: r + 1, headers: values[r] };
+  }
+  throw new Error('자재정보 시트에서 "Item" 머리글을 찾지 못했습니다.');
+}
+
+/** 신규 등록 양식에 쓸 머리글 목록 (시트 열 순서) */
+function masterFields_(values) {
+  return masterHeader_(values).headers
+    .map(function (h) { return { header: String(h).replace(/\s+/g, ' ').trim(), key: keyForHeader_(h) }; })
+    .filter(function (f) { return f.key; });
+}
+
+/** 환율 시트: A열 통화, B열 환율(KRW), C열 수정일. 없으면 만든다. */
 function rateSheet_() {
-  var ss = db_();
-  var sh = ss.getSheetByName(SHEET_RATE);
+  var ss = db_(), sh = ss.getSheetByName(SHEET_RATE);
   if (!sh) {
     sh = ss.insertSheet(SHEET_RATE);
     sh.getRange(1, 1, 1, 3).setValues([['CUR', 'KRW 환율', '수정일']]);
@@ -44,157 +66,99 @@ function loadRates_() {
 }
 
 function saveRates_(rates) {
-  var sh = rateSheet_();
-  var rows = sh.getDataRange().getValues();
-  var now = new Date();
+  var sh = rateSheet_(), rows = sh.getDataRange().getValues(), now = new Date();
   Object.keys(rates).forEach(function (cur) {
-    var i = rows.findIndex(function (r, n) { return n > 0 && String(r[0]).toUpperCase() === cur; });
+    var i = -1;
+    rows.forEach(function (r, n) { if (i < 0 && n > 0 && String(r[0]).toUpperCase() === cur) i = n; });
     if (i < 0) { rows.push([cur, rates[cur], now]); sh.appendRow([cur, rates[cur], now]); }
     else sh.getRange(i + 1, 2, 1, 2).setValues([[rates[cur], now]]);
   });
 }
 
-/** 웹앱이 처음 열릴 때 */
+/** google.script.run 으로 보낼 수 있게 Date → 'yyyy-mm-dd' */
+function plainDates_(o) {
+  var out = {};
+  Object.keys(o).forEach(function (k) { out[k] = Object.prototype.toString.call(o[k]) === '[object Date]' ? fmtDate_(o[k]) : o[k]; });
+  return out;
+}
+
+/* ================================================================
+ * 웹앱
+ * ================================================================ */
+function doGet() {
+  return HtmlService.createHtmlOutputFromFile('Index')
+    .setTitle('소요제기 판정')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+/** 화면이 처음 열릴 때: 작성일, 저장된 환율, 구매일정 설정, Item 안내, 신규 등록 양식 */
 function apiInit() {
-  var sh = masterSheet_(), values = sh.getDataRange().getValues();
-  var items = {};
-  parseContracts_(values).forEach(function (c) {
-    var x = items[c.item] = items[c.item] || { desc: c.desc, ship: '', shelf: '', modes: [] };
-    if (!x.ship && c.shipFrom) x.ship = c.shipFrom;
-    if (!x.shelf && c.shelfLife) x.shelf = c.shelfLife;
-    if (!x.desc && c.desc) x.desc = c.desc;
-    var m = c.priceMode.toUpperCase();
-    if (m && x.modes.indexOf(m) < 0) x.modes.push(m);
-  });
+  var values = masterValues_();
   return {
     today: fmtDate_(new Date()),
     rates: loadRates_(),
     schedule: { tasks: SCHEDULE_TASKS, example: SCHEDULE_EXAMPLE, slots: SCHEDULE_SLOTS },
-    // [Item, Description, Ship From, 계약 구분들, Shelf Life]
-    items: Object.keys(items).sort().map(function (k) { return [k, items[k].desc, items[k].ship, items[k].modes.join('/'), items[k].shelf]; }),
-    fields: masterFields_(values)   // 신규 등록 양식 (자재정보 머리글 순서)
+    items: itemIndex_(parseContracts_(values)),   // [Item, Description, Ship From, 계약 구분들, Shelf Life]
+    fields: masterFields_(values)
   };
 }
 
-function masterSheet_() {
-  var sh = db_().getSheetByName(SHEET_MASTER);
-  if (!sh) throw new Error('"' + SHEET_MASTER + '" 시트가 없습니다.');
-  return sh;
+/** 소요제기 판정. input: 화면 표(행 배열) 또는 붙여넣기 글. baseDateStr: 작성일 (계약 판정은 품목별 Need-by 기준) */
+function apiClassify(input, baseDateStr) {
+  var parsed = Array.isArray(input) ? parseRows_(input) : parseRequest_(input);
+  var base = toDate_(baseDateStr) || toDate_(new Date());
+  var results = classify_(parsed.requests, loadContracts_(), base).map(function (r) {
+    r.needBy = fmtDate_(r.needBy);
+    r.candidates = r.candidates.map(plainDates_);
+    return r;
+  });
+  return { results: results, skipped: parsed.skipped, rates: loadRates_() };
 }
 
-/** 자재정보 머리글 위치 */
-function masterHeader_(values) {
-  for (var r = 0; r < Math.min(values.length, 10); r++) {
-    if (values[r].some(function (h) { return keyForHeader_(h) === 'item'; })) return { row: r + 1, headers: values[r] };
-  }
-  throw new Error('자재정보 시트에서 "Item" 머리글을 찾지 못했습니다.');
-}
-
-function masterFields_(values) {
-  return masterHeader_(values).headers
-    .map(function (h) { return { header: String(h).replace(/\s+/g, ' ').trim(), key: keyForHeader_(h) }; })
-    .filter(function (f) { return f.key; });
-}
-
-/**
- * 신규 자재를 자재정보 시트 맨 아래에 추가한다. rec 키는 masterFields_ 의 key.
- * 머리글이 없는 맨 앞 열(번호 열)은 윗줄 번호 + 1.
- */
+/** 신규 자재를 자재정보 시트 맨 아래에 추가. rec 키는 masterFields_ 의 key. 머리글 없는 맨 앞 번호 열은 윗줄 + 1 */
 function apiRegisterItem(rec) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    var sh = masterSheet_(), values = sh.getDataRange().getValues();
-    var head = masterHeader_(values);
+    var sh = masterSheet_(), values = sh.getDataRange().getValues(), head = masterHeader_(values);
     var v = validateNewItem_(rec, parseContracts_(values));
     if (v.errors.length) throw new Error(v.errors.join('\n'));
-    var row = newItemRow_(head.headers, v.rec);
-    var last = sh.getLastRow(), n = row.length;
-    if (!String(head.headers[0]).trim() && last > head.row && typeof values[last - 1][0] === 'number') row[0] = values[last - 1][0] + 1;
-    var target = sh.getRange(last + 1, 1, 1, n);
-    if (last > head.row) sh.getRange(last, 1, 1, n).copyTo(target, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);   // 윗줄 서식
+
+    var row = newItemRow_(head.headers, v.rec), n = row.length, last = sh.getLastRow(), at = last + 1;
+    var prev = values[last - 1] || [];
+    if (!String(head.headers[0]).trim() && last > head.row && typeof prev[0] === 'number') row[0] = prev[0] + 1;
+
+    var target = sh.getRange(at, 1, 1, n);
+    if (last > head.row) sh.getRange(last, 1, 1, n).copyTo(target, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
     head.headers.forEach(function (h, i) {
       var k = keyForHeader_(h);
-      if (k === 'item' || k === 'x:Program') sh.getRange(last + 1, i + 1).setNumberFormat('@');
-      if (k === 'start' || k === 'end') sh.getRange(last + 1, i + 1).setNumberFormat('yyyy-mm-dd');
+      if (k === 'item') sh.getRange(at, i + 1).setNumberFormat('@');
+      if (k === 'start' || k === 'end') sh.getRange(at, i + 1).setNumberFormat('yyyy-mm-dd');
     });
     target.setValues([row]);
-    return { row: last + 1, item: v.rec.item, desc: v.rec.desc || '', ship: v.rec.shipFrom || '', shelf: v.rec.shelfLife || '', mode: v.rec.priceMode };
+    return { row: at, item: v.rec.item, desc: v.rec.desc || '', ship: v.rec.shipFrom || '', shelf: v.rec.shelfLife || '', mode: v.rec.priceMode };
   } finally {
     lock.releaseLock();
   }
 }
 
-/** 판정. Date는 문자열로 바꿔서 돌려준다 (google.script.run 직렬화 안전). */
-/** baseDateStr = 작성일 (파일명·환율 기준일·리드타임 계산). 계약 판정은 품목별 Need-by-date 기준. */
-function apiClassify(input, baseDateStr) {
-  var parsed = Array.isArray(input) ? parseRows_(input) : parseRequest_(input);   // 화면 표(배열) 또는 붙여넣기 글
-  var base = toDate_(baseDateStr) || toDate_(new Date());
-  var result = classify_(parsed.requests, loadContracts_(), base).map(function (r) {
-    r.needBy = fmtDate_(r.needBy);
-    r.candidates = r.candidates.map(function (c) {
-      var o = {};
-      Object.keys(c).forEach(function (k) { o[k] = c[k] instanceof Date ? fmtDate_(c[k]) : c[k]; });
-      return o;
-    });
-    return r;
-  });
-  return { results: result, skipped: parsed.skipped, rates: loadRates_() };
-}
-
 /**
  * 구매내역서 생성.
- * payload = { baseDate, rates: {USD: 1339.3, ...}, remarks: {업체명: '비고'},
+ * payload = { baseDate, rates: {USD: 1339.3}, remarks: {업체명: '비고'},
  *             lines: [{item, qty, needBy, program, shelfLife, shipFrom, taxCode, contractRow}],
- *             schedule: [{start, len}] × 5 (구매일정 막대, 반 달 단위),
- *             name: 파일 이름 (비우면 자동, 사업부 담당 확인 제목으로도 씀),
- *             confirmer: 사업부 담당자 '홍길동 과장' (비우면 노란 칸) }
- * contractRow 로 자재정보 행을 다시 읽어 단가를 서버에서 확정한다(화면 값 신뢰 안 함).
+ *             schedule: [{start, len}] × 5 (구매일정, 반 달 단위),
+ *             name: 구매내역서 제목 (비우면 자동), confirmer: 사업부 담당자 '홍길동 과장' }
+ * 단가는 contractRow 로 자재정보를 다시 읽어 서버에서 확정한다(화면 값은 믿지 않음).
  */
 function apiCreatePurchase(payload) {
-  var byRow = {};
-  loadContracts_().forEach(function (c) { byRow[c.row] = c; });
-  var lines = payload.lines.map(function (l) {
-    var c = byRow[l.contractRow];
-    if (!c || c.item !== l.item) throw new Error(l.item + ': 자재정보가 바뀌었습니다. 다시 판정해 주세요.');
-    var o = {};
-    Object.keys(c).forEach(function (k) { o[k] = c[k]; });
-    o.qty = Number(l.qty);
-    o.program = l.program || '';                                  // 비우면 시트에서 노란 칸으로 입력
-    if (l.shipFrom) o.shipFrom = l.shipFrom;
-    if (l.shelfLife) o.shelfLife = l.shelfLife;                      // 화면 입력이 있으면 자재정보 값 대신
-    if (l.taxCode !== undefined && l.taxCode !== '') o.taxCode = isNaN(+l.taxCode) ? l.taxCode : +l.taxCode;
-    o.needBy = toDate_(l.needBy);
-    o.remark = (payload.remarks || {})[c.supplier] || '';
-    return o;
-  });
-  if (!lines.length) throw new Error('구매내역서에 넣을 계약 품목이 없습니다.');
-
-  var rates = {};
-  Object.keys(payload.rates || {}).forEach(function (k) {
-    var n = Number(payload.rates[k]);
-    if (!(n > 0)) throw new Error(k + ' 환율을 입력해 주세요.');
-    rates[k] = n;
-  });
-  var curs = [];
-  lines.forEach(function (l) { if (l.cur !== 'KRW' && curs.indexOf(l.cur) < 0) curs.push(l.cur); });
-  curs.forEach(function (c) { if (!rates[c]) throw new Error(c + ' 환율을 입력해 주세요.'); });
+  var lines = purchaseLines_(payload);
+  var curs = uniq_(lines.map(function (l) { return l.cur; })).filter(function (c) { return c !== 'KRW'; });
+  var rates = checkedRates_(payload.rates, curs);
   saveRates_(rates);
 
   var base = toDate_(payload.baseDate) || toDate_(new Date());
-  var suppliers = [];
-  lines.forEach(function (l) { if (suppliers.indexOf(l.supplier) < 0) suppliers.push(l.supplier); });
-  var name = purchaseFileName_(payload.name, base, suppliers);   // 작업자가 적은 이름 우선
-
-  var props = PropertiesService.getScriptProperties();
-  var templateId = props.getProperty('TEMPLATE_ID');
-  if (!templateId) throw new Error('스크립트 속성 TEMPLATE_ID(구매내역서 템플릿 시트 ID)를 설정해 주세요. README 참고.');
-  var folderId = props.getProperty('OUTPUT_FOLDER_ID');
-  var file = folderId
-    ? DriveApp.getFileById(templateId).makeCopy(name, DriveApp.getFolderById(folderId))
-    : DriveApp.getFileById(templateId).makeCopy(name);
-  var ss = SpreadsheetApp.openById(file.getId());
-
+  var name = purchaseFileName_(payload.name, base, uniq_(lines.map(function (l) { return l.supplier; })));
+  var ss = copyTemplate_(name);
   applyPlan_(ss, buildPurchasePlan_(lines, curs, rates, base, payload.schedule, { title: name, confirmer: payload.confirmer }));
   var proto = ss.getSheetByName(TPL.PROTO);
   if (proto) ss.deleteSheet(proto);
@@ -202,37 +166,73 @@ function apiCreatePurchase(payload) {
   return { url: ss.getUrl(), name: name, id: ss.getId() };
 }
 
-/** buildPurchasePlan_ 의 작업 목록을 시트에 적용 */
+/** 화면에서 받은 줄 + 자재정보 계약 행 → 구매내역서 한 줄 */
+function purchaseLines_(payload) {
+  var byRow = {};
+  loadContracts_().forEach(function (c) { byRow[c.row] = c; });
+  var lines = (payload.lines || []).map(function (l) {
+    var c = byRow[l.contractRow];
+    if (!c || c.item !== l.item) throw new Error(l.item + ': 자재정보가 바뀌었습니다. 다시 판정해 주세요.');
+    var o = {};
+    Object.keys(c).forEach(function (k) { o[k] = c[k]; });
+    o.qty = Number(l.qty);
+    o.program = l.program || '';                       // 비우면 시트에서 노란 칸
+    if (l.shipFrom) o.shipFrom = l.shipFrom;           // 화면에 적으면 자재정보 값 대신
+    if (l.shelfLife) o.shelfLife = l.shelfLife;
+    if (l.taxCode !== undefined && l.taxCode !== '') o.taxCode = isNaN(+l.taxCode) ? l.taxCode : +l.taxCode;
+    o.needBy = toDate_(l.needBy);
+    o.remark = (payload.remarks || {})[c.supplier] || '';
+    return o;
+  });
+  if (!lines.length) throw new Error('구매내역서에 넣을 계약 품목이 없습니다.');
+  return lines;
+}
+
+/** 필요한 통화의 환율이 모두 양수인지 확인 */
+function checkedRates_(input, curs) {
+  var rates = {};
+  Object.keys(input || {}).forEach(function (k) {
+    var n = Number(input[k]);
+    if (!(n > 0)) throw new Error(k + ' 환율을 입력해 주세요.');
+    rates[k] = n;
+  });
+  curs.forEach(function (c) { if (!rates[c]) throw new Error(c + ' 환율을 입력해 주세요.'); });
+  return rates;
+}
+
+/** 템플릿 시트를 복사해 새 스프레드시트를 연다 */
+function copyTemplate_(name) {
+  var templateId = prop_('TEMPLATE_ID');
+  if (!templateId) throw new Error('스크립트 속성 TEMPLATE_ID(구매내역서 템플릿 시트 ID)를 설정해 주세요. README 참고.');
+  var folderId = prop_('OUTPUT_FOLDER_ID'), tpl = DriveApp.getFileById(templateId);
+  var file = folderId ? tpl.makeCopy(name, DriveApp.getFolderById(folderId)) : tpl.makeCopy(name);
+  return SpreadsheetApp.openById(file.getId());
+}
+
+/* ================================================================
+ * 시트 쓰기: buildPurchasePlan_ 의 작업 목록 적용
+ * ================================================================ */
 function applyPlan_(ss, ops) {
-  var sheets = {};
+  var cache = {};
   var sh = function (n) {
-    if (!sheets[n]) {
-      sheets[n] = ss.getSheetByName(n);
-      if (!sheets[n]) throw new Error('템플릿에 "' + n + '" 탭이 없습니다.');
+    if (!cache[n]) {
+      cache[n] = ss.getSheetByName(n);
+      if (!cache[n]) throw new Error('템플릿에 "' + n + '" 탭이 없습니다.');
     }
-    return sheets[n];
+    return cache[n];
   };
   var FORMAT = SpreadsheetApp.CopyPasteType.PASTE_FORMAT;
+  var area = function (o) { return sh(o.s).getRange(o.r1, o.c1, o.r2 - o.r1 + 1, o.c2 - o.c1 + 1); };
   ops.forEach(function (o) {
     switch (o.op) {
-      case 'fmt':
-        sh(TPL.PROTO).getRange(o.from, o.c1, 1, o.c2 - o.c1 + 1).copyTo(sh(o.s).getRange(o.r, o.c1), FORMAT, false);
-        break;
-      case 'cellFmt':
-        sh(o.fs).getRange(o.fr, o.fc).copyTo(sh(o.s).getRange(o.r, o.c), FORMAT, false);
-        break;
-      case 'set': {
-        var cell = sh(o.s).getRange(o.r, o.c);
-        if (o.v && typeof o.v === 'object' && o.v.date) cell.setValue(toDate_(o.v.date));
-        else if (typeof o.v === 'string' && o.v.charAt(0) === '=') cell.setFormula(o.v);
-        else cell.setValue(o.v);
-        break;
-      }
+      case 'fmt': sh(TPL.PROTO).getRange(o.from, o.c1, 1, o.c2 - o.c1 + 1).copyTo(sh(o.s).getRange(o.r, o.c1), FORMAT, false); break;
+      case 'cellFmt': sh(o.fs).getRange(o.fr, o.fc).copyTo(sh(o.s).getRange(o.r, o.c), FORMAT, false); break;
+      case 'set': setCell_(sh(o.s).getRange(o.r, o.c), o.v); break;
       case 'nf': sh(o.s).getRange(o.r, o.c).setNumberFormat(o.f); break;
       case 'bg': sh(o.s).getRange(o.r, o.c).setBackground(o.color); break;
-      case 'merge': sh(o.s).getRange(o.r1, o.c1, o.r2 - o.r1 + 1, o.c2 - o.c1 + 1).merge(); break;
-      case 'unmerge': sh(o.s).getRange(o.r1, o.c1, o.r2 - o.r1 + 1, o.c2 - o.c1 + 1).breakApart(); break;
-      case 'height': sh(o.s).setRowHeight(o.r, Math.round(o.pt * 4 / 3)); break;
+      case 'merge': area(o).merge(); break;
+      case 'unmerge': area(o).breakApart(); break;
+      case 'height': sh(o.s).setRowHeight(o.r, Math.round(o.pt * 4 / 3)); break;   // pt → px
       case 'bottom':
         sh(o.s).getRange(o.r, o.c1, 1, o.c2 - o.c1 + 1)
           .setBorder(null, null, true, null, null, null, '#000000', SpreadsheetApp.BorderStyle.SOLID);
@@ -247,20 +247,23 @@ function applyPlan_(ss, ops) {
   });
 }
 
-/* ------------------------------------------------------------------
- * 미리보기: 만든 구매내역서의 탭을 HTML로 돌려준다.
- * 1순위: 구글 시트의 "웹페이지(zip)" 내보내기 — 시트 화면과 거의 같다.
- * 실패하면: 값·배경·굵기·병합만 읽어 간단한 표로 그린다.
- * ------------------------------------------------------------------ */
-// Apps Script는 파일을 순서대로 읽으므로, Logic.js 값(TPL 등)은 파일 맨 위가 아니라 함수 안에서만 쓴다.
-function previewTabs_() { return [TPL.SUMMARY, TPL.DETAIL, TPL.SCHEDULE, TPL.CONFIRM]; }
+/** 값 넣기: {date:'yyyy-mm-dd'} 는 날짜, '='로 시작하면 수식 */
+function setCell_(cell, v) {
+  if (v && typeof v === 'object' && v.date) cell.setValue(toDate_(v.date));
+  else if (typeof v === 'string' && v.charAt(0) === '=') cell.setFormula(v);
+  else cell.setValue(v);
+}
 
+/* ================================================================
+ * 미리보기: 만든 구매내역서 탭을 HTML로
+ * 1순위 구글 시트 "웹페이지(zip)" 내보내기, 실패하면 값·배경·병합만 그린 간단한 표
+ * ================================================================ */
 function apiPreview(id) {
   SpreadsheetApp.flush();
   var exported = {};
   try { exported = exportHtml_(id); } catch (e) { console.warn('zip 내보내기 실패: ' + e); }
   var ss = SpreadsheetApp.openById(id);
-  return previewTabs_().map(function (name) {
+  return [TPL.SUMMARY, TPL.DETAIL, TPL.SCHEDULE, TPL.CONFIRM].map(function (name) {
     if (exported[name]) return { name: name, html: exported[name], mode: 'export' };
     var sh = ss.getSheetByName(name);
     return { name: name, html: sh ? simpleHtml_(sh) : '<p>탭이 없습니다.</p>', mode: 'simple' };
@@ -272,9 +275,8 @@ function exportHtml_(id) {
     headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true
   });
   if (resp.getResponseCode() !== 200) throw new Error('HTTP ' + resp.getResponseCode());
-  var files = Utilities.unzip(resp.getBlob().setContentType('application/zip'));
   var css = '', pages = {};
-  files.forEach(function (f) {
+  Utilities.unzip(resp.getBlob().setContentType('application/zip')).forEach(function (f) {
     var n = f.getName();
     if (/\.css$/i.test(n)) css += f.getDataAsString('UTF-8');
     else if (/\.html$/i.test(n)) pages[n.replace(/^.*\//, '').replace(/\.html$/i, '')] = f.getDataAsString('UTF-8');
@@ -282,8 +284,7 @@ function exportHtml_(id) {
   var extra = 'body{margin:8px;background:#fff}.row-headers-background,.column-headers-background,' +
     '.row-header-wrapper,.freezebar-cell,.freezebar-origin-ltr{display:none!important}';
   Object.keys(pages).forEach(function (k) {
-    pages[k] = pages[k].replace(/<link[^>]+sheet\.css[^>]*>/i, '')
-      .replace(/<\/head>/i, '<style>' + css + extra + '</style></head>');
+    pages[k] = pages[k].replace(/<link[^>]+sheet\.css[^>]*>/i, '').replace(/<\/head>/i, '<style>' + css + extra + '</style></head>');
   });
   return pages;
 }
@@ -293,7 +294,7 @@ function esc_(s) {
 }
 
 function simpleHtml_(sh) {
-  var nr = Math.min(sh.getLastRow(), 80), nc = Math.min(sh.getLastColumn(), 26);
+  var nr = Math.min(sh.getLastRow(), 80), nc = Math.min(sh.getLastColumn(), 30);
   if (!nr || !nc) return '<p>내용 없음</p>';
   var rg = sh.getRange(1, 1, nr, nc);
   var v = rg.getDisplayValues(), bg = rg.getBackgrounds(), fw = rg.getFontWeights(), fc = rg.getFontColors(),
@@ -305,24 +306,54 @@ function simpleHtml_(sh) {
     span[r0 + ',' + c0] = [Math.min(m.getNumRows(), nr - r0 + 1), Math.min(m.getNumColumns(), nc - c0 + 1)];
     for (var i = 0; i < m.getNumRows(); i++) for (var j = 0; j < m.getNumColumns(); j++) if (i || j) skip[(r0 + i) + ',' + (c0 + j)] = 1;
   });
-  var html = '<table style="border-collapse:collapse;font-family:Malgun Gothic,Arial,sans-serif;font-size:12px;table-layout:fixed">';
-  html += '<colgroup>';
+  var html = '<table style="border-collapse:collapse;font-family:Malgun Gothic,Arial,sans-serif;font-size:12px;table-layout:fixed"><colgroup>';
   for (var c = 1; c <= nc; c++) html += '<col style="width:' + sh.getColumnWidth(c) + 'px">';
   html += '</colgroup>';
   for (var r = 0; r < nr; r++) {
     html += '<tr style="height:' + sh.getRowHeight(r + 1) + 'px">';
-    for (var c2 = 0; c2 < nc; c2++) {
-      var key = (r + 1) + ',' + (c2 + 1);
+    for (var k = 0; k < nc; k++) {
+      var key = (r + 1) + ',' + (k + 1);
       if (skip[key]) continue;
-      var sp = span[key], filled = v[r][c2] !== '' || (bg[r][c2] && bg[r][c2] !== '#ffffff');
-      var st = 'padding:2px 4px;vertical-align:middle;overflow:hidden;' +
-        (wrap[r][c2] ? 'white-space:pre-wrap;' : 'white-space:nowrap;') +
-        'background:' + bg[r][c2] + ';color:' + fc[r][c2] + ';font-weight:' + fw[r][c2] + ';font-size:' + fs[r][c2] + 'pt;' +
-        'text-align:' + (al[r][c2] || 'general').replace('general-', '').replace('general', 'left') + ';' +
+      var sp = span[key], filled = v[r][k] !== '' || (bg[r][k] && bg[r][k] !== '#ffffff');
+      var st = 'padding:2px 4px;vertical-align:middle;overflow:hidden;' + (wrap[r][k] ? 'white-space:pre-wrap;' : 'white-space:nowrap;') +
+        'background:' + bg[r][k] + ';color:' + fc[r][k] + ';font-weight:' + fw[r][k] + ';font-size:' + fs[r][k] + 'pt;' +
+        'text-align:' + (al[r][k] || 'general').replace('general-', '').replace('general', 'left') + ';' +
         (filled ? 'border:1px solid #bbb;' : '');
-      html += '<td' + (sp ? ' rowspan="' + sp[0] + '" colspan="' + sp[1] + '"' : '') + ' style="' + st + '">' + esc_(v[r][c2]) + '</td>';
+      html += '<td' + (sp ? ' rowspan="' + sp[0] + '" colspan="' + sp[1] + '"' : '') + ' style="' + st + '">' + esc_(v[r][k]) + '</td>';
     }
     html += '</tr>';
   }
   return html + '</table>';
+}
+
+/* ================================================================
+ * 설정 점검 — 편집기에서 checkSetup 을 선택하고 ▶ 실행, 아래 "실행 로그"에서 결과 확인
+ * ================================================================ */
+function checkSetup() {
+  var lines = [], ok = function (m) { lines.push('✅ ' + m); }, bad = function (m) { lines.push('❌ ' + m); };
+  try {
+    var values = masterValues_(), head = masterHeader_(values), contracts = parseContracts_(values);
+    ok('자재정보: 머리글 ' + head.row + '행, 품목 ' + contracts.length + '줄');
+    var keys = masterFields_(values).map(function (f) { return f.key; });
+    ['item', 'priceMode', 'supplier', 'price', 'cur', 'start', 'end'].forEach(function (k) {
+      if (keys.indexOf(k) < 0) bad('자재정보에 필수 열이 없습니다: ' + MASTER_COLUMNS[k][0]);
+    });
+  } catch (e) { bad('자재정보: ' + e.message); }
+
+  var tid = prop_('TEMPLATE_ID');
+  if (!tid) bad('스크립트 속성 TEMPLATE_ID 가 없습니다');
+  else {
+    try {
+      var tpl = SpreadsheetApp.openById(tid);
+      var missing = [TPL.SUMMARY, TPL.DETAIL, TPL.SCHEDULE, TPL.CONFIRM, TPL.PROTO].filter(function (n) { return !tpl.getSheetByName(n); });
+      if (missing.length) bad('템플릿에 없는 탭: ' + missing.join(', ') + ' — templates/구매내역서_템플릿.xlsx 를 다시 올려 주세요');
+      else ok('템플릿: ' + tpl.getName());
+    } catch (e) { bad('템플릿을 열 수 없습니다 (ID·권한 확인): ' + e.message); }
+  }
+  var fid = prop_('OUTPUT_FOLDER_ID');
+  if (fid) { try { ok('저장 폴더: ' + DriveApp.getFolderById(fid).getName()); } catch (e) { bad('OUTPUT_FOLDER_ID 폴더를 열 수 없습니다: ' + e.message); } }
+  else lines.push('ℹ️ OUTPUT_FOLDER_ID 없음 — 구매내역서가 템플릿과 같은 위치에 저장됩니다');
+
+  console.log(lines.join('\n'));
+  return lines.join('\n');
 }

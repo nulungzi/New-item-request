@@ -207,3 +207,12 @@ test('사업부 담당 확인: 담당자·제목, 확인 날짜는 비워 둠', 
   assert.deepStrictEqual(ops2.filter(o => o.s === '사업부 담당 확인' && o.op === 'bg').map(o => o.c), [1, 3]);
   assert.ok(L.isPersonFormat_('김정환 차장') && L.isPersonFormat_('남궁민수 대리') && !L.isPersonFormat_('김정환') && !L.isPersonFormat_('차장 김정환 님'));
 });
+
+test('uniq_ · itemIndex_', () => {
+  assert.deepStrictEqual(L.uniq_(['b', 'a', 'b', '', null, 'a', 'c']), ['b', 'a', 'c']);
+  const c = L.parseContracts_([
+    ['Item', '계약 구분', '업체명', 'Ship Form', 'Shelf Life', 'Description'],
+    ['B2', 'spot', 'X', '', '', ''], ['A1', 'LTA', 'PPG', 'Air', '', 'PRIMER'], ['A1', '3PP', 'Q', 'Ocean', '6+3(DOP)', 'P2'], ['B2', 'LTA', 'Y', '', '', 'SEAL'],
+  ]);
+  assert.deepStrictEqual(L.itemIndex_(c), [['A1', 'PRIMER', 'Air', 'LTA/3PP', '6+3(DOP)'], ['B2', 'SEAL', '', 'SPOT/LTA', '']]);
+});
