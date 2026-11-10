@@ -113,6 +113,21 @@ main { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px }
 .v-chip button { border: 0; background: transparent; color: var(--muted); padding: 0 4px }
 .v-chip button:hover { color: var(--warn) }
 
+.q-steps { display: flex; gap: 4px; border-bottom: 1px solid var(--line) }
+.q-steps button { border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); padding: 8px 14px; border-radius: 0; font-weight: 600 }
+.q-steps button.on { color: var(--accent); border-bottom-color: var(--accent) }
+.v-tabs { display: flex; flex-wrap: wrap; gap: 6px }
+.v-tab { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 6px 6px 6px 14px; font-weight: 500 }
+.v-tab.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent) }
+.v-tab .cnt { font: 600 .74rem var(--font-data); color: var(--muted) }
+.v-tab.done .cnt { color: var(--ok) }
+.v-tab .rm { border: 0; background: transparent; color: var(--muted); padding: 0 6px; font-size: .85rem }
+.v-tab .rm:hover { color: var(--warn) }
+.vp-head { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between }
+.vp-head h3 { font-size: 1rem }
+.q-table textarea { width: 100%; min-width: 180px; min-height: 34px; padding: 5px 6px; font: .82rem var(--font-body); resize: vertical }
+.q-table .ro { font-size: .82rem; white-space: pre-wrap; max-width: 220px }
+
 /* 진행 중 */
 .rec-list { display: grid; gap: 10px }
 .rec { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface) }
@@ -494,40 +509,51 @@ table.list td.nw { white-space: nowrap }
       <button class="btn-ghost" id="qBack" type="button">← 목록으로</button>
     </div>
     <div class="dm-subject" id="qTitle"></div>
-    <p class="muted lead">업체별 회신 값을 넣고, 품목마다 구매할 업체 한 곳을 <b>선정</b>하고 <b>검토 문구</b>를 적으세요. U/P에 <b>NO BID</b>라고 적으면 미응찰입니다.
-      원화 금액·순위는 아래 환율로 바로 계산됩니다. 선정과 검토 문구는 만든 시트의 견적종합 A·B열로 들어가고, 시트에서 바꿔도 됩니다.</p>
-
-    <div class="sub first">
-      <div class="sub-title"><h3>견적 받은 업체</h3><span class="muted">메일 초안에서 고른 업체가 들어 있습니다</span></div>
-      <div class="row" id="qVendors"></div>
-      <div class="row"><select id="qAddSel" aria-label="업체 추가"></select><button class="btn-ghost" id="qAdd" type="button">업체 추가</button></div>
+    <div class="q-steps" role="tablist">
+      <button type="button" class="on" data-step="input" role="tab">① 업체별 견적 입력</button>
+      <button type="button" data-step="sum" role="tab">② 종합 → 구매내역서</button>
     </div>
 
-    <div class="sub">
-      <h3>환율</h3>
-      <div class="fields" id="qRates"></div>
-    </div>
-
-    <div class="sub">
-      <h3>품목별 견적</h3>
-      <div id="qItems" class="q-items"></div>
-    </div>
-
-    <div class="sub" id="qSchedSlot"></div>
-
-    <div class="sub">
-      <h3>구매내역서 제목 · 사업부 담당 확인</h3>
-      <div class="fields wide">
-        <label class="field" for="qName">구매내역서 제목 (파일 이름)<input id="qName" class="person-input" type="text" maxlength="150" autocomplete="off"></label>
-        <label class="field" for="qConfirmer">사업부 담당자 (이름 직급)<input id="qConfirmer" class="person-input" type="text" maxlength="40" placeholder="홍길동 과장" autocomplete="off"></label>
+    <div id="qStepInput" class="stack">
+      <p class="muted lead">견적을 받은 업체를 고르면 그 업체에 보낸 자재 목록이 나옵니다. 업체 견적서 값을 옮겨 적고, 다른 업체도 같은 방법으로 입력한 뒤 <b>종합</b>을 누르세요.
+        U/P에 <b>NO BID</b>라고 적으면 미응찰이고, 비워 두면 견적 없음으로 남습니다.</p>
+      <div class="sub first">
+        <div class="sub-title"><h3>견적 받은 업체</h3><span class="muted">메일 초안에서 고른 업체가 들어 있습니다 · 괄호는 입력한 품목 수</span></div>
+        <div class="v-tabs" id="qVendors" role="tablist"></div>
+        <div class="row"><select id="qAddSel" aria-label="업체 추가"></select><button class="btn-ghost" id="qAdd" type="button">업체 추가</button></div>
+      </div>
+      <div class="sub" id="qVendorPanel"></div>
+      <div class="row spread">
+        <div class="row"><button class="btn-ghost" id="qPrev" type="button">← 이전 업체</button><button class="btn-ghost" id="qNext" type="button">다음 업체 →</button></div>
+        <div class="row"><button class="btn-ghost" id="qSave" type="button">임시 저장</button><button class="btn" id="qToSum" type="button">종합 →</button></div>
       </div>
     </div>
 
-    <div class="row">
-      <button class="btn-ghost" id="qSave" type="button">임시 저장</button>
-      <button class="btn" id="qCreate" type="button">Spot 견적 구매내역서 만들기</button>
-      <span id="qMsg"></span>
+    <div id="qStepSum" class="stack" hidden>
+      <p class="muted lead">업체별로 입력한 견적을 품목마다 모았습니다. 원화 금액·순위는 아래 환율로 계산됩니다.
+        구매할 업체를 여기서 <b>선정</b>하고 <b>검토 문구</b>를 적어도 되고, 비워 두고 만든 시트의 견적종합 A열(체크)·B열(문구)에서 정해도 됩니다.</p>
+      <div class="sub first">
+        <h3>환율</h3>
+        <div class="fields" id="qRates"></div>
+      </div>
+      <div class="sub">
+        <h3>품목별 종합</h3>
+        <div id="qItems" class="q-items"></div>
+      </div>
+      <div class="sub" id="qSchedSlot"></div>
+      <div class="sub">
+        <h3>구매내역서 제목 · 사업부 담당 확인</h3>
+        <div class="fields wide">
+          <label class="field" for="qName">구매내역서 제목 (파일 이름)<input id="qName" class="person-input" type="text" maxlength="150" autocomplete="off"></label>
+          <label class="field" for="qConfirmer">사업부 담당자 (이름 직급)<input id="qConfirmer" class="person-input" type="text" maxlength="40" placeholder="홍길동 과장" autocomplete="off"></label>
+        </div>
+      </div>
+      <div class="row spread">
+        <button class="btn-ghost" id="qToInput" type="button">← 업체별 입력</button>
+        <div class="row"><button class="btn-ghost" id="qSave2" type="button">임시 저장</button><button class="btn" id="qCreate" type="button">Spot 견적 구매내역서 만들기</button></div>
+      </div>
     </div>
+    <div id="qMsg"></div>
   </div>
 </div>
 </div>
@@ -921,12 +947,12 @@ function openDraft(recordId, title) {
   $('dmSubject').textContent = title;
   $('dmMsg').textContent = ''; $('dmAll').checked = false;
   $('draftModal').hidden = false;
-  $('dmList').innerHTML = '<div class="pk-empty">업체목록 불러오는 중…</div>';
+  $('dmList').innerHTML = '<div class="pk-empty">업체정보 불러오는 중…</div>';
   call('apiVendors').then(function (d) {
     draft.vendors = d.vendors;
     $('dmList').innerHTML = d.vendors.length ? d.vendors.map(function (v, i) {
       return '<label><input type="checkbox" data-i="' + i + '"><span>' + esc(v.name) + '</span><small>' + esc(v.emails.join(', ')) + '</small></label>';
-    }).join('') : '<div class="pk-empty">' + (d.missing ? '자재정보 스프레드시트에 "업체목록" 탭(A 업체명, B 이메일)을 만들어 주세요.' : '업체목록에 업체가 없습니다.') + '</div>';
+    }).join('') : '<div class="pk-empty">' + (d.missing ? '자재정보 스프레드시트에 "업체정보" 탭(업체명, 이메일 열)을 만들어 주세요.' : '업체정보 탭에 업체가 없습니다.') + '</div>';
     $('dmList').querySelectorAll('input').forEach(function (c) { c.onchange = countDraft; });
     countDraft();
   }).catch(function (e) { $('dmMsg').textContent = e.message || e; });
@@ -967,15 +993,17 @@ $('dmOk').onclick = function () {
     .finally(function () { b.disabled = false; b.textContent = '임시보관함에 만들기'; });
 };
 
-/* ---------- 견적 입력 → Spot 견적 구매내역서 ---------- */
+/* ---------- 견적 입력 → Spot 견적 구매내역서 ----------
+ * ① 업체별 입력: 업체를 고르면 그 업체에 보낸 자재 목록 → 업체 견적 입력
+ * ② 종합: 품목마다 업체 견적을 모아 비교(원화·순위), 선택해서 선정·검토 문구 → 구매내역서 */
 var Q_CURS = ['USD', 'EUR', 'JPY', 'SGD', 'KRW'];
 var Q_FIELDS = [['qty', 'Vendor Qty', 'w-s'], ['mfg', 'MFG', ''], ['uom', 'UOM', 'w-s'], ['price', 'U/P', 'w-price'], ['cur', 'CUR', ''], ['moq', 'MOQ', ''],
-  ['lt', 'L/T', 'w-s'], ['shelf', 'Shelf Life', ''], ['remark', 'Remarks', 'w-rem']];
+  ['lt', 'L/T', 'w-s'], ['shelf', 'Shelf Life', ''], ['remark', 'Supplier Remarks', 'w-rem']];
 var qs = null;   // 편집 중인 견적
 function openQuote(rec) {
   var saved = rec.quote || {};
   qs = {
-    rec: rec,
+    rec: rec, step: 'input',
     vendors: (saved.vendors || rec.vendors || []).slice(),
     rates: Object.assign({}, state.rates, saved.rates || {}),
     items: (rec.items || []).map(function (it, i) {
@@ -983,6 +1011,7 @@ function openQuote(rec) {
       return { src: it, program: sv.program !== undefined ? sv.program : (it.program || ''), prev: sv.prev || { year: '', qty: '', cur: '', price: '' }, quotes: sv.quotes || {} };
     })
   };
+  qs.active = qs.vendors[0] || null;
   $('recPanel').hidden = true; $('quoteView').hidden = false;
   $('qTitle').textContent = rec.title;
   $('qName').value = saved.name || rec.title.replace(/^\[KE\] RFQ \/\/ /, '') + ' 견적 구매내역서';
@@ -992,11 +1021,8 @@ function openQuote(rec) {
   $('qSchedSlot').appendChild($('schedSub'));    // 구매일정 편집기를 이 화면으로 옮겨 씀
   $('schedSub').classList.add('first');
   if (state.sched) renderGantt();
-  call('apiVendors').then(function (d) {
-    qs.allVendors = d.vendors.map(function (v) { return v.name; });
-    renderQVendorAdd();
-  });
-  renderQuote();
+  call('apiVendors').then(function (d) { qs.allVendors = d.vendors.map(function (v) { return v.name; }); renderQVendorAdd(); });
+  showQStep('input');
   $('quoteView').scrollIntoView();
 }
 function closeQuote() {
@@ -1005,17 +1031,102 @@ function closeQuote() {
   $('schedSub').classList.remove('first');
 }
 $('qBack').onclick = closeQuote;
+function showQStep(step) {
+  qs.step = step;
+  document.querySelectorAll('.q-steps button').forEach(function (b) { b.classList.toggle('on', b.dataset.step === step); b.setAttribute('aria-selected', b.dataset.step === step); });
+  $('qStepInput').hidden = step !== 'input';
+  $('qStepSum').hidden = step !== 'sum';
+  if (step === 'input') renderQInput(); else renderQSum();
+}
+document.querySelectorAll('.q-steps button').forEach(function (b) { b.onclick = function () { showQStep(b.dataset.step); }; });
+$('qToSum').onclick = function () {
+  showQStep('sum'); $('quoteView').scrollIntoView();
+  call('apiSaveQuotes', qs.rec.id, quotePayload()).then(function () { qs.rec.quote = quotePayload(); $('qMsg').innerHTML = '<span class="muted">입력한 견적을 자동 저장했습니다.</span>'; }).catch(function () {});
+};
+$('qToInput').onclick = function () { showQStep('input'); };
 function renderQVendorAdd() {
   var left = (qs.allVendors || []).filter(function (v) { return qs.vendors.indexOf(v) < 0; });
   $('qAddSel').innerHTML = left.length ? left.map(function (v) { return '<option>' + esc(v) + '</option>'; }).join('') : '<option value="">추가할 업체 없음</option>';
 }
-$('qAdd').onclick = function () { var v = $('qAddSel').value; if (v && qs.vendors.indexOf(v) < 0) { qs.vendors.push(v); renderQuote(); renderQVendorAdd(); } };
+$('qAdd').onclick = function () {
+  var v = $('qAddSel').value;
+  if (v && qs.vendors.indexOf(v) < 0) { qs.vendors.push(v); qs.active = v; renderQInput(); renderQVendorAdd(); }
+};
 function qNum(v) { var n = parseFloat(String(v == null ? '' : v).replace(/,/g, '')); return isNaN(n) ? null : n; }
-function renderQuote() {
+function qFilled(q) { return !!(q && String(q.price || '').trim()); }
+function qOf(x, v) {   // 품목 x 의 업체 v 견적 (없으면 요청 수량·UOM 으로 시작)
+  if (!x.quotes[v]) x.quotes[v] = { qty: String(x.src.qty), uom: x.src.uom || '' };
+  return x.quotes[v];
+}
+
+/* ① 업체별 입력 */
+function renderQInput() {
+  if (qs.active && qs.vendors.indexOf(qs.active) < 0) qs.active = qs.vendors[0] || null;
   $('qVendors').innerHTML = qs.vendors.length ? qs.vendors.map(function (v, i) {
-    return '<span class="v-chip">' + esc(v) + '<button type="button" data-rm="' + i + '" aria-label="' + esc(v) + ' 빼기">✕</button></span>';
-  }).join('') : '<span class="muted">업체를 추가해 주세요.</span>';
-  $('qVendors').querySelectorAll('[data-rm]').forEach(function (b) { b.onclick = function () { qs.vendors.splice(+b.dataset.rm, 1); renderQuote(); renderQVendorAdd(); }; });
+    var n = qs.items.filter(function (x) { return qFilled(x.quotes[v]); }).length;
+    return '<span class="v-tab' + (v === qs.active ? ' on' : '') + (n === qs.items.length ? ' done' : '') + '"><span role="tab" tabindex="0" data-pick="' + i + '">' + esc(v) +
+      ' <span class="cnt">(' + n + '/' + qs.items.length + ')</span></span><button type="button" class="rm" data-rm="' + i + '" aria-label="' + esc(v) + ' 빼기">✕</button></span>';
+  }).join('') : '<span class="muted">견적 받은 업체를 추가해 주세요.</span>';
+  $('qVendors').querySelectorAll('[data-pick]').forEach(function (el) {
+    el.onclick = function () { qs.active = qs.vendors[+el.dataset.pick]; renderQInput(); };
+    el.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); } };
+  });
+  $('qVendors').querySelectorAll('[data-rm]').forEach(function (b) {
+    b.onclick = function () {
+      var v = qs.vendors[+b.dataset.rm];
+      if (qs.items.some(function (x) { return qFilled(x.quotes[v]); }) && b.dataset.ok !== '1') { b.dataset.ok = '1'; b.textContent = '정말?'; return; }
+      qs.vendors.splice(+b.dataset.rm, 1); renderQInput(); renderQVendorAdd();
+    };
+  });
+  var v = qs.active;
+  $('qPrev').disabled = !v || qs.vendors.indexOf(v) <= 0;
+  $('qNext').disabled = !v || qs.vendors.indexOf(v) >= qs.vendors.length - 1;
+  if (!v) { $('qVendorPanel').innerHTML = ''; return; }
+  $('qVendorPanel').innerHTML =
+    '<div class="vp-head"><h3>' + esc(v) + ' 견적</h3><div class="row">' +
+      '<label class="inline" for="qAllCur">통화 일괄<select id="qAllCur"><option value="">선택</option>' + Q_CURS.map(function (c) { return '<option>' + c + '</option>'; }).join('') + '</select></label>' +
+      '<button class="btn-ghost" id="qAllNoBid" type="button">모든 품목 NO BID</button></div></div>' +
+    '<div class="scroll"><table class="list q-table"><tr><th>L/I</th><th>ITEM</th><th>요청 수량</th>' + Q_FIELDS.map(function (f) { return '<th>' + f[1].toUpperCase() + '</th>'; }).join('') + '</tr>' +
+    qs.items.map(function (x, i) {
+      var q = qOf(x, v), it = x.src;
+      return '<tr data-i="' + i + '"' + (/^no\s*bid$/i.test(String(q.price || '').trim()) ? ' class="nobid"' : '') + '><td class="data">' + (i + 1) + '</td>' +
+        '<td class="nw"><div class="data">' + esc(it.item) + '</div><div class="desc">' + esc(it.name || it.desc || '') + '</div></td>' +
+        '<td class="n data">' + fmt(it.qty) + ' ' + esc(it.uom || '') + '<div class="desc">' + esc(it.needBy || 'ASAP') + '</div></td>' +
+        Q_FIELDS.map(function (f) {
+          if (f[0] === 'cur') return '<td><select data-f="cur"><option value=""></option>' + Q_CURS.map(function (c) { return '<option' + (q.cur === c ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select></td>';
+          if (f[0] === 'remark') return '<td><textarea data-f="remark" rows="1" placeholder="추가 비용 등 여러 줄 가능">' + esc(q.remark || '') + '</textarea></td>';
+          return '<td><input class="' + f[2] + '" data-f="' + f[0] + '" value="' + esc(q[f[0]] || '') + '"' + (f[0] === 'price' ? ' placeholder="단가 / NO BID"' : '') + '></td>';
+        }).join('') + '</tr>';
+    }).join('') + '</table></div>';
+  $('qVendorPanel').querySelectorAll('tr[data-i]').forEach(function (tr) {
+    var q = qOf(qs.items[+tr.dataset.i], v);
+    tr.querySelectorAll('[data-f]').forEach(function (el) {
+      var h = function () {
+        q[el.dataset.f] = el.value;
+        if (el.dataset.f === 'price') { tr.classList.toggle('nobid', /^no\s*bid$/i.test(el.value.trim())); updateVendorCounts(); }
+      };
+      el.oninput = h; el.onchange = h;
+    });
+  });
+  $('qAllCur').onchange = function () {
+    var c = this.value; if (!c) return;
+    qs.items.forEach(function (x) { qOf(x, v).cur = c; });
+    renderQInput();
+  };
+  $('qAllNoBid').onclick = function () { qs.items.forEach(function (x) { qOf(x, v).price = 'NO BID'; }); renderQInput(); };
+}
+function updateVendorCounts() {
+  document.querySelectorAll('#qVendors .v-tab').forEach(function (t, i) {
+    var v = qs.vendors[i], n = qs.items.filter(function (x) { return qFilled(x.quotes[v]); }).length;
+    t.querySelector('.cnt').textContent = '(' + n + '/' + qs.items.length + ')';
+    t.classList.toggle('done', n === qs.items.length);
+  });
+}
+$('qPrev').onclick = function () { var i = qs.vendors.indexOf(qs.active); if (i > 0) { qs.active = qs.vendors[i - 1]; renderQInput(); } };
+$('qNext').onclick = function () { var i = qs.vendors.indexOf(qs.active); if (i < qs.vendors.length - 1) { qs.active = qs.vendors[i + 1]; renderQInput(); } };
+
+/* ② 종합 */
+function renderQSum() {
   $('qRates').innerHTML = ['USD', 'JPY', 'EUR', 'SGD'].map(function (c) {
     return '<label class="field" for="qr-' + c + '">1 ' + c + ' = KRW<input id="qr-' + c + '" data-qrate="' + c + '" type="number" step="0.01" inputmode="decimal" value="' + esc(qs.rates[c] || '') + '"></label>';
   }).join('');
@@ -1032,35 +1143,33 @@ function renderQuote() {
         '<label class="field">직전 CUR<input data-p="cur" value="' + esc(x.prev.cur) + '" placeholder="선택"></label>' +
         '<label class="field">직전 단가<input data-p="price" value="' + esc(x.prev.price) + '" inputmode="decimal" placeholder="선택"></label>' +
       '</div>' +
-      '<div class="scroll"><table class="list q-table"><tr><th>선정</th><th>업체</th>' + Q_FIELDS.map(function (f) { return '<th>' + f[1].toUpperCase() + '</th>'; }).join('') +
-        '<th class="n">원화</th><th>순위</th><th>검토 문구</th></tr>' +
+      '<div class="scroll"><table class="list q-table"><tr><th>선정</th><th>업체</th><th class="n">U/P</th><th>CUR</th><th class="n">수량</th><th class="n">원화</th><th>순위</th><th>MOQ</th><th>L/T</th><th>SUPPLIER REMARKS</th><th>검토 문구</th></tr>' +
         qs.vendors.map(function (v) {
-          var q = x.quotes[v] = x.quotes[v] || {};
+          var q = x.quotes[v] || {};
           return '<tr data-v="' + esc(v) + '"><td><input type="radio" name="sel-' + i + '"' + (q.sel ? ' checked' : '') + ' aria-label="' + esc(v) + ' 선정"></td><td class="nw">' + esc(v) + '</td>' +
-            Q_FIELDS.map(function (f) {
-              if (f[0] === 'cur') return '<td><select data-f="cur"><option value=""></option>' + Q_CURS.map(function (c) { return '<option' + (q.cur === c ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select></td>';
-              return '<td><input class="' + f[2] + '" data-f="' + f[0] + '" value="' + esc(q[f[0]] !== undefined ? q[f[0]] : (f[0] === 'qty' ? it.qty : '')) + '"></td>';
-            }).join('') +
-            '<td class="krw"></td><td class="rank"></td><td><input class="w-rev" data-f="review" value="' + esc(q.review || '') + '" placeholder="선정 시 필수"></td></tr>';
-        }).join('') + '</table></div></div>';
+            '<td class="n data">' + esc(q.price || '—') + '</td><td class="data">' + esc(q.cur || '') + '</td><td class="n data">' + esc(q.qty || '') + '</td>' +
+            '<td class="krw"></td><td class="rank"></td><td class="data">' + esc(q.moq || '') + '</td><td class="data">' + esc(q.lt || '') + '</td>' +
+            '<td class="ro">' + esc(q.remark || '') + '</td><td><input class="w-rev" data-f="review" value="' + esc(q.review || '') + '" placeholder="선정 시 적기"></td></tr>';
+        }).join('') + '</table></div>' +
+      '<div class="row"><button class="link-btn" type="button" data-clear="' + i + '">선정 비우기 (시트에서 정하기)</button></div></div>';
   }).join('') || '<div class="rec-empty">품목이 없습니다.</div>';
-  // 입력 연결
   $('qItems').querySelectorAll('.q-item').forEach(function (box) {
     var x = qs.items[+box.dataset.i];
     box.querySelectorAll('[data-m]').forEach(function (el) { el.oninput = function () { x.program = el.value; }; });
     box.querySelectorAll('[data-p]').forEach(function (el) { el.oninput = function () { x.prev[el.dataset.p] = el.value; }; });
     box.querySelectorAll('tr[data-v]').forEach(function (tr) {
-      var q = x.quotes[tr.dataset.v];
-      if (q.qty === undefined) q.qty = String(x.src.qty);
-      tr.querySelectorAll('[data-f]').forEach(function (el) {
-        var h = function () { q[el.dataset.f] = el.value; updateRanks(); };
-        el.oninput = h; el.onchange = h;
-      });
+      var q = qOf(x, tr.dataset.v);
+      tr.querySelector('[data-f="review"]').oninput = function () { q.review = this.value; };
       tr.querySelector('input[type=radio]').onchange = function () {
         Object.keys(x.quotes).forEach(function (k) { x.quotes[k].sel = false; });
         q.sel = true; updateRanks();
       };
     });
+    box.querySelector('[data-clear]').onclick = function () {
+      Object.keys(x.quotes).forEach(function (k) { x.quotes[k].sel = false; });
+      box.querySelectorAll('input[type=radio]').forEach(function (r) { r.checked = false; });
+      updateRanks();
+    };
   });
   updateRanks();
 }
@@ -1069,13 +1178,13 @@ function updateRanks() {
   $('qItems').querySelectorAll('.q-item').forEach(function (box) {
     var x = qs.items[+box.dataset.i], rows = [].slice.call(box.querySelectorAll('tr[data-v]'));
     var krw = rows.map(function (tr) {
-      var q = x.quotes[tr.dataset.v], n = qNum(q.qty), p = qNum(q.price), c = q.cur;
+      var q = x.quotes[tr.dataset.v] || {}, n = qNum(q.qty), p = qNum(q.price), c = q.cur;
       var rate = c === 'KRW' ? 1 : qNum(qs.rates[c]);
       return n !== null && p !== null && rate ? n * p * rate : null;
     });
     var sorted = krw.filter(function (v) { return v !== null; }).sort(function (a, b) { return a - b; });
     rows.forEach(function (tr, k) {
-      var q = x.quotes[tr.dataset.v];
+      var q = x.quotes[tr.dataset.v] || {};
       tr.querySelector('.krw').textContent = krw[k] === null ? '' : '₩' + Math.round(krw[k]).toLocaleString('ko-KR');
       tr.querySelector('.rank').textContent = krw[k] === null ? '' : sorted.indexOf(krw[k]) + 1;
       tr.classList.toggle('sel', !!q.sel);
@@ -1093,26 +1202,29 @@ function quotePayload() {
     })
   };
 }
-$('qSave').onclick = function () {
-  var b = this; b.disabled = true;
+function saveQuote(b) {
+  b.disabled = true;
   call('apiSaveQuotes', qs.rec.id, quotePayload()).then(function () {
     qs.rec.quote = quotePayload();
     $('qMsg').innerHTML = '<span class="ok-msg">임시 저장했습니다. 나중에 이어서 입력할 수 있습니다.</span>';
   }).catch(function (e) { $('qMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; }).finally(function () { b.disabled = false; });
-};
+}
+$('qSave').onclick = function () { saveQuote(this); };
+$('qSave2').onclick = function () { saveQuote(this); };
 $('qCreate').onclick = function () {
   var b = this, p = quotePayload();
   $('qMsg').innerHTML = '';
   if (!p.vendors.length) { $('qMsg').innerHTML = '<span class="err">견적 받은 업체를 한 곳 이상 넣어 주세요.</span>'; return; }
-  var noSel = [], noRev = [];
+  var noRev = [], empty = [];
   qs.items.forEach(function (x) {
     var sel = qs.vendors.filter(function (v) { return x.quotes[v] && x.quotes[v].sel; })[0];
-    if (!sel) noSel.push(x.src.item); else if (!String(x.quotes[sel].review || '').trim()) noRev.push(x.src.item + '(' + sel + ')');
+    if (sel && !String(x.quotes[sel].review || '').trim()) noRev.push(x.src.item + '(' + sel + ')');
   });
+  qs.vendors.forEach(function (v) { if (!qs.items.some(function (x) { return qFilled(x.quotes[v]); })) empty.push(v); });
   if (noRev.length) { $('qMsg').innerHTML = '<span class="err">선정한 업체의 검토 문구를 적어 주세요: ' + esc(noRev.join(', ')) + '</span>'; return; }
-  if (noSel.length && !b.dataset.ok) {
+  if (empty.length && !b.dataset.ok) {
     b.dataset.ok = '1';
-    $('qMsg').innerHTML = '<span class="err">선정 업체가 없는 품목: ' + esc(noSel.join(', ')) + ' — 시트에서 체크해도 됩니다. 이대로 만들려면 한 번 더 누르세요.</span>';
+    $('qMsg').innerHTML = '<span class="err">견적을 하나도 입력하지 않은 업체: ' + esc(empty.join(', ')) + ' — 이대로 만들려면 한 번 더 누르세요.</span>';
     return;
   }
   delete b.dataset.ok;
@@ -1126,6 +1238,7 @@ $('qCreate').onclick = function () {
     b.disabled = true; b.textContent = '만드는 중…';
     return call('apiCreateSpotPurchase', { recordId: qs.rec.id, baseDate: $('base').value, rates: qs.rates, folder: folder.id, name: p.name, confirmer: p.confirmer,
       schedule: state.sched, vendors: p.vendors, items: items }).then(function (d) {
+      qs.rec.quote = p;
       $('qMsg').innerHTML = '<span class="ok-msg">Spot 견적 구매내역서를 ' + esc(folder.name) + '에 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.name) + ' 열기 ↗</a></span>';
       loadRecords();
     });

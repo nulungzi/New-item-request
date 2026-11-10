@@ -64,6 +64,18 @@ proto(S, 16, 5, 1, 16)
 proto(D, 11, 11, 1, 102)
 proto(Q, 5, 21, 1, 45)
 
+
+def wrap(cell):
+    a = copy(cell.alignment)
+    a.wrap_text, a.vertical = True, 'center'
+    cell.alignment = a
+
+
+# Supplier Remarks 는 줄바꿈 (추가 비용 등을 여러 줄로 적음)
+wrap(P.cell(21, 40))                     # 견적종합 AN
+for c in [22] + list(range(26, 103, 4)):  # 구매내역서 V(선정 Remark) · 업체별 Remark
+    wrap(P.cell(11, c))
+
 # ---------- 전체구매요약: 4행(머리글)까지만 ----------
 clear(S, 5)
 

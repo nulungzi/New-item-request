@@ -16,7 +16,7 @@
  */
 var SHEET_MASTER = '자재정보';
 var SHEET_RATE = '환율';
-var SHEET_VENDOR = '업체목록';     // A 업체명 · B 이메일 (한 칸에 여러 개면 ; 또는 , 로 구분)
+var SHEET_VENDORS = ['업체정보', '업체목록'];   // 업체명 · 이메일 열 (한 업체 여러 줄, 한 칸에 ; , 로 여러 주소 가능)
 var SHEET_RECORD = '진행기록';     // 내가 만든 구매내역서·견적요청서 (완료 전)
 var RECORD_HEADERS = ['ID', '종류', '담당자', '작성일', '제목', '파일 URL', '파일 ID', '상태', '메일 초안', '숨은 참조', '품목(JSON)', '수정일'];
 
@@ -493,8 +493,8 @@ function checkSetup() {
   var aid = prop_('ARCHIVE_SHEET_ID');
   if (!aid) bad('스크립트 속성 ARCHIVE_SHEET_ID 가 없습니다 (완료 보관 파일)');
   else { try { ok('완료 보관 파일: ' + SpreadsheetApp.openById(aid).getName()); } catch (e) { bad('완료 보관 파일을 열 수 없습니다: ' + e.message); } }
-  var vs = db_().getSheetByName(SHEET_VENDOR);
-  if (vs) ok('업체목록: ' + apiVendors().vendors.length + '개 업체'); else bad('자재정보 스프레드시트에 "업체목록" 탭이 없습니다 (A 업체명 · B 이메일)');
+  var vs = vendorSheet_();
+  if (vs) ok(vs.getName() + ': ' + apiVendors().vendors.length + '개 업체'); else bad('자재정보 스프레드시트에 "업체정보" 탭이 없습니다 (업체명 · 이메일 열)');
   lines.push(typeof Gmail !== 'undefined' ? '✅ Gmail API 서비스: 사용 중 (Gmail 서명 자동 사용)' : 'ℹ️ Gmail API 서비스 없음 — 사이트에서 저장한 서명을 씁니다');
   var fid = prop_('OUTPUT_FOLDER_ID');
   if (fid) { try { ok('저장 폴더: ' + DriveApp.getFolderById(fid).getName()); } catch (e) { bad('OUTPUT_FOLDER_ID 폴더를 열 수 없습니다: ' + e.message); } }
@@ -529,18 +529,16 @@ function apiCreateRfq(payload) {
   return { url: ss.getUrl(), name: title, id: ss.getId(), recordId: rec.id };
 }
 
-/** 업체목록 탭: [{name, emails:[...]}] */
+/** 업체정보 탭: [{name, emails:[...]}] */
+function vendorSheet_() {
+  var ss = db_();
+  for (var i = 0; i < SHEET_VENDORS.length; i++) { var sh = ss.getSheetByName(SHEET_VENDORS[i]); if (sh) return sh; }
+  return null;
+}
 function apiVendors() {
-  var sh = db_().getSheetByName(SHEET_VENDOR);
+  var sh = vendorSheet_();
   if (!sh) return { vendors: [], missing: true };
-  var map = {}, order = [];
-  sh.getDataRange().getValues().slice(1).forEach(function (r) {
-    var name = String(r[0] || '').trim(), mails = String(r[1] || '').split(/[;,\s]+/).filter(function (m) { return /@/.test(m); });
-    if (!name || !mails.length) return;
-    if (!map[name]) { map[name] = []; order.push(name); }
-    mails.forEach(function (m) { if (map[name].indexOf(m) < 0) map[name].push(m); });
-  });
-  return { vendors: order.map(function (n) { return { name: n, emails: map[n] }; }), missing: false };
+  return { vendors: parseVendors_(sh.getDataRange().getValues()), missing: false };
 }
 
 /** 메일 서명: Gmail 설정의 서명(고급 서비스 Gmail API 추가 시) → 없으면 사이트에 저장한 서명 */

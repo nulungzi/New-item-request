@@ -361,3 +361,12 @@ test('Spot 견적 구매내역서 계획: 업체 수만큼 줄·비교 칸, 선�
   assert.ok(ops.some(o => o.s === '구매일정' && o.op === 'width'));
   assert.throws(() => L.buildSpotPlan_(items, [], {}, base), /업체가 없습니다/);
 });
+
+test('업체정보 탭 읽기 (머리글 위치 자동, 한 업체 여러 줄) · "-" 는 빈칸', () => {
+  const v = L.parseVendors_([[null, null, null], [null, '업체명', '이메일'], [null, 'OMI', 'a@omi.com'], [null, 'OMI', 'b@omi.com; a@omi.com'], [null, '3M', '잘못된주소'], [null, 'PPG', 'p@ppg.com']]);
+  assert.deepStrictEqual(v, [{ name: 'OMI', emails: ['a@omi.com', 'b@omi.com'] }, { name: 'PPG', emails: ['p@ppg.com'] }]);
+  const c = L.parseContracts_([['Item', '계약 구분', '업체명', '단가', 'CUR', '계약시작', '계약종료', 'Ship Form', 'QPL'], ['K1', 'Spot', '-', '-', '-', '-', '-', '-', 'MOMENTIVE_NY']]);
+  assert.deepStrictEqual([c[0].supplier, c[0].price, c[0].cur, c[0].start, c[0].shipFrom, c[0].qpl], ['', null, '', null, '', 'MOMENTIVE_NY']);
+  const r = L.classify_(L.parseRequest_('K1 5 2027-01-01').requests, c, L.toDate_('2026-11-10'))[0];
+  assert.deepStrictEqual([r.route, r.qpl], ['rfq', 'MOMENTIVE_NY']);
+});

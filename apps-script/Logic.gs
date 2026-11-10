@@ -82,7 +82,10 @@ function parseContracts_(values) {
   var out = [];
   for (var i = hRow + 1; i < values.length; i++) {
     var row = values[i];
-    var get = function (k) { return idx[k] >= 0 ? row[idx[k]] : ''; };
+    var get = function (k) {
+      var v = idx[k] >= 0 ? row[idx[k]] : '';
+      return typeof v === 'string' && /^\s*-\s*$/.test(v) ? '' : v;   // '-' 는 빈칸 (Spot 자재의 업체·단가·기간 등)
+    };
     var item = itemKey_(get('item'));
     if (!item) continue;
     out.push({
@@ -308,6 +311,32 @@ function isInputHeader_(cells) { return /^item$/i.test(String((cells || [])[0] |
 function purchaseFileName_(custom, base, suppliers) {
   var n = String(custom || '').replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150);
   return n || fmtDate_(base).replace(/-/g, '').slice(2) + ' 구매내역서_' + suppliers.join('_');
+}
+
+/**
+ * 업체정보 탭 읽기: 머리글(업체명·이메일)을 상위 10행에서 찾는다. 한 업체가 여러 줄이어도 되고, 한 칸에 ; , 로 여러 주소도 됨
+ * 반환: [{name, emails:[...]}] (처음 나온 순서)
+ */
+function parseVendors_(values) {
+  var hr = -1, cn = -1, ce = -1;
+  for (var r = 0; r < Math.min(values.length, 10) && hr < 0; r++) {
+    values[r].forEach(function (h, c) {
+      var k = headerKey_(h);
+      if (k === '업체명' || k === '업체' || k === 'vendor' || k === 'supplier') cn = c;
+      if (k === '이메일' || k === 'email' || k === 'e메일' || k === 'mail') ce = c;
+    });
+    if (cn >= 0 && ce >= 0) hr = r; else { cn = -1; ce = -1; }
+  }
+  if (hr < 0) { hr = 0; cn = 0; ce = 1; }   // 머리글이 없으면 A 업체명 · B 이메일
+  var map = {}, order = [];
+  values.slice(hr + 1).forEach(function (row) {
+    var name = String(row[cn] || '').trim();
+    var mails = String(row[ce] || '').split(/[;,\s]+/).filter(function (m) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m); });
+    if (!name || !mails.length) return;
+    if (!map[name]) { map[name] = []; order.push(name); }
+    mails.forEach(function (m) { if (map[name].indexOf(m) < 0) map[name].push(m); });
+  });
+  return order.map(function (n) { return { name: n, emails: map[n] }; });
 }
 
 /* ------------------------------------------------------------------

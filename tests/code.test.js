@@ -52,7 +52,7 @@ test('checkSetup: 자재정보·템플릿 점검', () => {
     ['', 'Item', '계약 구분', '업체명', '단가', 'CUR', '계약시작', '계약종료', 'Shelf Life', 'Description'],
     [1, 'A1', 'LTA', 'PPG', 1, 'USD', new Date(2026, 0, 1), new Date(2028, 11, 31), '12MM', 'PRIMER'],
   ];
-  const sheet = { getDataRange: () => ({ getValues: () => values }) };
+  const sheet = { getName: () => '업체정보', getDataRange: () => ({ getValues: () => values }) };
   const tabs = ['구매요약', '구매세부내역', '구매일정', '사업부 담당 확인'];
   const ctx = inContext({
     console: { log: () => {}, warn: () => {} },
