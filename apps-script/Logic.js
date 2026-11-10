@@ -264,21 +264,24 @@ var TPL = {
 };
 
 /**
- * 구매일정 막대 기본값. 칸 단위는 반 달(0 = 작성일 달 전반), 12개월 = 24칸.
- * 템플릿 샘플과 같은 위치.
+ * 구매일정 막대. 칸 단위는 반 달(0 = 작성일 달 전반), 12개월 = 24칸.
+ * 사용자가 화면에서 줄마다 끌어서 기간을 고른다. 고르지 않은 줄은 {start:0, len:0} (시트에서 빈 줄).
+ * SCHEDULE_EXAMPLE 은 화면의 "예시로 채우기"와, 화면이 일정을 보내지 않았을 때(이전 화면) 쓴다.
  */
 var SCHEDULE_TASKS = ['현 재고+Open PO', 'PO Coverage', '품의 및 PR/PO', '업체생산 L/T', '운송, 통관, 검사'];
-var SCHEDULE_DEFAULT = [{ start: 0, len: 9 }, { start: 8, len: 10 }, { start: 0, len: 1 }, { start: 1, len: 6 }, { start: 7, len: 1 }];
+var SCHEDULE_EXAMPLE = [{ start: 0, len: 9 }, { start: 8, len: 10 }, { start: 0, len: 1 }, { start: 1, len: 6 }, { start: 7, len: 1 }];
 var SCHEDULE_SLOTS = 24;
 var SCHEDULE_COLORS = ['#cccccc', '#fff2cc', '#fff2cc', '#fff2cc', '#fff2cc'];
 
-/** 화면에서 받은 막대 값 검사·보정 */
+/** 화면에서 받은 막대 값 검사·보정. len 0 = 비어 있음 */
 function normSchedule_(sched) {
-  return SCHEDULE_DEFAULT.map(function (d, i) {
-    var x = (sched || [])[i] || d;
-    var start = Math.max(0, Math.min(SCHEDULE_SLOTS - 1, Math.round(Number(x.start))));
-    var len = Math.max(1, Math.min(SCHEDULE_SLOTS - start, Math.round(Number(x.len))));
-    return isNaN(start) || isNaN(len) ? { start: d.start, len: d.len } : { start: start, len: len };
+  if (!sched) sched = SCHEDULE_EXAMPLE;
+  return SCHEDULE_TASKS.map(function (t, i) {
+    var x = sched[i] || {};
+    var start = Math.round(Number(x.start)), len = Math.round(Number(x.len));
+    if (!(len > 0) || isNaN(start)) return { start: 0, len: 0 };
+    start = Math.max(0, Math.min(SCHEDULE_SLOTS - 1, start));
+    return { start: start, len: Math.max(1, Math.min(SCHEDULE_SLOTS - start, len)) };
   });
 }
 
@@ -298,7 +301,7 @@ function rateNote_(curs, rates, base) {
  * lines: [{item, qty, needBy(Date), supplier, cur, price, priceMode, material, desc, product, shipFrom, leadtime,
  *          uom, shelfLife, taxCode, remark}]
  * curs: KRW 제외 통화 목록(등장 순), rates: {USD: 1339.3}, base: 작성일(Date)
- * schedule: 구매일정 막대 [{start, len}] × 5 (반 달 단위, 없으면 기본값)
+ * schedule: 구매일정 막대 [{start, len}] × 5 (반 달 단위, len 0 = 빈 줄, 없으면 예시)
  */
 function buildPurchasePlan_(lines, curs, rates, base, schedule) {
   var ops = [];
@@ -446,7 +449,7 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule) {
   // 막대: 6~10행, E(5)~AB(28)열. L/T(D열)는 막대 길이로 계산
   normSchedule_(schedule).forEach(function (b, i) {
     var row = 6 + i;
-    set(G, row, 4, (b.len / 2).toFixed(1) + 'M');
+    set(G, row, 4, b.len ? (b.len / 2).toFixed(1) + 'M' : '');
     for (var k = 0; k < SCHEDULE_SLOTS; k++) {
       add({ op: 'bg', s: G, r: row, c: 5 + k, color: k >= b.start && k < b.start + b.len ? SCHEDULE_COLORS[i] : '#ffffff' });
     }
@@ -466,5 +469,5 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { normSchedule_: normSchedule_, SCHEDULE_DEFAULT: SCHEDULE_DEFAULT, parseRows_: parseRows_, buildPurchasePlan_: buildPurchasePlan_, curFmt_: curFmt_, leadDays_: leadDays_, parseContracts_: parseContracts_, parseRequest_: parseRequest_, classify_: classify_, summarize_: summarize_, toDate_: toDate_, fmtDate_: fmtDate_ };
+  module.exports = { normSchedule_: normSchedule_, SCHEDULE_EXAMPLE: SCHEDULE_EXAMPLE, parseRows_: parseRows_, buildPurchasePlan_: buildPurchasePlan_, curFmt_: curFmt_, leadDays_: leadDays_, parseContracts_: parseContracts_, parseRequest_: parseRequest_, classify_: classify_, summarize_: summarize_, toDate_: toDate_, fmtDate_: fmtDate_ };
 }

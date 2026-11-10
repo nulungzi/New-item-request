@@ -168,7 +168,11 @@ table.list td.nw { white-space: nowrap }
 .g-label { overflow: hidden; padding: 6px 10px; display: grid; align-content: center; gap: 1px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); position: sticky; left: 0; background: var(--surface); z-index: 2 }
 .g-label b { font-weight: 600; font-size: .84rem }
 .g-label span { font: .7rem var(--font-data); color: var(--muted); white-space: nowrap }
-.g-track { grid-column: 2 / -1; position: relative; border-bottom: 1px solid var(--line); min-height: 46px; cursor: pointer; touch-action: pan-x pan-y;
+.g-label span.empty { font-family: var(--font-body); color: var(--accent) }
+.g-label .g-clear { justify-self: start; border: 0; background: transparent; color: var(--muted); font-size: .7rem; padding: 0; text-decoration: underline; cursor: pointer }
+.g-label .g-clear:hover { color: var(--warn) }
+.g-ghost { position: absolute; top: 9px; bottom: 9px; border-radius: 5px; border: 2px dashed var(--accent); background: var(--accent-soft); opacity: .7; pointer-events: none }
+.g-track { grid-column: 2 / -1; position: relative; border-bottom: 1px solid var(--line); min-height: 46px; cursor: crosshair; touch-action: none;
   background-image:
     repeating-linear-gradient(to right, transparent 0 calc(100% / 12 - 1px), var(--line) calc(100% / 12 - 1px) calc(100% / 12)),
     repeating-linear-gradient(to right, transparent 0 calc(100% / 24 - 1px), var(--surface-2) calc(100% / 24 - 1px) calc(100% / 24)) }
@@ -260,10 +264,11 @@ table.list td.nw { white-space: nowrap }
       <div class="panel-head">
         <h3>구매일정</h3>
         <div class="row">
-          <span class="muted">막대를 끌어 옮기고, 양 끝을 끌어 기간을 바꿉니다 · 한 칸 = 반 달</span>
-          <button class="btn-ghost" id="btnSchedReset" type="button">기본값</button>
+          <button class="btn-ghost" id="btnSchedExample" type="button">예시로 채우기</button>
+          <button class="btn-ghost" id="btnSchedClear" type="button">모두 지우기</button>
         </div>
       </div>
+      <p class="muted lead">줄마다 시작 칸에서 끝 칸까지 <b>끌어서</b> 기간을 고르세요. 그린 막대는 가운데를 끌어 옮기고, 양 끝을 끌어 늘이거나 줄입니다. 한 칸은 반 달이고, 고르지 않은 줄은 시트에서 비어 있게 됩니다.</p>
       <div class="gantt-wrap"><div class="gantt" id="gantt"></div></div>
     </div>
 
@@ -293,7 +298,7 @@ table.list td.nw { white-space: nowrap }
 </main>
 
 <script>
-var state = { results: [], rates: {}, sched: null, schedDefault: null, tasks: [] };
+var state = { results: [], rates: {}, sched: null, schedExample: null, tasks: [] };
 var $ = function (id) { return document.getElementById(id); };
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 function fmt(n) { return n == null ? '' : Number(n).toLocaleString('ko-KR', { maximumFractionDigits: 4 }); }
@@ -393,8 +398,8 @@ call('apiInit').then(function (d) {
   rows().forEach(showDesc);
   if (d.schedule) {
     state.tasks = d.schedule.tasks;
-    state.schedDefault = d.schedule.defaults;
-    state.sched = d.schedule.defaults.map(function (b) { return { start: b.start, len: b.len }; });
+    state.schedExample = d.schedule.example;
+    state.sched = d.schedule.tasks.map(function () { return { start: 0, len: 0 }; });   // 빈 일정에서 시작
   }
 });
 
@@ -499,8 +504,10 @@ function renderGantt() {
   html += '<div class="g-corner">L/T · 기간</div>';
   for (k = 0; k < 12; k++) html += '<div class="g-month" style="grid-column:span 2">' + ((m + k) % 12 + 1) + '</div>';
   state.tasks.forEach(function (t, i) {
-    html += '<div class="g-label"><b>' + esc(t) + '</b><span id="glt-' + i + '"></span></div>' +
-      '<div class="g-track" id="gtrack-' + i + '"><div class="g-bar' + (i === 0 ? ' stock' : '') + '" id="gbar-' + i + '" tabindex="0" role="slider" ' +
+    html += '<div class="g-label"><b>' + esc(t) + '</b><span id="glt-' + i + '"></span>' +
+      '<button type="button" class="g-clear" id="gclr-' + i + '">지우기</button></div>' +
+      '<div class="g-track" id="gtrack-' + i + '"><div class="g-ghost" id="gghost-' + i + '" hidden></div>' +
+      '<div class="g-bar' + (i === 0 ? ' stock' : '') + '" id="gbar-' + i + '" tabindex="0" role="slider" ' +
       'aria-label="' + esc(t) + ' 기간 (←→ 이동, Shift+←→ 길이)" aria-valuemin="0" aria-valuemax="' + (SLOTS - 1) + '">' +
       '<span class="g-h l" data-h="l"></span><span id="gtxt-' + i + '"></span><span class="g-h r" data-h="r"></span></div></div>';
   });
@@ -508,17 +515,24 @@ function renderGantt() {
   state.tasks.forEach(function (t, i) { placeBar(i); bindBar(i); });
 }
 function placeBar(i) {
-  var s = state.sched[i], bar = $('gbar-' + i);
+  var s = state.sched[i], bar = $('gbar-' + i), lt = $('glt-' + i);
+  bar.hidden = !s.len;
+  $('gclr-' + i).hidden = !s.len;
+  if (!s.len) { lt.textContent = '끌어서 기간 선택'; lt.className = 'empty'; return; }
   bar.style.left = (s.start / SLOTS * 100) + '%';
   bar.style.width = (s.len / SLOTS * 100) + '%';
   $('gtxt-' + i).textContent = s.len >= 2 ? (s.len / 2).toFixed(1) + 'M' : '';
-  $('glt-' + i).textContent = (s.len / 2).toFixed(1) + 'M · ' + slotDate(s.start) + '–' + slotDate(s.start + s.len - 1, true);
+  lt.className = '';
+  lt.textContent = (s.len / 2).toFixed(1) + 'M · ' + slotDate(s.start) + '–' + slotDate(s.start + s.len - 1, true);
   bar.setAttribute('aria-valuenow', s.start);
   bar.setAttribute('aria-valuetext', slotDate(s.start) + '부터 ' + (s.len / 2).toFixed(1) + '개월');
 }
 function bindBar(i) {
-  var bar = $('gbar-' + i), track = $('gtrack-' + i), drag = null;
+  var bar = $('gbar-' + i), track = $('gtrack-' + i), ghost = $('gghost-' + i), drag = null, draw = null;
   var slotW = function () { return track.getBoundingClientRect().width / SLOTS; };
+  var slotAt = function (x) { return Math.max(0, Math.min(SLOTS - 1, Math.floor((x - track.getBoundingClientRect().left) / slotW()))); };
+
+  // 막대 옮기기·늘이기
   bar.addEventListener('pointerdown', function (e) {
     e.preventDefault(); e.stopPropagation();
     var h = e.target.getAttribute('data-h');
@@ -534,16 +548,45 @@ function bindBar(i) {
     if (drag.mode === 'l') { var ns = Math.max(0, Math.min(drag.s0 + drag.l0 - 1, drag.s0 + d)); s.len = drag.l0 + drag.s0 - ns; s.start = ns; }
     placeBar(i);
   });
-  var end = function () { drag = null; bar.classList.remove('dragging'); };
-  bar.addEventListener('pointerup', end);
-  bar.addEventListener('pointercancel', end);
-  track.addEventListener('click', function (e) {         // 빈 칸을 누르면 막대가 그 칸에서 시작
+  var endDrag = function () { drag = null; bar.classList.remove('dragging'); };
+  bar.addEventListener('pointerup', endDrag);
+  bar.addEventListener('pointercancel', endDrag);
+
+  // 빈 곳에서 끌어 새 기간 그리기 (기존 막대는 새 기간으로 바뀜)
+  var showGhost = function () {
+    var a = Math.min(draw.a, draw.b), n = Math.abs(draw.b - draw.a) + 1;
+    ghost.hidden = false;
+    ghost.style.left = (a / SLOTS * 100) + '%';
+    ghost.style.width = (n / SLOTS * 100) + '%';
+    $('glt-' + i).className = '';
+    $('glt-' + i).textContent = (n / 2).toFixed(1) + 'M · ' + slotDate(a) + '–' + slotDate(a + n - 1, true);
+  };
+  track.addEventListener('pointerdown', function (e) {
     if (e.target !== track) return;
-    var k = Math.floor((e.clientX - track.getBoundingClientRect().left) / slotW()), s = state.sched[i];
-    s.start = Math.max(0, Math.min(SLOTS - s.len, k)); placeBar(i);
+    e.preventDefault();
+    var k = slotAt(e.clientX);
+    draw = { a: k, b: k };
+    track.setPointerCapture(e.pointerId);
+    showGhost();
   });
-  bar.addEventListener('keydown', function (e) {           // ←→ 이동, Shift+←→ 길이
-    var s = state.sched[i], d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+  track.addEventListener('pointermove', function (e) {
+    if (!draw) return;
+    draw.b = slotAt(e.clientX);
+    showGhost();
+  });
+  var endDraw = function (cancel) {
+    if (!draw) return;
+    if (!cancel) state.sched[i] = { start: Math.min(draw.a, draw.b), len: Math.abs(draw.b - draw.a) + 1 };
+    draw = null; ghost.hidden = true; placeBar(i);
+  };
+  track.addEventListener('pointerup', function () { endDraw(false); });
+  track.addEventListener('pointercancel', function () { endDraw(true); });
+
+  $('gclr-' + i).onclick = function () { state.sched[i] = { start: 0, len: 0 }; placeBar(i); };
+  bar.addEventListener('keydown', function (e) {           // ←→ 이동, Shift+←→ 길이, Delete 지우기
+    var s = state.sched[i];
+    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); state.sched[i] = { start: 0, len: 0 }; placeBar(i); return; }
+    var d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
     if (!d) return;
     e.preventDefault();
     if (e.shiftKey) s.len = Math.max(1, Math.min(SLOTS - s.start, s.len + d));
@@ -551,14 +594,25 @@ function bindBar(i) {
     placeBar(i);
   });
 }
-$('btnSchedReset').onclick = function () {
-  state.sched = state.schedDefault.map(function (b) { return { start: b.start, len: b.len }; });
+$('btnSchedExample').onclick = function () {
+  state.sched = state.schedExample.map(function (b) { return { start: b.start, len: b.len }; });
+  renderGantt();
+};
+$('btnSchedClear').onclick = function () {
+  state.sched = state.tasks.map(function () { return { start: 0, len: 0 }; });
   renderGantt();
 };
 $('base').addEventListener('change', function () { if (!$('purchaseCard').hidden) renderGantt(); });
 
 $('btnCreate').onclick = function () {
-  var b = this; b.disabled = true; b.textContent = '만드는 중…'; $('msg2').innerHTML = '';
+  var b = this; $('msg2').innerHTML = '';
+  if (state.sched && !state.sched.some(function (x) { return x.len > 0; }) && !b.dataset.ok) {
+    b.dataset.ok = '1';
+    $('msg2').innerHTML = '<span class="err">구매일정이 비어 있습니다. 이대로 만들려면 한 번 더 누르세요.</span>';
+    return;
+  }
+  delete b.dataset.ok;
+  b.disabled = true; b.textContent = '만드는 중…';
   var rates = {}, remarks = {};
   document.querySelectorAll('[data-rate]').forEach(function (el) { rates[el.dataset.rate] = el.value; });
   document.querySelectorAll('[data-remark]').forEach(function (el) { remarks[el.dataset.remark] = el.value; });

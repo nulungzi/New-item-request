@@ -66,7 +66,7 @@ function apiInit() {
   return {
     today: fmtDate_(new Date()),
     rates: loadRates_(),
-    schedule: { tasks: SCHEDULE_TASKS, defaults: SCHEDULE_DEFAULT, slots: SCHEDULE_SLOTS },
+    schedule: { tasks: SCHEDULE_TASKS, example: SCHEDULE_EXAMPLE, slots: SCHEDULE_SLOTS },
     items: Object.keys(items).sort().map(function (k) { return [k, items[k][0], items[k][1]]; })   // [Item, Description, Ship From]
   };
 }
