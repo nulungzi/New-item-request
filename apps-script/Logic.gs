@@ -663,7 +663,8 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule, extra) {
 var RFQ = {
   SHEET: 'RFQ_List', FIRST: 3, MONTHS: 12,
   C: { LI: 2, KE: 3, NAME: 4, DESC: 5, QPL: 6, UOM: 7, REMARK: 8, M0: 9, TOTAL: 21, LAST: 31 },
-  REMARK: 'MFG COC/TR', SUFFIX: 'Material Spot', ROW_PT: 26.25
+  REMARK: 'MFG COC/TR', SUFFIX: 'Material Spot', ROW_PT: 26.25,
+  MONTH_PX: 64, TOTAL_PX: 80   // 월 칸·RFQ Qty 칸 너비 (큰 수량도 ### 없이)
 };
 
 /** Need-by 가 작성일 달부터 몇 번째 달 칸인지 (0~11). 범위를 벗어나면 맨 앞/뒤 칸과 함께 표시 */
@@ -700,6 +701,8 @@ function rfqTitle_(base, biz, kind, suffix, due) {
 function buildRfqPlan_(items, base) {
   var ops = [], S = RFQ.SHEET, C = RFQ.C;
   var set = function (r, c, v) { ops.push({ op: 'set', s: S, r: r, c: c, v: v }); };
+  for (var w = 0; w < RFQ.MONTHS; w++) ops.push({ op: 'width', s: S, c: C.M0 + w, px: RFQ.MONTH_PX });
+  ops.push({ op: 'width', s: S, c: C.TOTAL, px: RFQ.TOTAL_PX });
   for (var k = 0; k < RFQ.MONTHS; k++) {
     var d = new Date(base.getFullYear(), base.getMonth() + k, 1);
     set(2, C.M0 + k, { date: fmtDate_(d) });

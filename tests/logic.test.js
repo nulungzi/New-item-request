@@ -308,6 +308,7 @@ test('견적요청서 작성 계획', () => {
   assert.deepStrictEqual([get(3, 3), get(3, 4), get(3, 8), get(3, 11), get(3, 21)], ['TBD', 'MS20995C20', 'MFG COC/TR', 3, '=SUM(I3:T3)']);
   assert.deepStrictEqual([get(4, 2), get(4, 3), get(4, 8), get(4, 13), get(4, 11)], [2, 'KERC00016', '', 5, '']);
   assert.deepStrictEqual(ops.filter(o => o.op === 'rowFmt').map(o => [o.fr, o.r]), [[3, 4]]);
+  assert.deepStrictEqual(ops.filter(o => o.op === 'width').map(o => [o.c, o.px]), Array.from({ length: 12 }, (_, i) => [9 + i, 64]).concat([[21, 80]]));
 });
 
 test('견적요청 메일 본문', () => {
