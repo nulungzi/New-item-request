@@ -60,7 +60,48 @@ body {
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   padding-block: 20px 48px;
 }
-main { max-width: 1080px; margin: 0 auto; display: grid; gap: 18px }
+main { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px }
+.app { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 18px; align-items: start }
+.side { position: sticky; top: env(safe-area-inset-top, 0px); display: grid; gap: 4px; padding-top: 4px }
+.side-btn { border: 0; background: transparent; color: var(--muted); text-align: left; padding: 10px 12px; border-radius: 8px; font-weight: 600; display: flex; justify-content: space-between; align-items: center }
+.side-btn:hover { background: var(--surface-2); color: var(--ink) }
+.side-btn.on { background: var(--surface); color: var(--accent); box-shadow: inset 3px 0 0 var(--accent) }
+.side-count { font: 600 .75rem var(--font-data); background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: 1px 8px }
+.side-count:empty { display: none }
+.views { min-width: 0 }
+@media (max-width: 900px) {
+  .app { grid-template-columns: minmax(0, 1fr) }
+  .side { position: static; display: flex; gap: 6px; border-bottom: 1px solid var(--line); padding: 0 0 6px }
+  .side-btn.on { box-shadow: inset 0 -2px 0 var(--accent) }
+}
+/* 견적요청서 편집 */
+.rfq-edit input { width: 100%; min-width: 90px; padding: 6px 7px; font-size: .84rem }
+.rfq-edit .w-name { min-width: 150px } .rfq-edit .w-desc { min-width: 220px } .rfq-edit .w-s { min-width: 64px } .rfq-edit .w-r { min-width: 110px }
+.rfq-edit td.muted { min-width: 190px }
+.rfq-edit td { vertical-align: middle }
+.rfq-title { display: grid; gap: 10px }
+.rfq-fields { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)) }
+.rfq-fields .field input, .rfq-title .field > input { text-align: left; font-family: var(--font-body); width: 100% }
+.rfq-done { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center }
+/* 메일 초안 */
+.draft-box { grid-template-rows: auto auto minmax(0, 1fr) auto auto auto }
+.dm-subject { font: 500 .88rem var(--font-data); padding: 8px 10px; background: var(--surface-2); border-radius: 6px; word-break: break-all }
+.dm-vendors { display: grid; gap: 8px; min-height: 0 }
+.dm-list { max-height: 34vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px }
+.dm-list label { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; padding: 9px 12px; border-bottom: 1px solid var(--line); cursor: pointer; align-items: center }
+.dm-list label small { grid-column: 2; color: var(--muted); font: .75rem var(--font-data); word-break: break-all }
+.dm-sign summary { cursor: pointer; color: var(--muted); font-size: .86rem }
+.dm-sign textarea { width: 100%; margin: 8px 0; font-family: var(--font-body) }
+/* 진행 중 */
+.rec-list { display: grid; gap: 10px }
+.rec { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface) }
+.rec-title { font-weight: 600; word-break: break-all }
+.rec-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .8rem; color: var(--muted) }
+.rec-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; grid-row: 1 / span 2; grid-column: 2 }
+.rec-actions .btn-ghost { padding: 6px 12px; font-size: .84rem }
+a.btn-ghost { display: inline-block; text-decoration: none; border-radius: 6px }
+.rec-empty { padding: 24px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 8px }
+@media (max-width: 640px) { .rec { grid-template-columns: minmax(0, 1fr) } .rec-actions { grid-row: auto; grid-column: 1; justify-content: flex-start } }
 h1, h2, h3 { text-wrap: balance; margin: 0 }
 .data { font-family: var(--font-data); font-variant-numeric: tabular-nums; letter-spacing: -.01em }
 .muted { color: var(--muted); font-size: .86rem }
@@ -264,6 +305,14 @@ table.list td.nw { white-space: nowrap }
   </div>
 </header>
 
+<div class="app">
+<nav class="side" aria-label="화면">
+  <button type="button" class="side-btn on" data-view="new">새 소요제기</button>
+  <button type="button" class="side-btn" data-view="records">진행 중 <span class="side-count" id="recCount"></span></button>
+</nav>
+<div class="views">
+<div id="viewNew" class="stack">
+
 
 <section class="step" id="step1">
   <div class="step-no">1</div>
@@ -375,8 +424,20 @@ table.list td.nw { white-space: nowrap }
       <div class="scroll"><table class="list" id="pricedTbl"></table></div>
     </div>
     <div class="sub" id="rfqBox">
-      <div class="sub-title"><h3>단가 없음 → 견적요청서</h3><span class="muted">견적요청서 만들기는 다음 단계에서 추가됩니다</span></div>
-      <div class="scroll"><table class="list" id="spotTbl"></table></div>
+      <div class="sub-title"><h3>단가 없음 → 견적요청서</h3><span class="muted">Item name은 꼭 적어 주세요 · Description·QPL·UOM·Remark는 고칠 수 있습니다</span></div>
+      <div class="scroll"><table class="list rfq-edit" id="spotTbl"></table></div>
+      <div class="rfq-title">
+        <div class="fields rfq-fields">
+          <label class="field" for="rfqBiz">사업 (선택)<input id="rfqBiz" type="text" placeholder="Boeing" autocomplete="off"></label>
+          <label class="field" for="rfqKind">자재특성<input id="rfqKind" type="text" placeholder="Chemical" autocomplete="off"></label>
+          <label class="field" for="rfqSuffix">고정 문구<input id="rfqSuffix" type="text" value="Material Spot" autocomplete="off"></label>
+          <label class="field" for="rfqDue">회신 기한 (due)<input id="rfqDue" type="date" class="data"></label>
+        </div>
+        <label class="field" for="rfqTitle">견적요청서 제목 (메일 제목·파일 이름)
+          <input id="rfqTitle" class="name-input" type="text" maxlength="150" autocomplete="off" spellcheck="false">
+        </label>
+      </div>
+      <div class="row"><button class="btn" id="btnRfq" type="button">견적요청서 만들기</button><span id="rfqMsg"></span></div>
     </div>
   </div>
 </section>
@@ -392,7 +453,44 @@ table.list td.nw { white-space: nowrap }
 </section>
 
 </div>
+</div>
+
+<div id="viewRecords" class="stack" hidden>
+  <div class="panel">
+    <div class="panel-head">
+      <h2>진행 중</h2>
+      <div class="row"><span class="muted" id="recMe"></span><button class="btn-ghost" id="btnRecReload" type="button">새로고침</button></div>
+    </div>
+    <p class="muted lead">내가 만든 구매내역서와 견적요청서입니다. 다른 담당자의 기록은 보이지 않습니다. 소요제기가 끝나면 <b>완료</b>를 눌러 보관 파일로 옮기세요.</p>
+    <div class="err" id="recMsg"></div>
+    <div class="rec-list" id="recList"></div>
+  </div>
+</div>
+</div>
+</div>
 </main>
+
+<div class="modal" id="draftModal" hidden role="dialog" aria-modal="true" aria-labelledby="dmTitle">
+  <div class="modal-box draft-box">
+    <div class="panel-head"><h2 id="dmTitle">메일 초안 만들기</h2><span class="muted">바로 보내지 않고 Gmail 임시보관함에 저장합니다</span></div>
+    <div class="dm-subject" id="dmSubject"></div>
+    <div class="dm-vendors">
+      <div class="row spread"><b>받을 업체 (숨은 참조)</b><label class="inline"><input type="checkbox" id="dmAll"> 전체 선택</label></div>
+      <div class="dm-list" id="dmList"></div>
+      <span class="muted" id="dmCount"></span>
+    </div>
+    <details class="dm-sign" id="dmSignBox">
+      <summary id="dmSignState">서명</summary>
+      <textarea id="dmSign" rows="5" placeholder="이름 / 직급&#10;부서&#10;전화 · 이메일"></textarea>
+      <div class="row"><button class="btn-ghost" id="dmSignSave" type="button">서명 저장</button><span class="muted">이 계정에만 저장됩니다. Gmail 서명이 있으면 그것을 씁니다.</span></div>
+    </details>
+    <div class="pk-foot">
+      <span class="muted">받는 사람은 비워 둡니다 · 첨부: 견적요청서(엑셀)</span>
+      <div class="row"><button class="btn-ghost" id="dmCancel" type="button">취소</button><button class="btn" id="dmOk" type="button">임시보관함에 만들기</button></div>
+    </div>
+    <div class="err" id="dmMsg"></div>
+  </div>
+</div>
 
 <div class="modal" id="picker" hidden role="dialog" aria-modal="true" aria-labelledby="pkTitle">
   <div class="modal-box">
@@ -683,13 +781,164 @@ function render() {
     return '<tr><td><div class="data">' + esc(r.item) + '</div><div class="desc">' + esc(c0.desc || '') + '</div></td><td class="n data">' + fmt(r.qty) + '</td><td class="data nw">' + esc(r.needBy) +
       '</td><td class="nw">' + esc(c0.supplier) + '<div class="data">' + fmt(c0.price) + ' ' + esc(c0.cur) + ' / ' + esc(c0.uom) + '</div></td><td class="data muted nw">' + (c0.start ? esc(c0.start) + '<br>~ ' + esc(c0.end) : '') + '</td></tr>';
   }).join('');
-  $('spotTbl').innerHTML = '<tr><th>ITEM</th><th class="n">수량</th><th>NEED-BY</th><th>사유</th></tr>' + rfq.map(function (r) {
-    return '<tr><td class="data">' + esc(r.item) + '<div class="desc">' + esc(r.desc || '') + '</div></td><td class="n data">' + fmt(r.qty) + '</td><td class="data nw">' + esc(r.needBy) + '</td><td class="muted">' + esc(r.reason) +
-      (r.registered || itemDesc[r.item] ? '' : ' <button type="button" class="link-btn" data-reg="' + esc(r.item) + '">신규 등록</button>') + '</td></tr>';
-  }).join('');
+  renderRfq(rfq);
   document.querySelectorAll('#spotTbl [data-reg]').forEach(function (b) { b.onclick = function () { openRegister(b.dataset.reg); }; });
   renderPurchase();
 }
+
+/* ---------- 4. 견적요청서 (단가 없는 Spot) ---------- */
+var RFQ_REMARK = 'MFG COC/TR';
+state.rfqEdit = {};      // 품목별로 고친 값 (다시 그려도 유지)
+function rfqKey(r) { return r.line + '|' + r.item; }
+function rfqMonthNote(needBy) {
+  var b = ($('base').value || '').split('-'), n = String(needBy || '').split('-');
+  if (n.length < 3) return 'Need-by 없음 → 첫 달 칸';
+  var k = (+n[0] - +b[0]) * 12 + (+n[1] - +b[1]);
+  return k < 0 ? 'Need-by가 작성일 달보다 이전 → 첫 달 칸' : k > 11 ? 'Need-by가 12개월 뒤 → 마지막 달 칸' : '';
+}
+function renderRfq(list) {
+  state.rfqList = list;
+  var cols = [['name', 'Item name *', 'w-name'], ['desc', 'Description', 'w-desc'], ['qpl', 'QPL (Mfg)', ''], ['uom', 'UOM', 'w-s'], ['remark', 'Remark', 'w-r']];
+  $('spotTbl').innerHTML = '<tr><th>ITEM</th>' + cols.map(function (c) { return '<th>' + c[1].toUpperCase() + '</th>'; }).join('') +
+    '<th class="n">수량</th><th>NEED-BY</th><th>사유</th></tr>' + list.map(function (r) {
+      var k = rfqKey(r), e = state.rfqEdit[k] = state.rfqEdit[k] || { name: '', desc: r.desc || '', qpl: r.qpl || '', uom: r.uom || '', remark: RFQ_REMARK };
+      var note = rfqMonthNote(r.needBy);
+      return '<tr><td class="data nw">' + esc(r.item) + '</td>' + cols.map(function (c) {
+          return '<td><input class="' + c[2] + '" data-k="' + esc(k) + '" data-f="' + c[0] + '" value="' + esc(e[c[0]]) + '" aria-label="' + esc(r.item + ' ' + c[1]) + '"' + (c[0] === 'name' ? ' placeholder="예: LOCTITE EA 9837.1"' : '') + '></td>';
+        }).join('') +
+        '<td class="n data">' + fmt(r.qty) + '</td><td class="data nw">' + esc(r.needBy) + (note ? '<div class="warn">' + esc(note) + '</div>' : '') + '</td><td class="muted">' + esc(r.reason) +
+        (r.registered || itemDesc[r.item] ? '' : ' <button type="button" class="link-btn" data-reg="' + esc(r.item) + '">신규 등록</button>') + '</td></tr>';
+    }).join('');
+  $('spotTbl').querySelectorAll('input[data-k]').forEach(function (el) {
+    el.addEventListener('input', function () { state.rfqEdit[el.dataset.k][el.dataset.f] = el.value; });
+  });
+  document.querySelectorAll('#spotTbl [data-reg]').forEach(function (b) { b.onclick = function () { openRegister(b.dataset.reg); }; });
+  updateRfqTitle();
+}
+function autoRfqTitle() {
+  var ymd = ($('base').value || '').replace(/-/g, '').slice(2);
+  var mid = [$('rfqBiz').value, $('rfqKind').value, $('rfqSuffix').value].map(function (x) { return x.replace(/\s+/g, ' ').trim(); }).filter(String).join(' ');
+  var d = ($('rfqDue').value || '').split('-');
+  return '[KE] RFQ // ' + ymd + (mid ? ' ' + mid : '') + (d.length === 3 ? ' (due ' + (+d[1]) + '/' + (+d[2]) + ')' : '');
+}
+function updateRfqTitle() { if (!state.rfqTitleEdited) $('rfqTitle').value = autoRfqTitle(); }
+['rfqBiz', 'rfqKind', 'rfqSuffix', 'rfqDue'].forEach(function (id) { $(id).addEventListener('input', updateRfqTitle); $(id).addEventListener('change', updateRfqTitle); });
+$('base').addEventListener('change', updateRfqTitle);
+$('rfqTitle').addEventListener('input', function () { state.rfqTitleEdited = this.value !== autoRfqTitle(); });
+
+$('btnRfq').onclick = function () {
+  var b = this, list = state.rfqList || [];
+  $('rfqMsg').innerHTML = '';
+  var missing = list.filter(function (r) { return !String(state.rfqEdit[rfqKey(r)].name).trim(); });
+  if (missing.length) { $('rfqMsg').innerHTML = '<span class="err">Item name을 적어 주세요: ' + esc(missing.map(function (r) { return r.item; }).join(', ')) + '</span>'; return; }
+  if (!$('rfqDue').value) { $('rfqMsg').innerHTML = '<span class="err">회신 기한(due)을 골라 주세요.</span>'; $('rfqDue').focus(); return; }
+  var items = list.map(function (r) {
+    var e = state.rfqEdit[rfqKey(r)];
+    return { item: r.item, registered: !!(r.registered || itemDesc[r.item]), name: e.name.trim(), desc: e.desc.trim(), qpl: e.qpl.trim(), uom: e.uom.trim(), remark: e.remark.trim(),
+      qty: r.qty, needBy: r.needBy, program: r.program, shelfLife: r.shelfLife, shipFrom: r.shipFrom, taxCode: r.taxCode };
+  });
+  pickFolder('견적요청서').then(function (folder) {
+    if (!folder) return;
+    b.disabled = true; b.textContent = '만드는 중…';
+    return call('apiCreateRfq', { baseDate: $('base').value, title: $('rfqTitle').value, due: $('rfqDue').value, folder: folder.id, items: items }).then(function (d) {
+      $('rfqMsg').innerHTML = '<span class="rfq-done ok-msg">견적요청서를 ' + esc(folder.name) + '에 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">열어서 검토 ↗</a>' +
+        '<button class="btn" type="button" id="btnRfqDraft">검토했으면 메일 초안 만들기</button></span>';
+      $('btnRfqDraft').onclick = function () { openDraft(d.recordId, d.name); };
+      loadRecords();
+    });
+  }).catch(function (e) { $('rfqMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; })
+    .finally(function () { b.disabled = false; b.textContent = '견적요청서 만들기'; });
+};
+
+/* ---------- 메일 초안 (Gmail 임시보관함) ---------- */
+var draft = { recordId: null, vendors: null };
+function openDraft(recordId, title) {
+  draft.recordId = recordId;
+  $('dmSubject').textContent = title;
+  $('dmMsg').textContent = ''; $('dmAll').checked = false;
+  $('draftModal').hidden = false;
+  $('dmList').innerHTML = '<div class="pk-empty">업체목록 불러오는 중…</div>';
+  call('apiVendors').then(function (d) {
+    draft.vendors = d.vendors;
+    $('dmList').innerHTML = d.vendors.length ? d.vendors.map(function (v, i) {
+      return '<label><input type="checkbox" data-i="' + i + '"><span>' + esc(v.name) + '</span><small>' + esc(v.emails.join(', ')) + '</small></label>';
+    }).join('') : '<div class="pk-empty">' + (d.missing ? '자재정보 스프레드시트에 "업체목록" 탭(A 업체명, B 이메일)을 만들어 주세요.' : '업체목록에 업체가 없습니다.') + '</div>';
+    $('dmList').querySelectorAll('input').forEach(function (c) { c.onchange = countDraft; });
+    countDraft();
+  }).catch(function (e) { $('dmMsg').textContent = e.message || e; });
+  call('apiSignature').then(showSign);
+}
+function showSign(sg) {
+  $('dmSignState').textContent = sg.source === 'gmail' ? '서명: Gmail 설정의 서명을 씁니다' : sg.source === 'saved' ? '서명: 저장한 서명을 씁니다 (눌러서 고치기)' : '서명: 없음 — 눌러서 서명 등록';
+  $('dmSign').value = sg.source === 'saved' ? sg.html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '') : '';
+  $('dmSignBox').open = sg.source === 'none';
+}
+function chosenEmails() {
+  var out = [];
+  $('dmList').querySelectorAll('input:checked').forEach(function (c) { draft.vendors[+c.dataset.i].emails.forEach(function (m) { if (out.indexOf(m) < 0) out.push(m); }); });
+  return out;
+}
+function countDraft() {
+  var n = $('dmList').querySelectorAll('input:checked').length;
+  $('dmCount').textContent = n ? n + '개 업체 · 메일 주소 ' + chosenEmails().length + '개를 숨은 참조로 넣습니다' : '업체를 골라 주세요';
+}
+$('dmAll').onchange = function () { var on = this.checked; $('dmList').querySelectorAll('input').forEach(function (c) { c.checked = on; }); countDraft(); };
+$('dmSignSave').onclick = function () { call('apiSaveSignature', $('dmSign').value).then(function (sg) { showSign(sg); $('dmMsg').textContent = ''; }).catch(function (e) { $('dmMsg').textContent = e.message || e; }); };
+$('dmCancel').onclick = function () { $('draftModal').hidden = true; };
+$('draftModal').addEventListener('click', function (e) { if (e.target === this) this.hidden = true; });
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('draftModal').hidden) $('draftModal').hidden = true; });
+$('dmOk').onclick = function () {
+  var b = this, bcc = chosenEmails();
+  if (!bcc.length) { $('dmMsg').textContent = '메일을 받을 업체를 한 곳 이상 골라 주세요.'; return; }
+  b.disabled = true; b.textContent = '만드는 중…';
+  call('apiCreateRfqDraft', { recordId: draft.recordId, bcc: bcc }).then(function (d) {
+    $('draftModal').hidden = true;
+    var msg = '<span class="ok-msg">Gmail 임시보관함에 초안을 만들었습니다 (숨은 참조 ' + d.bccCount + '명) · <a href="' + esc(d.link) + '" target="_blank" rel="noopener">임시보관함 열기 ↗</a> — 확인 후 직접 보내세요.</span>';
+    if ($('btnRfqDraft')) $('rfqMsg').innerHTML = msg;
+    $('recMsg').innerHTML = msg;
+    loadRecords();
+  }).catch(function (e) { $('dmMsg').textContent = e.message || e; })
+    .finally(function () { b.disabled = false; b.textContent = '임시보관함에 만들기'; });
+};
+
+/* ---------- 진행 중 (내 기록) ---------- */
+function showView(v) {
+  document.querySelectorAll('.side-btn').forEach(function (b) { b.classList.toggle('on', b.dataset.view === v); });
+  $('viewNew').hidden = v !== 'new';
+  $('viewRecords').hidden = v !== 'records';
+  if (v === 'records') loadRecords();
+}
+document.querySelectorAll('.side-btn').forEach(function (b) { b.onclick = function () { showView(b.dataset.view); }; });
+$('btnRecReload').onclick = function () { loadRecords(); };
+function loadRecords() {
+  return call('apiMyRecords').then(function (d) {
+    state.records = d.records;
+    $('recCount').textContent = d.records.length || '';
+    $('recMe').textContent = d.me ? d.me + ' 기록' : '';
+    if (!d.archiveReady) $('recMsg').innerHTML = '<span class="err">완료 보관 파일이 설정되지 않았습니다 (스크립트 속성 ARCHIVE_SHEET_ID).</span>';
+    $('recList').innerHTML = d.records.length ? d.records.map(function (r) {
+      var rfq = r.kind === '견적요청서';
+      return '<div class="rec"><div><span class="chip ' + (rfq ? 'chip-spot' : 'chip-ok') + '">' + esc(r.kind) + '</span> <span class="rec-title">' + esc(r.title) + '</span></div>' +
+        '<div class="rec-meta"><span>' + esc(r.created) + '</span><span>상태: <b>' + esc(r.status) + '</b></span><span>품목 ' + (r.items || []).length + '개</span>' +
+          (r.bcc ? '<span>숨은 참조: ' + esc(r.bcc) + '</span>' : '') + (rfq ? '<span>견적값 입력은 Spot 구매내역서 양식을 받은 뒤 추가됩니다</span>' : '') + '</div>' +
+        '<div class="rec-actions"><a class="btn-ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener">파일 열기 ↗</a>' +
+          (rfq ? '<button class="btn-ghost" type="button" data-draft="' + esc(r.id) + '">' + (r.draft ? '메일 초안 다시 만들기' : '메일 초안 만들기') + '</button>' : '') +
+          '<button class="btn-ghost" type="button" data-done="' + esc(r.id) + '">완료</button></div></div>';
+    }).join('') : '<div class="rec-empty">진행 중인 기록이 없습니다. 구매내역서나 견적요청서를 만들면 여기에 쌓입니다.</div>';
+    $('recList').querySelectorAll('[data-draft]').forEach(function (b) {
+      b.onclick = function () { var r = state.records.filter(function (x) { return x.id === b.dataset.draft; })[0]; openDraft(r.id, r.title); };
+    });
+    $('recList').querySelectorAll('[data-done]').forEach(function (b) {
+      b.onclick = function () {
+        if (!b.dataset.ok) { b.dataset.ok = '1'; b.textContent = '한 번 더 누르면 보관'; return; }
+        b.disabled = true;
+        call('apiCompleteRecord', b.dataset.done).then(function () { $('recMsg').innerHTML = '<span class="ok-msg">완료 처리해서 보관 파일로 옮겼습니다.</span>'; loadRecords(); })
+          .catch(function (e) { $('recMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; b.disabled = false; });
+      };
+    });
+  }).catch(function (e) { $('recMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; });
+}
+loadRecords();
 
 /* ---------- 1-1. 신규 자재 등록 ---------- */
 var REG_TYPES = {
@@ -933,6 +1182,7 @@ function createPurchase(b, folder) {
     $('purchaseCard').classList.add('done');
     $('doneNote').innerHTML = '구매내역서를 ' + esc(folder.name) + '에 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.name) + ' 열기 ↗</a>';
     loadPreview(d);
+    loadRecords();
   }).catch(function (e) { $('msg2').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; })
     .finally(function () { b.disabled = false; b.textContent = '구매내역서 만들기'; });
 }

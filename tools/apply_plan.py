@@ -14,7 +14,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 tpl, plan_path, out = sys.argv[1:4]
 wb = openpyxl.load_workbook(tpl)
 ops = json.load(open(plan_path, encoding='utf-8'))
-P = wb['_proto']
+P = wb['_proto'] if '_proto' in wb.sheetnames else None
 
 
 def rng(o):
@@ -27,6 +27,10 @@ for o in ops:
         ws = wb[o['s']]
         for c in range(o['c1'], o['c2'] + 1):
             ws.cell(o['r'], c)._style = copy(P.cell(o['from'], c)._style)
+    elif op == 'rowFmt':
+        ws, src = wb[o['s']], wb[o['fs']]
+        for c in range(o['c1'], o['c2'] + 1):
+            ws.cell(o['r'], c)._style = copy(src.cell(o['fr'], c)._style)
     elif op == 'cellFmt':
         wb[o['s']].cell(o['r'], o['c'])._style = copy(wb[o['fs']].cell(o['fr'], o['fc'])._style)
     elif op == 'set':
@@ -68,7 +72,8 @@ for o in ops:
     else:
         raise SystemExit('unknown op ' + op)
 
-del wb['_proto']
+if P is not None:
+    del wb['_proto']
 wb.active = 0
 wb.save(out)
 print('saved', out)

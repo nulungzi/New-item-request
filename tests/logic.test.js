@@ -279,3 +279,45 @@ test('MOQ 읽기: 숫자 = 최소, Min x = 최소, Multi x = x개 단위', () =>
   assert.strictEqual(L.moqWarning_(900, 'Min 819, Multi 819'), '수량 900 → MOQ(최소 819, 819개 단위) · 1638개로 주문');
   assert.strictEqual(L.moqWarning_(5, '-'), '');
 });
+
+test('견적요청서 제목', () => {
+  const base = L.toDate_('2026-11-10');
+  assert.strictEqual(L.rfqTitle_(base, 'Boeing', 'Chemical', undefined, '2026-11-20'), '[KE] RFQ // 261110 Boeing Chemical Material Spot (due 11/20)');
+  assert.strictEqual(L.rfqTitle_(base, '', ' Safety  wire ', 'Spot material', '2026-11-09'), '[KE] RFQ // 261110 Safety wire Spot material (due 11/9)');
+  assert.strictEqual(L.rfqTitle_(base, '', '', '', ''), '[KE] RFQ // 261110');
+});
+
+test('견적요청서 월 칸: 작성일 달부터 12개월', () => {
+  const base = L.toDate_('2026-11-10');
+  assert.deepStrictEqual(L.rfqMonth_(base, L.toDate_('2026-11-30')), { k: 0, note: '' });
+  assert.deepStrictEqual(L.rfqMonth_(base, L.toDate_('2027-06-10')), { k: 7, note: '' });
+  assert.strictEqual(L.rfqMonth_(base, L.toDate_('2027-10-31')).k, 11);
+  assert.match(L.rfqMonth_(base, L.toDate_('2027-11-01')).note, /12개월 뒤/);
+  assert.match(L.rfqMonth_(base, L.toDate_('2026-10-01')).note, /이전/);
+});
+
+test('견적요청서 작성 계획', () => {
+  const base = L.toDate_('2026-11-10');
+  const ops = L.buildRfqPlan_([
+    { item: 'MS20995C20', registered: false, name: 'MS20995C20', desc: 'Safety Wire', qpl: 'MALIN Co', uom: 'RL', qty: 3, needBy: L.toDate_('2027-01-15') },
+    { item: 'KERC00016', registered: true, name: 'PR-1776', desc: 'PRIMER', qpl: 'PPG', uom: 'KT', remark: '', qty: 5, needBy: L.toDate_('2027-03-01') },
+  ], base);
+  const get = (r, c) => (ops.filter(o => o.op === 'set' && o.r === r && o.c === c).pop() || {}).v;
+  assert.deepStrictEqual(get(2, 9), { date: '2026-11-01' });
+  assert.deepStrictEqual(get(2, 20), { date: '2027-10-01' });
+  assert.deepStrictEqual([get(3, 3), get(3, 4), get(3, 8), get(3, 11), get(3, 21)], ['TBD', 'MS20995C20', 'MFG COC/TR', 3, '=SUM(I3:T3)']);
+  assert.deepStrictEqual([get(4, 2), get(4, 3), get(4, 8), get(4, 13), get(4, 11)], [2, 'KERC00016', '', 5, '']);
+  assert.deepStrictEqual(ops.filter(o => o.op === 'rowFmt').map(o => [o.fr, o.r]), [[3, 4]]);
+});
+
+test('견적요청 메일 본문', () => {
+  const m = L.rfqEmail_([{ name: 'LOCTITE EA 9837.1', desc: 'BMS 8-341 Type III <A&B>', qpl: 'Henkel', uom: 'EA', qty: 20000, needBy: '' }], '11/20', '<b>김민형 사원</b>');
+  assert.match(m.html, /as you can find in the below due 11\/20\./);
+  assert.match(m.html, /LOCTITE EA 9837\.1/);
+  assert.match(m.html, /&lt;A&amp;B&gt;/);
+  assert.match(m.html, />20,000</);
+  assert.match(m.html, />ASAP</);
+  assert.match(m.html, /MFG COC\/TR/);
+  assert.ok(m.html.indexOf('Thank you') < m.html.indexOf('김민형'));
+  assert.match(m.text, /1\. LOCTITE EA 9837\.1 \| BMS 8-341/);
+});

@@ -17,6 +17,9 @@ test('apiCreatePurchase: 템플릿 복사 후 계획 적용', () => {
       newDataValidation: () => range },
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => (k === 'TEMPLATE_ID' ? 'tpl' : null) }) },
     DriveApp: { getFileById: () => ({ makeCopy: () => ({ getId: () => 'new' }) }) },
+    LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
+    Session: { getActiveUser: () => ({ getEmail: () => 'me@ke.com' }), getEffectiveUser: () => ({ getEmail: () => 'me@ke.com' }) },
+    Utilities: { formatDate: () => '261110-120000' },
   };
   inContext(ctx);
   const res = ctx.apiCreatePurchase({ baseDate: '2026-11-10', rates: { USD: 1350 }, remarks: {}, lines: [{ item: 'A1', qty: 3, needBy: '2027-06-10', contractRow: 2 }] });
@@ -59,6 +62,8 @@ test('checkSetup: 자재정보·템플릿 점검', () => {
   const report = ctx.checkSetup();
   assert.match(report, /✅ 자재정보: 머리글 1행, 품목 1줄/);
   assert.match(report, /❌ 템플릿에 없는 탭: _proto/);
+  assert.match(report, /RFQ_TEMPLATE_ID 가 없습니다/);
+  assert.match(report, /ARCHIVE_SHEET_ID 가 없습니다/);
 });
 
 test('apiRegisterItem: 자재정보 맨 아래에 머리글 순서대로 추가, 번호 열 +1', () => {
@@ -125,4 +130,77 @@ test('apiListFolders · apiCreateFolder: 내 드라이브 폴더 탐색', () => 
   assert.strictEqual(ctx.apiCreateFolder('T', '  2027 소요 ').name, '2027 소요');
   assert.throws(() => ctx.apiCreateFolder('T', ' '), /폴더 이름/);
   assert.throws(() => ctx.apiListFolders('NOPE'), /폴더를 열 수 없습니다/);
+});
+
+
+/* ---------- 견적요청서 · 메일 초안 · 진행 기록 (가짜 시트에 실제로 값이 쌓이게) ---------- */
+function fakeBook(tabs) {
+  const mk = (name, rows) => {
+    const sh = {
+      name, rows,
+      getDataRange: () => ({ getValues: () => sh.rows.map(r => r.slice()) }),
+      appendRow: r => sh.rows.push(r.slice()),
+      deleteRow: n => sh.rows.splice(n - 1, 1),
+      getRange: (r, c, nr, nc) => ({
+        setValues: v => { v.forEach((row, i) => row.forEach((x, j) => { (sh.rows[r - 1 + i] = sh.rows[r - 1 + i] || [])[c - 1 + j] = x; })); return chain; },
+        setValue: x => { (sh.rows[r - 1] = sh.rows[r - 1] || [])[c - 1] = x; return chain; },
+        setFontWeight: () => chain, setBackground: () => chain,
+      }),
+      setFrozenRows: () => {},
+    };
+    const chain = { setFontWeight: () => chain, setBackground: () => chain };
+    return sh;
+  };
+  const book = { tabs: {} };
+  Object.entries(tabs).forEach(([n, rows]) => (book.tabs[n] = mk(n, rows)));
+  book.getSheetByName = n => book.tabs[n] || null;
+  book.insertSheet = n => (book.tabs[n] = mk(n, []));
+  return book;
+}
+
+test('견적요청서 → 메일 초안 → 내 기록 → 완료 보관', () => {
+  const db = fakeBook({ 업체목록: [['업체명', '이메일'], ['Hexcel', 'a@hexcel.com; b@hexcel.com'], ['3M', 'q@3m.com'], ['', ''], ['Hexcel', 'a@hexcel.com']] });
+  const archive = fakeBook({});
+  let user = 'me@ke.com', drafts = [], applied = 0;
+  const rfqBook = { getUrl: () => 'RFQURL', getId: () => 'RFQID', getSheetByName: () => new Proxy({}, { get: () => () => new Proxy({}, { get: (t, k) => () => (applied++, t) }) }) };
+  const props = { RFQ_TEMPLATE_ID: 'tpl', ARCHIVE_SHEET_ID: 'arc' };
+  const ctx = inContext({
+    console: { warn: () => {}, log: () => {} },
+    SpreadsheetApp: { getActive: () => db, openById: id => (id === 'arc' ? archive : rfqBook), CopyPasteType: { PASTE_FORMAT: 'F' }, BorderStyle: { SOLID: 'S' } },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k] || null }), getUserProperties: () => ({ getProperty: () => '<b>김민형 사원</b>', setProperty: () => {} }) },
+    DriveApp: { getFileById: () => ({ makeCopy: () => ({ getId: () => 'RFQID' }) }) },
+    LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
+    Session: { getActiveUser: () => ({ getEmail: () => user }), getEffectiveUser: () => ({ getEmail: () => user }) },
+    Utilities: { formatDate: () => '261110-120000' },
+    UrlFetchApp: { fetch: () => ({ getResponseCode: () => 200, getBlob: () => ({ setName: n => ({ name: n }) }) }) },
+    ScriptApp: { getOAuthToken: () => 't' },
+    GmailApp: { createDraft: (to, subj, text, opt) => { drafts.push({ to, subj, text, opt }); return { getId: () => 'D1' }; } },
+  });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(ctx.apiVendors())), { vendors: [{ name: 'Hexcel', emails: ['a@hexcel.com', 'b@hexcel.com'] }, { name: '3M', emails: ['q@3m.com'] }], missing: false });
+
+  const title = '[KE] RFQ // 261110 Boeing Chemical Material Spot (due 11/20)';
+  const r = ctx.apiCreateRfq({ baseDate: '2026-11-10', title, due: '2026-11-20', items: [
+    { item: 'MS20995C20', registered: false, name: 'MS20995C20', desc: 'Safety Wire', qpl: 'MALIN Co', uom: 'RL', remark: 'MFG COC/TR', qty: 3, needBy: '2027-01-15' }] });
+  assert.ok(applied > 0);
+  assert.strictEqual(r.name, title);
+  assert.throws(() => ctx.apiCreateRfqDraft({ recordId: r.recordId, bcc: [] }), /한 곳 이상/);
+  const d = ctx.apiCreateRfqDraft({ recordId: r.recordId, bcc: ['a@hexcel.com', 'q@3m.com', 'a@hexcel.com', 'x'] });
+  assert.strictEqual(d.bccCount, 2);
+  assert.strictEqual(drafts[0].to, '');                        // 받는 사람 비움
+  assert.strictEqual(drafts[0].opt.bcc, 'a@hexcel.com,q@3m.com');
+  assert.strictEqual(drafts[0].subj, title);
+  assert.match(drafts[0].opt.htmlBody, /due 11\/20\./);
+  assert.match(drafts[0].opt.htmlBody, /김민형 사원/);
+  assert.strictEqual(drafts[0].opt.attachments[0].name, title + '.xlsx');
+
+  let mine = ctx.apiMyRecords();
+  assert.deepStrictEqual([mine.records.length, mine.records[0].status, mine.records[0].bcc], [1, '메일 초안', 'a@hexcel.com, q@3m.com']);
+  user = 'other@ke.com';                                          // 다른 담당자: 안 보이고 완료도 못 함
+  assert.strictEqual(ctx.apiMyRecords().records.length, 0);
+  assert.throws(() => ctx.apiCompleteRecord(r.recordId), /다른 담당자/);
+  user = 'me@ke.com';
+  ctx.apiCompleteRecord(r.recordId);
+  assert.strictEqual(ctx.apiMyRecords().records.length, 0);
+  assert.strictEqual(archive.tabs['완료기록'].rows.length, 2);   // 머리글 + 1건
+  assert.strictEqual(archive.tabs['완료기록'].rows[1][7], '완료');
 });

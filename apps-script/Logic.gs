@@ -653,3 +653,98 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule, extra) {
 
   return ops;
 }
+
+/* ------------------------------------------------------------------
+ * 견적요청서 (RFQ)
+ * 템플릿: templates/견적요청서_템플릿.xlsx 의 RFQ_List 탭
+ *   B L/I · C KE Item No · D Item name · E Description · F QPL(Mfg) · G UOM · H Remark
+ *   I~T 월별 수량(작성일 달부터 12개월) · U RFQ Qty(ttl) · V~AE 업체 기입란
+ * ------------------------------------------------------------------ */
+var RFQ = {
+  SHEET: 'RFQ_List', FIRST: 3, MONTHS: 12,
+  C: { LI: 2, KE: 3, NAME: 4, DESC: 5, QPL: 6, UOM: 7, REMARK: 8, M0: 9, TOTAL: 21, LAST: 31 },
+  REMARK: 'MFG COC/TR', SUFFIX: 'Material Spot', ROW_PT: 26.25
+};
+
+/** Need-by 가 작성일 달부터 몇 번째 달 칸인지 (0~11). 범위를 벗어나면 맨 앞/뒤 칸과 함께 표시 */
+function rfqMonth_(base, needBy) {
+  if (!needBy) return { k: 0, note: 'Need-by 없음 → 첫 달 칸' };
+  var k = (needBy.getFullYear() - base.getFullYear()) * 12 + needBy.getMonth() - base.getMonth();
+  if (k < 0) return { k: 0, note: 'Need-by가 작성일 달보다 이전 → 첫 달 칸' };
+  if (k >= RFQ.MONTHS) return { k: RFQ.MONTHS - 1, note: 'Need-by가 12개월 뒤 → 마지막 달 칸' };
+  return { k: k, note: '' };
+}
+
+/** 'yyyy-mm-dd' 또는 Date → 'm/d' */
+function dueText_(d) {
+  d = toDate_(d);
+  return d ? (d.getMonth() + 1) + '/' + d.getDate() : '';
+}
+
+/**
+ * 견적요청서 제목. 예: [KE] RFQ // 261110 Boeing Chemical Material Spot (due 11/20)
+ * biz(사업)·kind(자재특성)는 비우면 빠진다. suffix 기본 'Material Spot'
+ */
+function rfqTitle_(base, biz, kind, suffix, due) {
+  var ymd = fmtDate_(base).replace(/-/g, '').slice(2);
+  var mid = [biz, kind, suffix === undefined ? RFQ.SUFFIX : suffix]
+    .map(function (x) { return String(x || '').replace(/\s+/g, ' ').trim(); }).filter(String).join(' ');
+  var d = dueText_(due);
+  return '[KE] RFQ // ' + ymd + (mid ? ' ' + mid : '') + (d ? ' (due ' + d + ')' : '');
+}
+
+/**
+ * 견적요청서 작성 계획 (applyPlan_ 과 같은 작업 목록).
+ * items: [{item, registered, name, desc, qpl, uom, remark, qty, needBy(Date)}]
+ */
+function buildRfqPlan_(items, base) {
+  var ops = [], S = RFQ.SHEET, C = RFQ.C;
+  var set = function (r, c, v) { ops.push({ op: 'set', s: S, r: r, c: c, v: v }); };
+  for (var k = 0; k < RFQ.MONTHS; k++) {
+    var d = new Date(base.getFullYear(), base.getMonth() + k, 1);
+    set(2, C.M0 + k, { date: fmtDate_(d) });
+  }
+  items.forEach(function (it, i) {
+    var r = RFQ.FIRST + i;
+    if (i) ops.push({ op: 'rowFmt', s: S, fs: S, fr: RFQ.FIRST, r: r, c1: 1, c2: C.LAST });
+    ops.push({ op: 'height', s: S, r: r, pt: RFQ.ROW_PT });
+    set(r, C.LI, i + 1);
+    set(r, C.KE, it.registered ? it.item : 'TBD');
+    set(r, C.NAME, it.name || '');
+    set(r, C.DESC, it.desc || '');
+    set(r, C.QPL, it.qpl || '');
+    set(r, C.UOM, it.uom || '');
+    set(r, C.REMARK, it.remark === undefined ? RFQ.REMARK : it.remark);
+    for (var m = 0; m < RFQ.MONTHS; m++) set(r, C.M0 + m, '');
+    set(r, C.M0 + rfqMonth_(base, it.needBy).k, Number(it.qty));
+    set(r, C.TOTAL, '=SUM(' + colA_(C.M0) + r + ':' + colA_(C.M0 + RFQ.MONTHS - 1) + r + ')');
+  });
+  return ops;
+}
+
+/** 메일 본문 (HTML + 글자). items 는 견적요청서와 같은 목록, due 'm/d', signature HTML */
+function rfqEmail_(items, due, signatureHtml) {
+  var e = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var qty = function (n) { return Number(n).toLocaleString('en-US', { maximumFractionDigits: 4 }); };
+  var need = function (d) { d = toDate_(d); return d ? fmtDate_(d) : 'ASAP'; };
+  var cell = 'border:1px solid #000;padding:4px 6px;font-family:Arial,sans-serif;font-size:10pt;';
+  var head = ['L/I', 'Product Name', 'Description', 'QPL<br>(Mfg)', 'UOM', 'Remark', 'Qty', 'Need-By'];
+  var table = '<table style="border-collapse:collapse;margin:8px 0 16px">' +
+    '<tr>' + head.map(function (h, i) {
+      return '<th style="' + cell + 'background:#deeaf6;font-weight:bold;text-align:' + (i === 1 ? 'left' : 'center') + ';white-space:nowrap">' + h + '</th>';
+    }).join('') + '</tr>' +
+    items.map(function (it, i) {
+      var v = [i + 1, e(it.name), e(it.desc), e(it.qpl), e(it.uom), e(it.remark === undefined ? RFQ.REMARK : it.remark), qty(it.qty), need(it.needBy)];
+      return '<tr>' + v.map(function (x, j) { return '<td style="' + cell + 'text-align:' + (j === 1 ? 'left' : 'center') + '">' + x + '</td>'; }).join('') + '</tr>';
+    }).join('') + '</table>';
+  var p = function (t) { return '<p style="margin:0 0 14px;font-family:Arial,sans-serif;font-size:10pt">' + t + '</p>'; };
+  var dueLine = 'We would like to have a quote on the items as you can find in the below' + (due ? ' due ' + e(due) : ' ASAP') + '.';
+  var html = '<div>' + p('Dear Sir/Madam,') + p('Hope you are doing well.') + p(dueLine) +
+    p('Please review and let us know the relevant information attached.') + p('Below is the summary of the RFQ') +
+    table + p('Thank you') + (signatureHtml ? '<div>' + signatureHtml + '</div>' : '') + '</div>';
+  var text = ['Dear Sir/Madam,', '', 'Hope you are doing well.', '', dueLine.replace(/&amp;/g, '&'), '',
+    'Please review and let us know the relevant information attached.', '', 'Below is the summary of the RFQ', '']
+    .concat(items.map(function (it, i) { return (i + 1) + '. ' + [it.name, it.desc, it.qpl, it.uom, it.remark === undefined ? RFQ.REMARK : it.remark, qty(it.qty), need(it.needBy)].join(' | '); }))
+    .concat(['', 'Thank you']).join('\n');
+  return { html: html, text: text };
+}

@@ -10,9 +10,14 @@
  *   TEMPLATE_ID      (필수) 구매내역서 템플릿 구글 시트 ID — templates/구매내역서_템플릿.xlsx 를 드라이브에 올려 구글 시트로 저장
  *   OUTPUT_FOLDER_ID (권장) 생성한 구매내역서를 넣을 드라이브 폴더 ID
  *   SHEET_ID         (선택) 자재정보가 있는 스프레드시트 ID (없으면 이 스크립트가 붙은 시트)
+ *   RFQ_TEMPLATE_ID  (견적요청서) 견적요청서 템플릿 구글 시트 ID — templates/견적요청서_템플릿.xlsx
+ *   ARCHIVE_SHEET_ID (완료 보관) 완료된 기록을 옮겨 둘 다른 스프레드시트 ID
  */
 var SHEET_MASTER = '자재정보';
 var SHEET_RATE = '환율';
+var SHEET_VENDOR = '업체목록';     // A 업체명 · B 이메일 (한 칸에 여러 개면 ; 또는 , 로 구분)
+var SHEET_RECORD = '진행기록';     // 내가 만든 구매내역서·견적요청서 (완료 전)
+var RECORD_HEADERS = ['ID', '종류', '담당자', '작성일', '제목', '파일 URL', '파일 ID', '상태', '메일 초안', '숨은 참조', '품목(JSON)', '수정일'];
 
 /* ================================================================
  * 설정·시트 접근
@@ -166,7 +171,9 @@ function apiCreatePurchase(payload) {
   var proto = ss.getSheetByName(TPL.PROTO);
   if (proto) ss.deleteSheet(proto);
   ss.setActiveSheet(ss.getSheetByName(TPL.SUMMARY));
-  return { url: ss.getUrl(), name: name, id: ss.getId() };
+  var rec = addRecord_({ kind: '계약 구매내역서', title: name, url: ss.getUrl(), fileId: ss.getId(), status: '작성',
+    items: lines.map(function (l) { return { item: l.item, qty: l.qty, needBy: fmtDate_(l.needBy), supplier: l.supplier, price: l.price, cur: l.cur }; }) });
+  return { url: ss.getUrl(), name: name, id: ss.getId(), recordId: rec.id };
 }
 
 /** 화면에서 받은 줄 + 자재정보 계약 행 → 구매내역서 한 줄 */
@@ -338,6 +345,7 @@ function applyPlan_(ss, ops) {
     switch (o.op) {
       case 'fmt': sh(TPL.PROTO).getRange(o.from, o.c1, 1, o.c2 - o.c1 + 1).copyTo(sh(o.s).getRange(o.r, o.c1), FORMAT, false); break;
       case 'cellFmt': sh(o.fs).getRange(o.fr, o.fc).copyTo(sh(o.s).getRange(o.r, o.c), FORMAT, false); break;
+      case 'rowFmt': sh(o.fs).getRange(o.fr, o.c1, 1, o.c2 - o.c1 + 1).copyTo(sh(o.s).getRange(o.r, o.c1), FORMAT, false); break;
       case 'set': setCell_(sh(o.s).getRange(o.r, o.c), o.v); break;
       case 'nf': sh(o.s).getRange(o.r, o.c).setNumberFormat(o.f); break;
       case 'bg': sh(o.s).getRange(o.r, o.c).setBackground(o.color); break;
@@ -462,10 +470,185 @@ function checkSetup() {
       else ok('템플릿: ' + tpl.getName());
     } catch (e) { bad('템플릿을 열 수 없습니다 (ID·권한 확인): ' + e.message); }
   }
+  var rid = prop_('RFQ_TEMPLATE_ID');
+  if (!rid) bad('스크립트 속성 RFQ_TEMPLATE_ID 가 없습니다 (견적요청서 템플릿)');
+  else { try { var rt = SpreadsheetApp.openById(rid); if (rt.getSheetByName(RFQ.SHEET)) ok('견적요청서 템플릿: ' + rt.getName()); else bad('견적요청서 템플릿에 "' + RFQ.SHEET + '" 탭이 없습니다'); } catch (e) { bad('견적요청서 템플릿을 열 수 없습니다: ' + e.message); } }
+  var aid = prop_('ARCHIVE_SHEET_ID');
+  if (!aid) bad('스크립트 속성 ARCHIVE_SHEET_ID 가 없습니다 (완료 보관 파일)');
+  else { try { ok('완료 보관 파일: ' + SpreadsheetApp.openById(aid).getName()); } catch (e) { bad('완료 보관 파일을 열 수 없습니다: ' + e.message); } }
+  var vs = db_().getSheetByName(SHEET_VENDOR);
+  if (vs) ok('업체목록: ' + apiVendors().vendors.length + '개 업체'); else bad('자재정보 스프레드시트에 "업체목록" 탭이 없습니다 (A 업체명 · B 이메일)');
+  lines.push(typeof Gmail !== 'undefined' ? '✅ Gmail API 서비스: 사용 중 (Gmail 서명 자동 사용)' : 'ℹ️ Gmail API 서비스 없음 — 사이트에서 저장한 서명을 씁니다');
   var fid = prop_('OUTPUT_FOLDER_ID');
   if (fid) { try { ok('저장 폴더: ' + DriveApp.getFolderById(fid).getName()); } catch (e) { bad('OUTPUT_FOLDER_ID 폴더를 열 수 없습니다: ' + e.message); } }
   else lines.push('ℹ️ OUTPUT_FOLDER_ID 없음 — 구매내역서가 템플릿과 같은 위치에 저장됩니다');
 
   console.log(lines.join('\n'));
   return lines.join('\n');
+}
+
+/* ================================================================
+ * 견적요청서 (RFQ) · Gmail 임시보관함 초안
+ * ================================================================ */
+/** 견적요청서 만들기. payload = {baseDate, title, due('yyyy-mm-dd'), folder, items:[{item, registered, name, desc, qpl, uom, remark, qty, needBy, program, shelfLife, shipFrom, taxCode}]} */
+function apiCreateRfq(payload) {
+  var items = (payload.items || []).map(function (it) {
+    var o = {};
+    Object.keys(it).forEach(function (k) { o[k] = it[k]; });
+    o.needBy = toDate_(it.needBy);
+    return o;
+  });
+  if (!items.length) throw new Error('견적요청서에 넣을 품목이 없습니다.');
+  var base = toDate_(payload.baseDate) || toDate_(new Date());
+  var title = String(payload.title || '').trim() || rfqTitle_(base, '', '', undefined, payload.due);
+  var tid = prop_('RFQ_TEMPLATE_ID');
+  if (!tid) throw new Error('스크립트 속성 RFQ_TEMPLATE_ID(견적요청서 템플릿 시트 ID)를 설정해 주세요. README 참고.');
+  var folder = targetFolder_(payload.folder), tpl = DriveApp.getFileById(tid);
+  var file = folder ? tpl.makeCopy(title, folder) : tpl.makeCopy(title);
+  var ss = SpreadsheetApp.openById(file.getId());
+  applyPlan_(ss, buildRfqPlan_(items, base));
+  var rec = addRecord_({ kind: '견적요청서', title: title, url: ss.getUrl(), fileId: ss.getId(), status: '견적요청서 작성',
+    items: (payload.items || []), due: payload.due || '' });
+  return { url: ss.getUrl(), name: title, id: ss.getId(), recordId: rec.id };
+}
+
+/** 업체목록 탭: [{name, emails:[...]}] */
+function apiVendors() {
+  var sh = db_().getSheetByName(SHEET_VENDOR);
+  if (!sh) return { vendors: [], missing: true };
+  var map = {}, order = [];
+  sh.getDataRange().getValues().slice(1).forEach(function (r) {
+    var name = String(r[0] || '').trim(), mails = String(r[1] || '').split(/[;,\s]+/).filter(function (m) { return /@/.test(m); });
+    if (!name || !mails.length) return;
+    if (!map[name]) { map[name] = []; order.push(name); }
+    mails.forEach(function (m) { if (map[name].indexOf(m) < 0) map[name].push(m); });
+  });
+  return { vendors: order.map(function (n) { return { name: n, emails: map[n] }; }), missing: false };
+}
+
+/** 메일 서명: Gmail 설정의 서명(고급 서비스 Gmail API 추가 시) → 없으면 사이트에 저장한 서명 */
+function signature_() {
+  try {
+    if (typeof Gmail !== 'undefined') {
+      var list = Gmail.Users.Settings.SendAs.list('me').sendAs || [];
+      var me = list.filter(function (x) { return x.isPrimary; })[0] || list[0];
+      if (me && me.signature) return { html: me.signature, source: 'gmail' };
+    }
+  } catch (e) { console.warn('Gmail 서명 읽기 실패: ' + e); }
+  var saved = PropertiesService.getUserProperties().getProperty('SIGNATURE_HTML') || '';
+  return { html: saved, source: saved ? 'saved' : 'none' };
+}
+function apiSignature() { return signature_(); }
+function apiSaveSignature(text) {
+  var html = String(text || '').trim();
+  if (html && !/<[a-z][\s\S]*>/i.test(html)) html = esc_(html).replace(/\n/g, '<br>');   // 글자로 적으면 줄바꿈만 살림
+  PropertiesService.getUserProperties().setProperty('SIGNATURE_HTML', html);
+  return signature_();
+}
+
+/** Gmail 임시보관함에 초안 만들기. 받는 사람은 비우고 고른 업체만 숨은 참조. payload = {recordId, bcc:[...]} */
+function apiCreateRfqDraft(payload) {
+  var bcc = uniq_((payload.bcc || []).map(function (m) { return String(m).trim(); }).filter(function (m) { return /@/.test(m); }));
+  if (!bcc.length) throw new Error('메일을 받을 업체를 한 곳 이상 골라 주세요.');
+  var found = findRecord_(payload.recordId, true);
+  var rec = found.rec;
+  if (rec.kind !== '견적요청서') throw new Error('견적요청서 기록이 아닙니다.');
+  var resp = UrlFetchApp.fetch('https://docs.google.com/spreadsheets/d/' + rec.fileId + '/export?format=xlsx', {
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true
+  });
+  if (resp.getResponseCode() !== 200) throw new Error('견적요청서 파일을 엑셀로 내보내지 못했습니다 (HTTP ' + resp.getResponseCode() + ').');
+  var blob = resp.getBlob().setName(rec.title + '.xlsx');
+  var mail = rfqEmail_(rec.items, dueText_(rec.due), signature_().html);
+  var draft = GmailApp.createDraft('', rec.title, mail.text, { htmlBody: mail.html, bcc: bcc.join(','), attachments: [blob] });
+  updateRecord_(found, { status: '메일 초안', draft: draft.getId(), bcc: bcc.join(', ') });
+  return { draftId: draft.getId(), link: 'https://mail.google.com/mail/#drafts', bccCount: bcc.length };
+}
+
+/* ================================================================
+ * 진행 기록 — 각자 자기 기록만. 완료하면 보관 파일(ARCHIVE_SHEET_ID)로 옮긴다
+ * ================================================================ */
+function me_() { return (Session.getActiveUser().getEmail() || Session.getEffectiveUser().getEmail() || '').toLowerCase(); }
+
+function recordSheet_() {
+  var ss = db_(), sh = ss.getSheetByName(SHEET_RECORD);
+  if (!sh) {
+    sh = ss.insertSheet(SHEET_RECORD);
+    sh.getRange(1, 1, 1, RECORD_HEADERS.length).setValues([RECORD_HEADERS]).setFontWeight('bold').setBackground('#c9daf8');
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function rowToRecord_(r) {
+  var items = [];
+  try { items = JSON.parse(r[10] || '[]'); } catch (e) {}
+  var extra = items && !Array.isArray(items) ? items : null;
+  return {
+    id: String(r[0]), kind: r[1], owner: String(r[2]).toLowerCase(), created: Object.prototype.toString.call(r[3]) === '[object Date]' ? fmtDate_(r[3]) : String(r[3]),
+    title: r[4], url: r[5], fileId: r[6], status: r[7], draft: r[8], bcc: r[9],
+    items: extra ? extra.items : items, due: extra ? extra.due : '', updated: r[11] instanceof Date ? r[11].toISOString() : String(r[11] || '')
+  };
+}
+
+function addRecord_(o) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sh = recordSheet_(), now = new Date();
+    var id = Utilities.formatDate(now, 'Asia/Seoul', 'yyMMdd-HHmmss') + '-' + Math.floor(Math.random() * 900 + 100);
+    sh.appendRow([id, o.kind, me_(), now, o.title, o.url, o.fileId, o.status, '', '', JSON.stringify({ items: o.items || [], due: o.due || '' }), now]);
+    return { id: id };
+  } finally { lock.releaseLock(); }
+}
+
+/** 기록 찾기. mine 이면 다른 담당자 기록은 거부 */
+function findRecord_(id, mine) {
+  var sh = recordSheet_(), values = sh.getDataRange().getValues();
+  for (var i = 1; i < values.length; i++) {
+    if (String(values[i][0]) === String(id)) {
+      var rec = rowToRecord_(values[i]);
+      if (mine && rec.owner !== me_()) throw new Error('다른 담당자의 기록입니다.');
+      return { sheet: sh, row: i + 1, values: values[i], rec: rec };
+    }
+  }
+  throw new Error('기록을 찾지 못했습니다. 새로고침해 주세요.');
+}
+
+function updateRecord_(found, patch) {
+  var sh = found.sheet, r = found.row;
+  if (patch.status !== undefined) sh.getRange(r, 8).setValue(patch.status);
+  if (patch.draft !== undefined) sh.getRange(r, 9).setValue(patch.draft);
+  if (patch.bcc !== undefined) sh.getRange(r, 10).setValue(patch.bcc);
+  sh.getRange(r, 12).setValue(new Date());
+}
+
+/** 내 진행 기록 (최근 순) */
+function apiMyRecords() {
+  var who = me_();
+  var list = recordSheet_().getDataRange().getValues().slice(1).map(rowToRecord_)
+    .filter(function (r) { return r.id && r.owner === who; });
+  list.sort(function (a, b) { return String(b.id).localeCompare(String(a.id)); });
+  return { me: who, records: list, archiveReady: !!prop_('ARCHIVE_SHEET_ID') };
+}
+
+/** 완료: 진행기록에서 보관 파일로 옮긴다 (본인 기록만) */
+function apiCompleteRecord(id) {
+  var aid = prop_('ARCHIVE_SHEET_ID');
+  if (!aid) throw new Error('스크립트 속성 ARCHIVE_SHEET_ID(완료 보관 스프레드시트 ID)를 설정해 주세요.');
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var found = findRecord_(id, true);
+    var arc = SpreadsheetApp.openById(aid), sh = arc.getSheetByName('완료기록');
+    if (!sh) {
+      sh = arc.insertSheet('완료기록');
+      sh.getRange(1, 1, 1, RECORD_HEADERS.length + 1).setValues([RECORD_HEADERS.concat(['완료일'])]).setFontWeight('bold').setBackground('#c9daf8');
+      sh.setFrozenRows(1);
+    }
+    var row = found.values.slice(0, RECORD_HEADERS.length);
+    row[7] = '완료';
+    sh.appendRow(row.concat([new Date()]));
+    found.sheet.deleteRow(found.row);
+    return { ok: true };
+  } finally { lock.releaseLock(); }
 }
