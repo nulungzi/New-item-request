@@ -196,14 +196,15 @@ function applyPlan_(ss, ops) {
  * 1순위: 구글 시트의 "웹페이지(zip)" 내보내기 — 시트 화면과 거의 같다.
  * 실패하면: 값·배경·굵기·병합만 읽어 간단한 표로 그린다.
  * ------------------------------------------------------------------ */
-var PREVIEW_TABS = [TPL.SUMMARY, TPL.DETAIL, TPL.SCHEDULE, TPL.CONFIRM];
+// Apps Script는 파일을 순서대로 읽으므로, Logic.js 값(TPL 등)은 파일 맨 위가 아니라 함수 안에서만 쓴다.
+function previewTabs_() { return [TPL.SUMMARY, TPL.DETAIL, TPL.SCHEDULE, TPL.CONFIRM]; }
 
 function apiPreview(id) {
   SpreadsheetApp.flush();
   var exported = {};
   try { exported = exportHtml_(id); } catch (e) { console.warn('zip 내보내기 실패: ' + e); }
   var ss = SpreadsheetApp.openById(id);
-  return PREVIEW_TABS.map(function (name) {
+  return previewTabs_().map(function (name) {
     if (exported[name]) return { name: name, html: exported[name], mode: 'export' };
     var sh = ss.getSheetByName(name);
     return { name: name, html: sh ? simpleHtml_(sh) : '<p>탭이 없습니다.</p>', mode: 'simple' };

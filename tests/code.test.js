@@ -24,3 +24,13 @@ test('apiCreatePurchase: 템플릿 복사 후 계획 적용', () => {
   assert.strictEqual(res.id, 'new');
   assert.ok(calls.includes('copyTo') && calls.includes('merge') && calls.includes('deleteSheet'));
 });
+
+test('파일 읽는 순서와 상관없이 로드된다 (Code.js 먼저)', () => {
+  for (const order of [['Code.js', 'Logic.js'], ['Logic.js', 'Code.js'], ['Code.js']]) {
+    const ctx = {};
+    vm.createContext(ctx);
+    assert.doesNotThrow(() => {
+      for (const f of order) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'apps-script', f), 'utf8'), ctx);
+    }, order.join(' → '));
+  }
+});
