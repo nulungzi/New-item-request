@@ -91,7 +91,7 @@ test('공백이 들어간 품번 (탭·공백 붙여넣기 모두)', () => {
 test('MOQ 미달 경고', () => {
   const c = L.parseContracts_([['Item', '업체명', '계약시작', '계약종료', 'MOQ'], ['A1', 'S', '2026-01-01', '2028-12-31', '6,000'], ['B1', 'S', '2026-01-01', '2028-12-31', '-']]);
   const r = L.classify_(L.parseRequest_('A1 50 2027-06-10\nA1 6000 2027-06-10\nB1 1 2027-06-10').requests, c, L.toDate_('2026-11-09'));
-  assert.deepStrictEqual(r.map(x => x.warnings), [['수량 50 < MOQ 6000'], [], []]);
+  assert.deepStrictEqual(r.map(x => x.warnings), [['수량 50 → MOQ(최소 6000) · 6000개로 주문'], [], []]);
 });
 
 test('구매내역서 계획: 통화 2개, 업체 2개', () => {
@@ -156,7 +156,8 @@ test('SPOT 등록 행은 계약으로 보지 않는다', () => {
   ]);
   const r = L.classify_(L.parseRequest_('S1 1 2027-01-01\nS2 1 2027-01-01\nNEW 1 2027-01-01').requests, c, L.toDate_('2026-11-10'));
   assert.deepStrictEqual(r.map(x => [x.status, x.registered]), [['Spot', true], ['계약', true], ['Spot', false]]);
-  assert.strictEqual(r[0].reason, 'Spot 자재 (DB 등록: ACME)');
+  assert.strictEqual(r[0].reason, 'Spot 자재 · DB 단가 없음');
+  assert.deepStrictEqual(r.map(x => x.route), ['rfq', 'contract', 'rfq']);
   assert.strictEqual(r[0].desc, 'SPOT ONLY');
   assert.deepStrictEqual(r[1].candidates.map(x => x.supplier), ['PPG']);
 });
@@ -237,4 +238,44 @@ test('드라이브 폴더 주소 → ID', () => {
 test('입력용 시트: 열 순서가 웹앱 표와 같고, 머리글 줄을 알아본다', () => {
   assert.deepStrictEqual(L.INPUT_SHEET.COLUMNS.map(c => c[0]), ['Item', '수량', 'Need-by', 'Program', 'Shelf Life', 'Ship', 'Tax']);
   assert.ok(L.isInputHeader_(['Item', '수량']) && L.isInputHeader_([' item ']) && !L.isInputHeader_(['KERC00053', '50']));
+});
+
+test('Spot 세분화: DB 단가 있는 Spot은 spotPriced, 없으면 rfq (Airtech 형식)', () => {
+  const c = L.parseContracts_([
+    ['', 'Item', '계약 구분', '업체명', '단가', 'CUR', '계약시작', '계약종료', 'MOQ', 'UOM', 'Lead Time', 'Ship Form', 'Material', 'Shelf-Life', 'QPL', 'Description'],
+    [1, 'KERN00286-003', 'Spot', 'Airtech', 462, 'USD', '2025-01-01', '2027-12-31', 'Min 28, Multi 2', 'RL', '6~8wks', '', 'Nylon Film', '12MM', 'Airtech', 'NYLON FILM 2MIL'],
+    [2, 'KERN00286-004', 'Spot', 'Airtech', 463, 'USD', '2025-01-01', '2027-12-31', '-', 'RL', '1~2wks', '', 'Nylon Film', '', 'Airtech', 'NYLON FILM 2MIL 54'],
+    [3, 'MS20995C20', 'Spot', '', '', '', '', '', '', 'RL', '', '', 'Safety Wire', '', 'MALIN Co / GERARD DANIEL', 'Safety Wire'],
+  ]);
+  assert.deepStrictEqual([c[0].shelfLife, c[0].qpl, c[2].qpl], ['12MM', 'Airtech', 'MALIN Co / GERARD DANIEL']);
+  const today = L.toDate_('2026-11-10');
+  const r = L.classify_(L.parseRows_([
+    { item: 'KERN00286-003', qty: 30, needBy: '2027-06-10' },
+    { item: 'KERN00286-004', qty: 1, needBy: '2028-02-01' },   // 단가 기간 지남
+    { item: 'MS20995C20', qty: 3, needBy: '2027-01-15' },       // DB에 있지만 단가 없음
+    { item: 'NEW-1', qty: 1, needBy: '2027-01-15' },            // DB에 없음
+    { item: 'KERN00286-004', qty: 5, needBy: '2027-03-01' },
+  ]).requests, c, today);
+  assert.deepStrictEqual(r.map(x => [x.status, x.route]), [['Spot', 'spotPriced'], ['Spot', 'rfq'], ['Spot', 'rfq'], ['Spot', 'rfq'], ['Spot', 'spotPriced']]);
+  assert.strictEqual(r[0].candidates[0].price, 462);
+  assert.deepStrictEqual(r[0].warnings, []);                  // 30개: Min 28, Multi 2 를 만족, 리드타임 충분
+  assert.match(r[1].reason, /단가 기간 지남/);
+  assert.deepStrictEqual([r[2].reason, r[2].qpl, r[2].uom], ['Spot 자재 · DB 단가 없음', 'MALIN Co / GERARD DANIEL', 'RL']);
+  assert.strictEqual(r[3].reason, '계약 없음 · DB 미등록 자재');
+});
+
+test('MOQ 읽기: 숫자 = 최소, Min x = 최소, Multi x = x개 단위', () => {
+  assert.deepStrictEqual(L.parseMoq_('Min 28, Multi 2'), { min: 28, multi: 2 });
+  assert.deepStrictEqual(L.parseMoq_('Min 8'), { min: 8, multi: 0 });
+  assert.deepStrictEqual(L.parseMoq_('Multi 16'), { min: 0, multi: 16 });
+  assert.deepStrictEqual(L.parseMoq_(6000), { min: 6000, multi: 0 });
+  assert.deepStrictEqual(L.parseMoq_('12,500'), { min: 12500, multi: 0 });
+  assert.deepStrictEqual(L.parseMoq_('Min 819, Multi 819'), { min: 819, multi: 819 });
+  for (const v of ['-', '없음', '', null]) assert.deepStrictEqual(L.parseMoq_(v), { min: 0, multi: 0 });
+  assert.strictEqual(L.moqWarning_(25, 'Min 28, Multi 2'), '수량 25 → MOQ(최소 28, 2개 단위) · 28개로 주문');
+  assert.strictEqual(L.moqWarning_(31, 'Min 28, Multi 2'), '수량 31 → MOQ(최소 28, 2개 단위) · 32개로 주문');
+  assert.strictEqual(L.moqWarning_(30, 'Min 28, Multi 2'), '');
+  assert.strictEqual(L.moqWarning_(20, 'Multi 16'), '수량 20 → MOQ(16개 단위) · 32개로 주문');
+  assert.strictEqual(L.moqWarning_(900, 'Min 819, Multi 819'), '수량 900 → MOQ(최소 819, 819개 단위) · 1638개로 주문');
+  assert.strictEqual(L.moqWarning_(5, '-'), '');
 });

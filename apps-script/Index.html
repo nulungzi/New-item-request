@@ -25,6 +25,8 @@
   --spot: #b05314;
   --spot-soft: #fbe9dc;
   --warn: #b42318;
+  --priced: #7a4d00;
+  --fill-priced: #fbefc9;
   --bar-stock: #aeb6c4;
   --bar-stock-ink: #1d2433;
   --bar-plan: #f1cf6a;
@@ -38,14 +40,14 @@
   :root:not([data-theme="light"]) {
     --bg: #11151f; --surface: #181e2b; --surface-2: #1f2737; --ink: #e6eaf2; --muted: #9aa5bb; --line: #2c3548;
     --accent: #7b9cff; --accent-ink: #0d1324; --accent-soft: #24345f; --ok: #5fd39a; --ok-soft: #173426;
-    --spot: #f0a066; --spot-soft: #3a2616; --warn: #ff8a80; --bar-stock: #5d6678; --bar-stock-ink: #eef1f6;
+    --spot: #f0a066; --spot-soft: #3a2616; --warn: #ff8a80; --priced: #f3cf73; --fill-priced: #3a3016; --bar-stock: #5d6678; --bar-stock-ink: #eef1f6;
     --bar-plan: #c9a43c; --bar-plan-edge: #f1cf6a; --bar-plan-ink: #1b1503; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #11151f; --surface: #181e2b; --surface-2: #1f2737; --ink: #e6eaf2; --muted: #9aa5bb; --line: #2c3548;
   --accent: #7b9cff; --accent-ink: #0d1324; --accent-soft: #24345f; --ok: #5fd39a; --ok-soft: #173426;
-  --spot: #f0a066; --spot-soft: #3a2616; --warn: #ff8a80; --bar-stock: #5d6678; --bar-stock-ink: #eef1f6;
+  --spot: #f0a066; --spot-soft: #3a2616; --warn: #ff8a80; --priced: #f3cf73; --fill-priced: #3a3016; --bar-stock: #5d6678; --bar-stock-ink: #eef1f6;
   --bar-plan: #c9a43c; --bar-plan-edge: #f1cf6a; --bar-plan-ink: #1b1503; color-scheme: dark;
 }
 
@@ -71,6 +73,13 @@ a { color: var(--accent) }
 .masthead { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 24px; padding-bottom: 4px }
 .eyebrow { font-size: .75rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent) }
 .masthead h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -.01em }
+.masthead-side { display: grid; gap: 8px; justify-items: end }
+.db-row { gap: 8px }
+.db-row .btn-ghost { padding: 5px 12px; font-size: .82rem }
+@media (max-width: 640px) { .masthead-side { justify-items: start } }
+.chip-priced { background: var(--fill-priced); color: var(--priced) }
+.sub-title { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; justify-content: space-between }
+.sub-title h3 { font-size: .95rem; font-weight: 600 }
 .legend { display: flex; flex-wrap: wrap; gap: 6px; font-size: .8rem; color: var(--muted); align-items: center }
 
 /* 단계 */
@@ -185,7 +194,7 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-size: .
 .summary { display: flex; flex-wrap: wrap; gap: 8px }
 .tally { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 12px; border-radius: 999px; background: var(--surface-2); font-size: .85rem }
 .tally b { font: 600 1rem var(--font-data) }
-.tally.ok { color: var(--ok) } .tally.spot { color: var(--spot) }
+.tally.ok { color: var(--ok) } .tally.spot { color: var(--spot) } .tally.priced { color: var(--priced) }
 .scroll { overflow-x: auto; min-width: 0 }
 table.list { width: 100%; border-collapse: collapse; font-size: .88rem }
 table.list th { text-align: left; font-size: .72rem; font-weight: 600; letter-spacing: .06em; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap }
@@ -249,7 +258,10 @@ table.list td.nw { white-space: nowrap }
     <div class="eyebrow">LTA · 3PP 자재 구매</div>
     <h1>소요제기 판정</h1>
   </div>
-  <div class="legend"><span class="chip chip-ok">LTA</span><span class="chip chip-ok">3PP</span> 계약 단가로 구매내역서 작성 · <span class="chip chip-spot">SPOT</span> 견적 필요</div>
+  <div class="masthead-side">
+    <div class="legend"><span class="chip chip-ok">LTA</span><span class="chip chip-ok">3PP</span> 계약 구매내역서 · <span class="chip chip-priced">SPOT 단가</span> Spot 구매내역서 · <span class="chip chip-spot">SPOT 견적</span> 견적요청서</div>
+    <div class="row db-row"><span class="muted" id="dbStamp"></span><button class="btn-ghost" id="btnDbRefresh" type="button" title="자재정보 시트에서 고친 최신 값을 다시 불러옵니다">DB 새로고침</button></div>
+  </div>
 </header>
 
 
@@ -357,8 +369,15 @@ table.list td.nw { white-space: nowrap }
 <section class="step" id="spotCard" hidden>
   <div class="step-no">4</div>
   <div class="panel">
-    <div class="panel-head"><h2>Spot 품목</h2><span class="muted">계약이 없어 견적이 필요합니다 · 구매내역서에는 들어가지 않습니다</span></div>
-    <div class="scroll"><table class="list" id="spotTbl"></table></div>
+    <div class="panel-head"><h2>Spot 품목</h2><span class="muted">계약 구매내역서에는 들어가지 않습니다</span></div>
+    <div class="sub first" id="pricedBox">
+      <div class="sub-title"><h3>DB 단가 있음 → Spot 구매내역서</h3><span class="muted">견적요청서에 넣지 않습니다 · Spot 구매내역서 양식을 받으면 여기서 따로 만듭니다</span></div>
+      <div class="scroll"><table class="list" id="pricedTbl"></table></div>
+    </div>
+    <div class="sub" id="rfqBox">
+      <div class="sub-title"><h3>단가 없음 → 견적요청서</h3><span class="muted">견적요청서 만들기는 다음 단계에서 추가됩니다</span></div>
+      <div class="scroll"><table class="list" id="spotTbl"></table></div>
+    </div>
   </div>
 </section>
 
@@ -573,11 +592,28 @@ $('btnInputSheet').onclick = function () {
     .finally(function () { b.disabled = false; b.textContent = '입력용 시트 만들기'; });
 };
 
-call('apiInit').then(function (d) {
-  $('base').value = d.today; state.rates = d.rates || {};
-  (d.items || []).forEach(function (x) { itemDesc[x[0]] = [x[1], x[2] || '', x[3] || '', x[4] || '']; });
-  state.fields = d.fields || [];
-  rows().forEach(showDesc);
+/** 자재정보(DB) 값을 불러온다. 처음 열 때와 "DB 새로고침" */
+function loadDb(first) {
+  return call('apiInit').then(function (d) {
+    if (first) $('base').value = d.today;
+    state.rates = Object.assign({}, d.rates || {}, first ? {} : state.rates);
+    itemDesc = {};
+    (d.items || []).forEach(function (x) { itemDesc[x[0]] = [x[1], x[2] || '', x[3] || '', x[4] || '']; });
+    state.fields = d.fields || [];
+    rows().forEach(showDesc);
+    var t = new Date();
+    $('dbStamp').textContent = '자재정보 ' + (d.items || []).length + '품목 · ' + ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2) + ' 기준';
+    return d;
+  });
+}
+$('btnDbRefresh').onclick = function () {
+  var b = this; b.disabled = true; b.textContent = '불러오는 중…';
+  loadDb(false).then(function () {
+    if (state.results.length) $('btnClassify').click();   // 판정 결과가 있으면 최신 값으로 다시 판정
+  }).catch(function (e) { $('dbStamp').textContent = e.message || e; })
+    .finally(function () { b.disabled = false; b.textContent = 'DB 새로고침'; });
+};
+loadDb(true).then(function (d) {
   if (d.schedule) {
     state.tasks = d.schedule.tasks;
     state.schedExample = d.schedule.example;
@@ -611,10 +647,13 @@ function chosen(r) { var s = $('pick-' + r.line); return r.candidates[s ? +s.val
 function render() {
   var rs = state.results;
   $('result').hidden = !rs.length;
-  var ok = rs.filter(function (r) { return r.status === '계약'; }), spot = rs.filter(function (r) { return r.status === 'Spot'; });
+  var ok = rs.filter(function (r) { return r.route === 'contract'; }),
+    priced = rs.filter(function (r) { return r.route === 'spotPriced'; }),
+    rfq = rs.filter(function (r) { return r.route === 'rfq'; });
   $('counts').innerHTML = '<span class="tally">전체 <b>' + rs.length + '</b></span>' +
     '<span class="tally ok">계약 <b>' + ok.length + '</b></span>' +
-    '<span class="tally spot">Spot <b>' + spot.length + '</b></span>';
+    '<span class="tally priced">Spot 단가 <b>' + priced.length + '</b></span>' +
+    '<span class="tally spot">Spot 견적 <b>' + rfq.length + '</b></span>';
 
   $('tbl').innerHTML = '<tr><th>판정</th><th>ITEM</th><th class="n">수량</th><th>NEED-BY</th><th>업체 / 단가</th><th>계약기간</th><th>메모</th></tr>' +
     rs.map(function (r) {
@@ -624,7 +663,8 @@ function render() {
         : '<select id="pick-' + r.line + '" aria-label="업체 선택">' + c.map(function (x, i) {
             return '<option value="' + i + '">' + esc(x.supplier) + ' · ' + fmt(x.price) + ' ' + esc(x.cur) + ' (' + esc(x.priceMode) + ')</option>';
           }).join('') + '</select>';
-      var chip = r.status === '계약' ? '<span class="chip chip-ok">' + esc(c0.priceMode || '계약') + '</span>' : '<span class="chip chip-spot">SPOT</span>';
+      var chip = r.route === 'contract' ? '<span class="chip chip-ok">' + esc(c0.priceMode || '계약') + '</span>'
+        : r.route === 'spotPriced' ? '<span class="chip chip-priced">SPOT 단가</span>' : '<span class="chip chip-spot">SPOT 견적</span>';
       return '<tr><td>' + chip + '</td>' +
         '<td><div class="data">' + esc(r.item) + '</div><div class="desc">' + esc(c0.desc || r.desc || '') + '</div>' +
           (r.program ? '<div class="muted">' + esc(r.program) + '</div>' : '') + '</td>' +
@@ -634,9 +674,17 @@ function render() {
     }).join('');
   rs.forEach(function (r) { var s = $('pick-' + r.line); if (s) s.onchange = renderPurchase; });
 
-  $('spotCard').hidden = !spot.length;
-  $('spotTbl').innerHTML = '<tr><th>ITEM</th><th class="n">수량</th><th>NEED-BY</th><th>사유</th></tr>' + spot.map(function (r) {
-    return '<tr><td class="data">' + esc(r.item) + '</td><td class="n data">' + fmt(r.qty) + '</td><td class="data nw">' + esc(r.needBy) + '</td><td class="muted">' + esc(r.reason) +
+  $('spotCard').hidden = !(priced.length || rfq.length);
+  $('pricedBox').hidden = !priced.length;
+  $('rfqBox').hidden = !rfq.length;
+  $('rfqBox').classList.toggle('first', !priced.length);
+  $('pricedTbl').innerHTML = '<tr><th>ITEM</th><th class="n">수량</th><th>NEED-BY</th><th>업체 / 단가</th><th>단가 기간</th></tr>' + priced.map(function (r) {
+    var c0 = r.candidates[0] || {};
+    return '<tr><td><div class="data">' + esc(r.item) + '</div><div class="desc">' + esc(c0.desc || '') + '</div></td><td class="n data">' + fmt(r.qty) + '</td><td class="data nw">' + esc(r.needBy) +
+      '</td><td class="nw">' + esc(c0.supplier) + '<div class="data">' + fmt(c0.price) + ' ' + esc(c0.cur) + ' / ' + esc(c0.uom) + '</div></td><td class="data muted nw">' + (c0.start ? esc(c0.start) + '<br>~ ' + esc(c0.end) : '') + '</td></tr>';
+  }).join('');
+  $('spotTbl').innerHTML = '<tr><th>ITEM</th><th class="n">수량</th><th>NEED-BY</th><th>사유</th></tr>' + rfq.map(function (r) {
+    return '<tr><td class="data">' + esc(r.item) + '<div class="desc">' + esc(r.desc || '') + '</div></td><td class="n data">' + fmt(r.qty) + '</td><td class="data nw">' + esc(r.needBy) + '</td><td class="muted">' + esc(r.reason) +
       (r.registered || itemDesc[r.item] ? '' : ' <button type="button" class="link-btn" data-reg="' + esc(r.item) + '">신규 등록</button>') + '</td></tr>';
   }).join('');
   document.querySelectorAll('#spotTbl [data-reg]').forEach(function (b) { b.onclick = function () { openRegister(b.dataset.reg); }; });
@@ -705,7 +753,7 @@ $('btnRegSave').onclick = function () {
 
 /* ---------- 3. 구매내역서 ---------- */
 function renderPurchase() {
-  var ok = state.results.filter(function (r) { return r.status === '계약'; });
+  var ok = state.results.filter(function (r) { return r.route === 'contract'; });
   $('purchaseCard').hidden = !ok.length;
   if (!ok.length) return;
   var keep = {};
@@ -877,7 +925,7 @@ function createPurchase(b, folder) {
   var rates = {}, remarks = {};
   document.querySelectorAll('[data-rate]').forEach(function (el) { rates[el.dataset.rate] = el.value; });
   document.querySelectorAll('[data-remark]').forEach(function (el) { remarks[el.dataset.remark] = el.value; });
-  var lines = state.results.filter(function (r) { return r.status === '계약'; }).map(function (r) {
+  var lines = state.results.filter(function (r) { return r.route === 'contract'; }).map(function (r) {
     return { item: r.item, qty: r.qty, needBy: r.needBy, program: r.program, shelfLife: r.shelfLife, shipFrom: r.shipFrom, taxCode: r.taxCode, contractRow: chosen(r).row };
   });
   call('apiCreatePurchase', { baseDate: $('base').value, rates: rates, remarks: remarks, lines: lines, schedule: state.sched, name: $('fileName').value, confirmer: $('confirmer').value, folder: folder.id }).then(function (d) {

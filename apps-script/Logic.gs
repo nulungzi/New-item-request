@@ -24,7 +24,8 @@ var MASTER_COLUMNS = {
   shipFrom: ['Ship From', 'Ship Form', 'Shipment'],
   leadtime: ['Leadtime', 'Lead Time', 'L/T'],
   shelfLife: ['Shelf Life'],
-  taxCode: ['Tax Code']
+  taxCode: ['Tax Code'],
+  qpl: ['QPL', 'QPL(Mfg)', 'MFG']
 };
 
 /** 중복 없이 처음 나온 순서대로 (빈 값 제외) */
@@ -35,7 +36,7 @@ function uniq_(arr) {
 }
 
 function headerKey_(s) {
-  return String(s == null ? '' : s).replace(/\s+/g, '').toLowerCase();
+  return String(s == null ? '' : s).replace(/[\s\-_]+/g, '').toLowerCase();   // 공백·하이픈·밑줄 무시 (Shelf-Life = Shelf Life)
 }
 
 function itemKey_(s) {
@@ -102,7 +103,8 @@ function parseContracts_(values) {
       shipFrom: String(get('shipFrom')).trim(),
       leadtime: String(get('leadtime')).trim(),
       shelfLife: String(get('shelfLife')).trim(),
-      taxCode: get('taxCode') === '' ? '' : get('taxCode')
+      taxCode: get('taxCode') === '' ? '' : get('taxCode'),
+      qpl: String(get('qpl')).trim()
     });
   }
   return out;
@@ -181,11 +183,42 @@ function leadDays_(s) {
   return /^(day|d|일)/.test(m[3]) ? n : n * 7;
 }
 
+/**
+ * MOQ 칸 읽기. 숫자만 → 최소 주문 수량, "Min 28" → 최소 28, "Multi 2" → 2개 단위. '-', '없음', 빈칸 → 제한 없음
+ * 예: "Min 28, Multi 2" → {min: 28, multi: 2}, 6000 → {min: 6000, multi: 0}
+ */
+function parseMoq_(v) {
+  if (typeof v === 'number') return { min: v > 0 ? v : 0, multi: 0 };
+  var s = String(v == null ? '' : v).replace(/,(?=\d{3}\b)/g, '').trim();
+  var num = function (re) { var m = s.match(re); return m ? parseFloat(m[1]) : 0; };
+  var min = num(/min(?:imum)?\.?\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
+  var multi = num(/mul(?:ti(?:ple)?)?\.?\s*(?:of)?\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
+  if (!min && !multi && /^\d+(\.\d+)?$/.test(s)) min = parseFloat(s);
+  return { min: min, multi: multi };
+}
+
+/** MOQ 기준에 맞는 가장 가까운(이상) 주문 수량 */
+function moqQty_(qty, moq) {
+  var n = Math.max(Number(qty) || 0, moq.min || 0);
+  if (moq.multi > 0) n = Math.ceil(n / moq.multi - 1e-9) * moq.multi;
+  return n;
+}
+
+/** MOQ 경고 문구 (문제 없으면 '') */
+function moqWarning_(qty, moqCell) {
+  var m = parseMoq_(moqCell);
+  if (!m.min && !m.multi) return '';
+  var fit = moqQty_(qty, m);
+  if (fit === Number(qty)) return '';
+  var rule = [m.min ? '최소 ' + m.min : '', m.multi ? m.multi + '개 단위' : ''].filter(String).join(', ');
+  return '수량 ' + qty + ' → MOQ(' + rule + ') · ' + fit + '개로 주문';
+}
+
 /** 계약 품목 확인 메시지: MOQ 미달, Need-by 누락·지남, 리드타임 부족 (today = 작성일) */
 function needByWarnings_(q, c, today) {
   var w = [];
-  var moq = toNumber_(c.moq);
-  if (moq && q.qty < moq) w.push('수량 ' + q.qty + ' < MOQ ' + moq);
+  var moqMsg = moqWarning_(q.qty, c.moq);
+  if (moqMsg) w.push(moqMsg);
   if (!q.needBy) { w.push('Need-by-date 없음 — 작성일 기준으로 판정'); return w; }
   if (q.needBy < today) { w.push('Need-by가 작성일보다 이전'); return w; }
   var ld = leadDays_(c.leadtime);
@@ -203,32 +236,36 @@ function classify_(requests, contracts, today) {
   return requests.map(function (q) {
     var d = q.needBy || today;
     var all = byItem[q.item] || [];
-    var deals = all.filter(function (c) { return !isSpotMode_(c.priceMode); });   // SPOT 등록 행은 계약이 아님
-    var valid = deals.filter(function (c) {
-      return (!c.start || c.start <= d) && (!c.end || d <= c.end);
-    }).sort(function (a, b) { return (a.price || 0) - (b.price || 0); });
+    var inPeriod = function (c) { return (!c.start || c.start <= d) && (!c.end || d <= c.end); };
+    var byPrice = function (a, b) { return (a.price || 0) - (b.price || 0); };
+    var deals = all.filter(function (c) { return !isSpotMode_(c.priceMode); });          // LTA·3PP
+    var spots = all.filter(function (c) { return isSpotMode_(c.priceMode); });           // SPOT 등록 행
+    var valid = deals.filter(inPeriod).sort(byPrice);
+    var spotPriced = spots.filter(function (c) { return c.price !== null && c.price !== '' && inPeriod(c); }).sort(byPrice);
     var res = { line: q.line, item: q.item, qty: q.qty, needBy: q.needBy, program: q.program,
       shipFrom: q.shipFrom || '', shelfLife: q.shelfLife || '', taxCode: q.taxCode || '', candidates: valid, warnings: [], registered: all.length > 0 };
     if (valid.length) {
-      res.status = '계약';
+      // 계약 → 계약 구매내역서
+      res.status = '계약'; res.route = 'contract';
       res.reason = valid.length > 1 ? '유효 계약 ' + valid.length + '건 — 업체 선택 필요' : '';
       res.warnings = needByWarnings_(q, valid[0], today);
+    } else if (spotPriced.length) {
+      // SPOT 인데 DB에 단가가 있음 → 견적 없이 Spot 구매내역서
+      res.status = 'Spot'; res.route = 'spotPriced'; res.candidates = spotPriced;
+      res.reason = 'Spot · DB 단가 있음' + (spotPriced.length > 1 ? ' (' + spotPriced.length + '건 — 업체 선택 필요)' : '');
+      res.warnings = needByWarnings_(q, spotPriced[0], today);
     } else {
-      res.status = 'Spot';
-      if (!all.length) {
-        res.reason = '계약 없음 · DB 미등록 자재';
-      } else if (!deals.length) {
-        var sups = [];
-        all.forEach(function (c) { if (c.supplier && sups.indexOf(c.supplier) < 0) sups.push(c.supplier); });
-        res.reason = 'Spot 자재 (DB 등록' + (sups.length ? ': ' + sups.join(', ') : '') + ')';
-        res.desc = all[0].desc;
-      } else {
-        var last = deals.reduce(function (a, b) { return (b.end || 0) > (a.end || 0) ? b : a; });
+      // 단가 없음 → 견적요청서
+      res.status = 'Spot'; res.route = 'rfq';
+      var last = deals.length ? deals.reduce(function (a, b) { return (b.end || 0) > (a.end || 0) ? b : a; }) : null;
+      if (!all.length) res.reason = '계약 없음 · DB 미등록 자재';
+      else if (last) {
         res.reason = last.end && last.end < d
           ? 'Need-by 시점 계약 만료 (' + last.supplier + ', ' + fmtDate_(last.end) + ' 종료)'
           : 'Need-by 시점 계약 시작 전 (' + last.supplier + ', ' + fmtDate_(last.start) + ' 시작)';
-        res.desc = last.desc;
-      }
+      } else res.reason = 'Spot 자재 · DB 단가 없음' + (spots.some(function (c) { return c.price !== null && c.price !== ''; }) ? ' (단가 기간 지남)' : '');
+      var ref = all[0];
+      if (ref) { res.desc = ref.desc; res.qpl = ref.qpl; res.uom = ref.uom; res.material = ref.material; }
     }
     return res;
   });
