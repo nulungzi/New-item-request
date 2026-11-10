@@ -702,7 +702,8 @@ var RFQ = {
   SHEET: 'RFQ_List', FIRST: 3, MONTHS: 12,
   C: { LI: 2, KE: 3, NAME: 4, DESC: 5, QPL: 6, UOM: 7, REMARK: 8, M0: 9, TOTAL: 21, LAST: 31 },
   REMARK: 'MFG COC/TR', SUFFIX: 'Material Spot', ROW_PT: 26.25,
-  MONTH_PX: 64, TOTAL_PX: 80   // 월 칸·RFQ Qty 칸 너비 (큰 수량도 ### 없이)
+  MONTH_PX: 64, TOTAL_PX: 80,  // 월 칸·RFQ Qty 칸 너비 (큰 수량도 ### 없이)
+  REMARK_PX: 110               // H열 Remark (MFG COC/TR 이 잘리지 않게)
 };
 
 /** Need-by 가 작성일 달부터 몇 번째 달 칸인지 (0~11). 범위를 벗어나면 맨 앞/뒤 칸과 함께 표시 */
@@ -741,6 +742,7 @@ function buildRfqPlan_(items, base) {
   var set = function (r, c, v) { ops.push({ op: 'set', s: S, r: r, c: c, v: v }); };
   for (var w = 0; w < RFQ.MONTHS; w++) ops.push({ op: 'width', s: S, c: C.M0 + w, px: RFQ.MONTH_PX });
   ops.push({ op: 'width', s: S, c: C.TOTAL, px: RFQ.TOTAL_PX });
+  ops.push({ op: 'width', s: S, c: C.REMARK, px: RFQ.REMARK_PX });
   for (var k = 0; k < RFQ.MONTHS; k++) {
     var d = new Date(base.getFullYear(), base.getMonth() + k, 1);
     set(2, C.M0 + k, { date: fmtDate_(d) });
@@ -852,13 +854,19 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
       set(Q, r, 29, '=IF(AB' + r + '="", "", RANK(AB' + r + ', OFFSET($AB$' + SPOT.Q_FIRST + ', INT((ROW()-' + SPOT.Q_FIRST + ')/' + N + ')*' + N + ', 0, ' + N + ', 1), 1))');
       set(Q, r, 30, v);
       var put = function (c, x) { if (x !== undefined && x !== null && String(x).trim() !== '') set(Q, r, c, x); };
+      if (q.noReply) q = { qty: q.qty, uom: q.uom, price: 'NO BID', remark: q.remark || '회신 없음' };   // 회신 없음 = NO BID 로 회색 줄
       put(31, num(q.qty)); put(32, q.mfg); put(33, q.uom);
       put(34, /^no\s*bid$/i.test(String(q.price || '').trim()) ? 'NO BID' : num(q.price));
       put(35, q.cur ? String(q.cur).toUpperCase() : ''); put(37, q.moq); put(38, q.lt); put(39, q.shelf); put(40, q.remark);
       set(Q, r, 36, '=IF(AND(ISNUMBER(AE' + r + '), ISNUMBER(AH' + r + ')), AE' + r + ' * AH' + r + ', "")');
     });
   });
-  if (qLast >= SPOT.Q_FIRST) add({ op: 'checkbox', s: Q, r1: SPOT.Q_FIRST, r2: qLast, c: 1 });
+  if (qLast >= SPOT.Q_FIRST) {
+    add({ op: 'checkbox', s: Q, r1: SPOT.Q_FIRST, r2: qLast, c: 1 });
+    // 조건부 서식: 선정(A=TRUE) 노란 줄, NO BID·회신 없음 회색 줄 (회색이 먼저)
+    add({ op: 'cf', s: Q, r1: SPOT.Q_FIRST, c1: 1, r2: qLast, c2: SPOT.Q_LAST, formula: '=$A' + SPOT.Q_FIRST + '=TRUE', bg: '#ffff00' });
+    add({ op: 'cf', s: Q, r1: SPOT.Q_FIRST, c1: 1, r2: qLast, c2: SPOT.Q_LAST, formula: '=$AH' + SPOT.Q_FIRST + '="NO BID"', bg: '#d9d9d9', font: '#7f7f7f' });
+  }
   add({ op: 'freeze', s: Q, rows: 4, cols: 7 });
 
   /* ---------- 구매내역서 ---------- */

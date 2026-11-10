@@ -69,6 +69,16 @@ for o in ops:
         wb[o['s']].freeze_panes = wb[o['s']].cell(o['rows'] + 1, o['cols'] + 1)
     elif op == 'width':
         wb[o['s']].column_dimensions[get_column_letter(o['c'])].width = round(o['px'] / 7, 2)
+    elif op == 'cf':
+        from openpyxl.formatting.rule import FormulaRule
+        from openpyxl.styles import Font
+        ws = wb[o['s']]
+        ref = '%s%d:%s%d' % (get_column_letter(o['c1']), o['r1'], get_column_letter(o['c2']), o['r2'])
+        fill = PatternFill('solid', fgColor=o['bg'].lstrip('#').upper(), bgColor=o['bg'].lstrip('#').upper())
+        kw = {'formula': [o['formula'].lstrip('=')], 'fill': fill, 'stopIfTrue': False}
+        if o.get('font'):
+            kw['font'] = Font(color=o['font'].lstrip('#').upper())
+        ws.conditional_formatting.add(ref, FormulaRule(**kw))
     elif op == 'checkbox':
         pass   # 엑셀 미리보기에서는 TRUE/FALSE 값 그대로
     elif op == 'deleteCols':

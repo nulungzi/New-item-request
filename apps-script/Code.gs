@@ -374,6 +374,14 @@ function applyPlan_(ss, ops) {
       case 'freeze': sh(o.s).setFrozenRows(o.rows); sh(o.s).setFrozenColumns(o.cols); break;
       case 'checkbox': sh(o.s).getRange(o.r1, o.c, o.r2 - o.r1 + 1, 1).insertCheckboxes(); break;
       case 'deleteCols': sh(o.s).deleteColumns(o.c, o.n); break;
+      case 'cf': {   // 조건부 서식 규칙을 맨 앞에 추가 (나중에 넣은 규칙이 우선)
+        var cfSheet = sh(o.s), rules = cfSheet.getConditionalFormatRules();
+        var rule = SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(o.formula).setBackground(o.bg);
+        if (o.font) rule = rule.setFontColor(o.font);
+        rules.unshift(rule.setRanges([cfSheet.getRange(o.r1, o.c1, o.r2 - o.r1 + 1, o.c2 - o.c1 + 1)]).build());
+        cfSheet.setConditionalFormatRules(rules);
+        break;
+      }
       case 'width': sh(o.s).setColumnWidth(o.c, o.px); break;
       default: throw new Error('알 수 없는 작업: ' + o.op);
     }
@@ -547,11 +555,11 @@ function signature_() {
     if (typeof Gmail !== 'undefined') {
       var list = Gmail.Users.Settings.SendAs.list('me').sendAs || [];
       var me = list.filter(function (x) { return x.isPrimary; })[0] || list[0];
-      if (me && me.signature) return { html: me.signature, source: 'gmail' };
+      if (me && me.signature) return { html: me.signature, source: 'gmail', gmailService: true };
     }
   } catch (e) { console.warn('Gmail 서명 읽기 실패: ' + e); }
   var saved = PropertiesService.getUserProperties().getProperty('SIGNATURE_HTML') || '';
-  return { html: saved, source: saved ? 'saved' : 'none' };
+  return { html: saved, source: saved ? 'saved' : 'none', gmailService: typeof Gmail !== 'undefined' };
 }
 function apiSignature() { return signature_(); }
 function apiSaveSignature(text) {

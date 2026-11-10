@@ -214,7 +214,8 @@ test('견적 저장 → Spot 견적 구매내역서, 계약+Spot 단가는 두 �
   const ctx = inContext({
     console: { warn: () => {}, log: () => {} },
     SpreadsheetApp: { getActive: () => db, openById: id => book(id), CopyPasteType: { PASTE_FORMAT: 'F' }, BorderStyle: { SOLID: 'S' },
-      newDataValidation: () => { const b = new Proxy({}, { get: (t, k) => () => (k === 'build' ? {} : b) }); return b; } },
+      newDataValidation: () => { const b = new Proxy({}, { get: (t, k) => () => (k === 'build' ? {} : b) }); return b; },
+      newConditionalFormatRule: () => { const b = new Proxy({}, { get: (t, k) => () => (k === 'build' ? {} : b) }); return b; } },
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => ({ TEMPLATE_ID: 'tpl', SPOT_TEMPLATE_ID: 'spot', RFQ_TEMPLATE_ID: 'rfq' })[k] || null }) },
     DriveApp: { getFileById: () => ({ makeCopy: n => (made.push(n), { getId: () => n }) }) },
     LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },

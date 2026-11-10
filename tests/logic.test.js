@@ -308,7 +308,7 @@ test('견적요청서 작성 계획', () => {
   assert.deepStrictEqual([get(3, 3), get(3, 4), get(3, 8), get(3, 11), get(3, 21)], ['TBD', 'MS20995C20', 'MFG COC/TR', 3, '=SUM(I3:T3)']);
   assert.deepStrictEqual([get(4, 2), get(4, 3), get(4, 8), get(4, 13), get(4, 11)], [2, 'KERC00016', '', 5, '']);
   assert.deepStrictEqual(ops.filter(o => o.op === 'rowFmt').map(o => [o.fr, o.r]), [[3, 4]]);
-  assert.deepStrictEqual(ops.filter(o => o.op === 'width').map(o => [o.c, o.px]), Array.from({ length: 12 }, (_, i) => [9 + i, 64]).concat([[21, 80]]));
+  assert.deepStrictEqual(ops.filter(o => o.op === 'width').map(o => [o.c, o.px]), Array.from({ length: 12 }, (_, i) => [9 + i, 64]).concat([[21, 80], [8, 110]]));
 });
 
 test('견적요청 메일 본문', () => {
@@ -342,6 +342,7 @@ test('Spot 견적 구매내역서 계획: 업체 수만큼 줄·비교 칸, 선�
   assert.match(get('견적종합', 5, 29), /INT\(\(ROW\(\)-5\)\/3\)\*3, 0, 3, 1\)/);
   assert.match(get('견적종합', 5, 28), /IF\(AI5="SGD", AE5\*AH5\*\$AS\$2/);
   assert.deepStrictEqual(ops.filter(o => o.op === 'checkbox').map(o => [o.r1, o.r2]), [[5, 10]]);
+  assert.deepStrictEqual(ops.filter(o => o.op === 'cf').map(o => [o.formula, o.bg, o.r2, o.c2]), [['=$A5=TRUE', '#ffff00', 10, 45], ['=$AH5="NO BID"', '#d9d9d9', 10, 45]]);
   // 구매내역서: 비교 칸은 3개 업체(W~AH)만 남기고 AI부터 지움
   assert.deepStrictEqual([get('구매내역서', 8, 23), get('구매내역서', 8, 27), get('구매내역서', 8, 31)], ['Airtech', 'Hexcel', '3M']);
   assert.deepStrictEqual(ops.filter(o => o.op === 'deleteCols').map(o => [o.c, o.n]), [[35, 68]]);
@@ -369,4 +370,10 @@ test('업체정보 탭 읽기 (머리글 위치 자동, 한 업체 여러 줄) �
   assert.deepStrictEqual([c[0].supplier, c[0].price, c[0].cur, c[0].start, c[0].shipFrom, c[0].qpl], ['', null, '', null, '', 'MOMENTIVE_NY']);
   const r = L.classify_(L.parseRequest_('K1 5 2027-01-01').requests, c, L.toDate_('2026-11-10'))[0];
   assert.deepStrictEqual([r.route, r.qpl], ['rfq', 'MOMENTIVE_NY']);
+});
+
+test('회신 없음 업체는 견적종합에 NO BID · "회신 없음" 으로', () => {
+  const ops = L.buildSpotPlan_([{ item: 'A', qty: 5, uom: 'EA', needBy: L.toDate_('2027-01-10'), quotes: { C: { noReply: true, qty: '5', uom: 'EA', price: '12' } } }], ['C'], {}, L.toDate_('2026-11-10'));
+  const get = (r, c) => (ops.filter(o => o.op === 'set' && o.s === '견적종합' && o.r === r && o.c === c).pop() || {}).v;
+  assert.deepStrictEqual([get(5, 34), get(5, 40), get(5, 31)], ['NO BID', '회신 없음', 5]);
 });
