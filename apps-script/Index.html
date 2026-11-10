@@ -28,25 +28,27 @@ td.n{text-align:right;white-space:nowrap}
 .err{color:#dc2626;white-space:pre-wrap}
 a{color:var(--accent)}
 /* 입력 표 */
-.req-head,.req-row{display:grid;grid-template-columns:28px minmax(0,1fr) 90px 150px 36px;gap:6px;align-items:start}
+.req-head,.req-row{display:grid;grid-template-columns:24px 150px 80px 150px minmax(0,1fr) 120px 70px 36px;gap:6px;align-items:start}
 .req-head{font-size:.8rem;color:var(--muted);padding:0 0 4px}
 .req-row{margin-bottom:6px}
-.req-row input{width:100%;min-width:0}
+.req-row input,.req-row select{width:100%;min-width:0;padding:8px 6px}
 .req-no{padding-top:10px;text-align:right;color:var(--muted);font-size:.8rem}
 .req-desc{grid-column:2/-1;font-size:.75rem;color:var(--muted);margin-top:-2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .req-desc.bad{color:var(--spot)}
 .btn-x{background:transparent;color:var(--muted);border:1px solid var(--line);padding:8px 0}
 .btn-sub{background:transparent;color:var(--accent);border:1px solid var(--accent)}
-@media (max-width:560px){
+@media (max-width:640px){
   .req-head{display:none}
-  .req-row{grid-template-columns:24px 1fr 1fr 36px;border-bottom:1px solid var(--line);padding-bottom:8px}
+  .req-row{grid-template-columns:22px 1fr 1fr 40px;border-bottom:1px solid var(--line);padding-bottom:8px}
   .req-row .req-no{grid-row:1;grid-column:1}
-  .req-row .f-item{grid-row:1;grid-column:2/-1}
-  .req-row .f-qty{grid-row:2;grid-column:2}
-  .req-row .f-need{grid-row:2;grid-column:3}
-  .req-row .btn-x{grid-row:2;grid-column:4}
-  .req-row .req-desc{grid-row:3}
-  .req-desc{grid-column:2/-1}
+  .req-row .f-item{grid-row:1;grid-column:2}
+  .req-row .f-qty{grid-row:1;grid-column:3/5}
+  .req-row .f-need{grid-row:2;grid-column:2}
+  .req-row .f-prog{grid-row:2;grid-column:3/5}
+  .req-row .f-ship{grid-row:3;grid-column:2}
+  .req-row .f-tax{grid-row:3;grid-column:3}
+  .req-row .btn-x{grid-row:3;grid-column:4}
+  .req-row .req-desc{grid-row:4}
 }
 /* 미리보기 */
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
@@ -60,9 +62,9 @@ a{color:var(--accent)}
 
 <div class="card">
   <h2>1. 소요제기 입력</h2>
-  <p class="muted">품목마다 <b>Item · 수량 · Need-by</b>를 입력하세요. 엑셀에서 여러 줄을 복사해 아무 칸에나 붙여넣으면 표가 자동으로 채워집니다.
+  <p class="muted">품목마다 <b>Item · 수량 · Need-by</b>를 입력하세요. Program · Ship · Tax Code는 선택이며, Ship을 "기본"으로 두면 자재정보 값이 들어가고 Program은 시트에서 노란 칸으로 표시됩니다. 엑셀에서 여러 줄을 복사해 아무 칸에나 붙여넣으면 표가 자동으로 채워집니다.
     계약 여부는 <b>Need-by(출고일)</b> 기준으로 판정합니다.</p>
-  <div class="req-head"><span></span><span>Item</span><span>수량</span><span>Need-by</span><span></span></div>
+  <div class="req-head"><span></span><span>Item</span><span>수량</span><span>Need-by</span><span>Program</span><span>Ship</span><span>Tax Code</span><span></span></div>
   <div id="reqRows"></div>
   <datalist id="itemList"></datalist>
   <div class="row" style="margin-top:6px">
@@ -130,18 +132,24 @@ function addRow(v) {
   var row = document.createElement('div');
   row.className = 'req-row';
   row.innerHTML = '<span class="req-no"></span>' +
-    '<input class="f-item" list="itemList" placeholder="Item (예: KERC00053)" autocomplete="off" autocapitalize="characters">' +
+    '<input class="f-item" list="itemList" placeholder="Item" autocomplete="off" autocapitalize="characters">' +
     '<input class="f-qty" type="number" min="0" step="any" inputmode="decimal" placeholder="수량">' +
     '<input class="f-need" type="date">' +
+    '<input class="f-prog" placeholder="Program (선택)">' +
+    '<select class="f-ship"><option value="">기본</option><option>Air</option><option>Ocean</option></select>' +
+    '<input class="f-tax" placeholder="Tax" inputmode="numeric">' +
     '<button class="btn-x" type="button" title="행 삭제">✕</button>' +
     '<div class="req-desc"></div>';
   $('reqRows').appendChild(row);
   row.querySelector('.f-item').value = v.item || '';
   row.querySelector('.f-qty').value = v.qty || '';
   row.querySelector('.f-need').value = v.need || '';
+  row.querySelector('.f-prog').value = v.program || '';
+  row.querySelector('.f-ship').value = v.ship || '';
+  row.querySelector('.f-tax').value = v.tax || '';
   row.querySelector('.btn-x').onclick = function () { row.remove(); if (!rows().length) addRow(); renumber(); };
   row.querySelector('.f-item').oninput = function () { showDesc(row); };
-  row.querySelectorAll('input').forEach(function (inp) { inp.addEventListener('paste', onPaste); });
+  row.querySelectorAll('input,select').forEach(function (inp) { inp.addEventListener('paste', onPaste); });
   showDesc(row); renumber();
   return row;
 }
@@ -149,10 +157,11 @@ function rows() { return [].slice.call(document.querySelectorAll('.req-row')); }
 function renumber() { rows().forEach(function (r, i) { r.querySelector('.req-no').textContent = i + 1; }); }
 function showDesc(row) {
   var k = row.querySelector('.f-item').value.trim().replace(/\s+/g, ' ').toUpperCase(), el = row.querySelector('.req-desc');
-  if (!k) { el.textContent = ''; return; }
+  if (!k) { el.textContent = ''; row.querySelector('.f-ship option[value=""]').textContent = '기본'; return; }
   var d = itemDesc[k];
-  el.textContent = d != null ? d : '자재정보에 없는 Item → Spot';
-  el.className = 'req-desc' + (d != null ? '' : ' bad');
+  el.textContent = d ? d[0] : '자재정보에 없는 Item → Spot';
+  el.className = 'req-desc' + (d ? '' : ' bad');
+  row.querySelector('.f-ship option[value=""]').textContent = d && d[1] ? '기본(' + d[1] + ')' : '기본';
 }
 // 엑셀에서 여러 칸/줄 붙여넣기 → 현재 칸부터 채움
 function onPaste(e) {
@@ -164,7 +173,7 @@ function onPaste(e) {
   e.preventDefault();
   var lines = t.replace(/\r/g, '').replace(/\n+$/, '').split('\n');
   var all = rows(), start = all.indexOf(e.target.closest('.req-row'));
-  var fields = ['f-item', 'f-qty', 'f-need'], col = fields.findIndex(function (f) { return e.target.classList.contains(f); });
+  var fields = ['f-item', 'f-qty', 'f-need', 'f-prog', 'f-ship', 'f-tax'], col = fields.findIndex(function (f) { return e.target.classList.contains(f); });
   lines.forEach(function (line, i) {
     var row = all[start + i] || addRow();
     all = rows();
@@ -174,15 +183,17 @@ function onPaste(e) {
       cell = cell.trim();
       if (f === 'f-qty') cell = cell.replace(/,/g, '');
       if (f === 'f-need') cell = normDate(cell);
+      if (f === 'f-ship') cell = /^air$/i.test(cell) ? 'Air' : /^ocean$/i.test(cell) ? 'Ocean' : '';
       row.querySelector('.' + f).value = cell;
     });
     showDesc(row);
   });
 }
-function requestText() {
+function requestRows() {
+  var q = function (r, c) { return r.querySelector('.' + c).value.trim(); };
   return rows().map(function (r) {
-    return [r.querySelector('.f-item').value.trim(), r.querySelector('.f-qty').value.trim(), r.querySelector('.f-need').value].join('\t');
-  }).filter(function (l) { return l.replace(/\t/g, '').trim(); }).join('\n');
+    return { item: q(r, 'f-item'), qty: q(r, 'f-qty'), needBy: q(r, 'f-need'), program: q(r, 'f-prog'), shipFrom: q(r, 'f-ship'), taxCode: q(r, 'f-tax') };
+  });
 }
 $('btnAdd').onclick = function () { addRow().querySelector('.f-item').focus(); };
 $('btnClear').onclick = function () { $('reqRows').innerHTML = ''; for (var i = 0; i < 3; i++) addRow(); };
@@ -190,7 +201,7 @@ for (var i = 0; i < 3; i++) addRow();
 
 call('apiInit').then(function (d) {
   $('base').value = d.today; state.rates = d.rates || {};
-  (d.items || []).forEach(function (x) { itemDesc[x[0]] = x[1]; });
+  (d.items || []).forEach(function (x) { itemDesc[x[0]] = [x[1], x[2] || '']; });
   $('itemList').innerHTML = (d.items || []).map(function (x) {
     return '<option value="' + esc(x[0]) + '">' + esc(String(x[1]).slice(0, 60)) + '</option>';
   }).join('');
@@ -199,15 +210,15 @@ call('apiInit').then(function (d) {
 
 $('btnClassify').onclick = function () {
   var b = this; $('msg1').textContent = '';
-  var text = requestText();
+  var reqRows = requestRows();
   var bad = rows().filter(function (r) {
     var it = r.querySelector('.f-item').value.trim(), q = r.querySelector('.f-qty').value.trim();
     return (it || q) && !(it && Number(q) > 0);
   });
   if (bad.length) { $('msg1').textContent = 'Item과 수량을 확인해 주세요: ' + bad.map(function (r) { return r.querySelector('.req-no').textContent; }).join(', ') + '행'; return; }
-  if (!text) { $('msg1').textContent = 'Item을 입력해 주세요.'; return; }
+  if (!reqRows.some(function (r) { return r.item; })) { $('msg1').textContent = 'Item을 입력해 주세요.'; return; }
   b.disabled = true;
-  call('apiClassify', text, $('base').value).then(function (d) {
+  call('apiClassify', reqRows, $('base').value).then(function (d) {
     state.results = d.results; state.rates = d.rates || state.rates;
     $('previewCard').hidden = true;
     render();
@@ -232,7 +243,7 @@ function render() {
           }).join('') + '</select>';
       var c0 = c[0] || {};
       return '<tr><td><span class="badge ' + (r.status === '계약' ? 'b-ok' : 'b-spot') + '">' + (r.status === '계약' ? esc(c0.priceMode || '계약') : 'Spot') + '</span></td>' +
-        '<td>' + esc(r.item) + '</td><td class="n">' + fmt(r.qty) + '</td><td>' + esc(r.needBy) + '</td><td>' + sup + '</td>' +
+        '<td>' + esc(r.item) + (r.program ? '<div class="muted">' + esc(r.program) + '</div>' : '') + '</td><td class="n">' + fmt(r.qty) + '</td><td>' + esc(r.needBy) + '</td><td>' + sup + '</td>' +
         '<td>' + (c0.start ? esc(c0.start) + ' ~ ' + esc(c0.end) : '') + '</td><td>' + esc(c0.desc || r.desc || '') + '</td><td class="muted">' + esc(r.reason) + (r.warnings && r.warnings.length ? '<div class="err">⚠ ' + esc(r.warnings.join(' · ')) + '</div>' : '') + '</td></tr>';
     }).join('');
   rs.forEach(function (r) { var s = $('pick-' + r.line); if (s) s.onchange = renderPurchase; });
@@ -274,7 +285,7 @@ $('btnCreate').onclick = function () {
   document.querySelectorAll('[data-rate]').forEach(function (el) { rates[el.dataset.rate] = el.value; });
   document.querySelectorAll('[data-remark]').forEach(function (el) { remarks[el.dataset.remark] = el.value; });
   var lines = state.results.filter(function (r) { return r.status === '계약'; }).map(function (r) {
-    return { item: r.item, qty: r.qty, needBy: r.needBy, program: r.program, contractRow: chosen(r).row };
+    return { item: r.item, qty: r.qty, needBy: r.needBy, program: r.program, shipFrom: r.shipFrom, taxCode: r.taxCode, contractRow: chosen(r).row };
   });
   call('apiCreatePurchase', { baseDate: $('base').value, rates: rates, remarks: remarks, lines: lines }).then(function (d) {
     state.rates = Object.assign(state.rates, rates);

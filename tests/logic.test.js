@@ -115,9 +115,20 @@ test('구매내역서 계획: 통화 2개, 업체 2개', () => {
   assert.strictEqual(get('구매요약', 3, 8), '구매금액');
   assert.strictEqual(get('구매요약', 6, 2), 'CUR 별 합계');
   assert.strictEqual(get('구매요약', 8, 8), "=H6*'구매세부내역'!$P$2+H7*'구매세부내역'!$Q$2");
-  // 구매일정: 11월부터 11개월, 2026년(2개월) / 2027년(9개월)
+  // 구매일정: 11월부터 12개월, 2026년(2개월) / 2027년(10개월)
   assert.strictEqual(get('구매일정', 5, 5), 11);
-  assert.strictEqual(get('구매일정', 5, 25), 9);
+  assert.strictEqual(get('구매일정', 5, 27), 10);
   const merges = ops.filter(o => o.op === 'merge' && o.s === '구매일정').map(o => [o.c1, o.c2]);
-  assert.deepStrictEqual(merges, [[5, 8], [9, 26]]);
+  assert.deepStrictEqual(merges, [[5, 8], [9, 28]]);
+});
+
+test('화면 표 입력: Program·Ship·Tax 전달, 빈 행 무시', () => {
+  const p = L.parseRows_([
+    { item: ' kerc00053 ', qty: '50', needBy: '2027-06-10', program: '787AB', shipFrom: 'Ocean', taxCode: '1' },
+    { item: '', qty: '' },
+    { item: 'X', qty: '' },
+  ]);
+  assert.deepStrictEqual(p.skipped, [3]);
+  const r = L.classify_(p.requests, contracts, L.toDate_('2026-11-10'))[0];
+  assert.deepStrictEqual([r.item, r.qty, L.fmtDate_(r.needBy), r.program, r.shipFrom, r.taxCode], ['KERC00053', 50, '2027-06-10', '787AB', 'Ocean', '1']);
 });

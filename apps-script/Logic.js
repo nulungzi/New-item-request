@@ -141,6 +141,26 @@ function parseRequest_(text) {
   return { requests: out, skipped: skipped };
 }
 
+/**
+ * 화면 표 입력 → 요청 목록. rows: [{item, qty, needBy:'yyyy-mm-dd', program, shipFrom, taxCode}]
+ * Item·수량이 없는 행은 건너뛰고 행 번호를 skipped 에 담는다.
+ */
+function parseRows_(rows) {
+  var out = [], skipped = [];
+  (rows || []).forEach(function (r, i) {
+    var item = itemKey_(r.item), qty = toNumber_(r.qty);
+    if (!item && (qty === null || qty === undefined)) return;
+    if (!item || qty === null) { skipped.push(i + 1); return; }
+    out.push({
+      line: i + 1, item: item, qty: qty, needBy: toDate_(r.needBy),
+      program: String(r.program || '').trim(),
+      shipFrom: String(r.shipFrom || '').trim(),
+      taxCode: String(r.taxCode == null ? '' : r.taxCode).trim()
+    });
+  });
+  return { requests: out, skipped: skipped };
+}
+
 /** "10-12wks", "8 weeks", "30 days" → 최대 일수. 모르면 null */
 function leadDays_(s) {
   var m = String(s || '').toLowerCase().match(/(\d+)(?:\s*[-~]\s*(\d+))?\s*(wk|week|w\b|day|d\b|주|일)/);
@@ -174,7 +194,8 @@ function classify_(requests, contracts, today) {
     var valid = all.filter(function (c) {
       return (!c.start || c.start <= d) && (!c.end || d <= c.end);
     }).sort(function (a, b) { return (a.price || 0) - (b.price || 0); });
-    var res = { line: q.line, item: q.item, qty: q.qty, needBy: q.needBy, program: q.program, candidates: valid, warnings: [] };
+    var res = { line: q.line, item: q.item, qty: q.qty, needBy: q.needBy, program: q.program,
+      shipFrom: q.shipFrom || '', taxCode: q.taxCode || '', candidates: valid, warnings: [] };
     if (valid.length) {
       res.status = '계약';
       res.reason = valid.length > 1 ? '유효 계약 ' + valid.length + '건 — 업체 선택 필요' : '';
@@ -383,15 +404,15 @@ function buildPurchasePlan_(lines, curs, rates, base) {
   add({ op: 'merge', s: S, r1: r, c1: 6, r2: r, c2: 9 });
   set(S, r, 6, '=' + DP + 'L' + detailTotalRow);
 
-  /* ---------- 구매일정: 작성일 달부터 11개월 머리글 ---------- */
+  /* ---------- 구매일정: 작성일 달부터 12개월 머리글 (E~AB열, 달마다 2칸) ---------- */
   var G = TPL.SCHEDULE;
-  add({ op: 'unmerge', s: G, r1: 4, c1: 5, r2: 4, c2: 26 });
-  for (var c = 5; c <= 26; c++) set(G, 4, c, '');
+  add({ op: 'unmerge', s: G, r1: 4, c1: 5, r2: 4, c2: 28 });
+  for (var c = 5; c <= 28; c++) set(G, 4, c, '');
   var y = base.getFullYear(), m = base.getMonth() + 1, segStart = 5;
-  for (var k = 0; k < 11; k++) {
+  for (var k = 0; k < 12; k++) {
     var col = 5 + k * 2;
     set(G, 5, col, m);
-    var endOfYear = m === 12 || k === 10;
+    var endOfYear = m === 12 || k === 11;
     if (endOfYear) {
       add({ op: 'cellFmt', s: G, r: 4, c: segStart, fs: G, fr: 4, fc: 5 });
       set(G, 4, segStart, y + '년');
@@ -416,5 +437,5 @@ function buildPurchasePlan_(lines, curs, rates, base) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { buildPurchasePlan_: buildPurchasePlan_, curFmt_: curFmt_, leadDays_: leadDays_, parseContracts_: parseContracts_, parseRequest_: parseRequest_, classify_: classify_, summarize_: summarize_, toDate_: toDate_, fmtDate_: fmtDate_ };
+  module.exports = { parseRows_: parseRows_, buildPurchasePlan_: buildPurchasePlan_, curFmt_: curFmt_, leadDays_: leadDays_, parseContracts_: parseContracts_, parseRequest_: parseRequest_, classify_: classify_, summarize_: summarize_, toDate_: toDate_, fmtDate_: fmtDate_ };
 }

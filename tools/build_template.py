@@ -70,6 +70,15 @@ D.column_dimensions['S'].width = D.column_dimensions['T'].width   # 비고
 D.column_dimensions['T'].width = 12                                 # Need-by Date
 D.freeze_panes = None
 
+# 구매일정: 12개월이 되도록 AA·AB열(13번째 달) 서식 추가
+G = wb['구매일정']
+for r in range(4, 11):
+    copy_style(G.cell(r, 25), G.cell(r, 27))   # Y → AA
+    copy_style(G.cell(r, 26), G.cell(r, 28))   # Z → AB
+G.merge_cells('AA5:AB5')
+for col in ['AA', 'AB']:
+    G.column_dimensions[col].width = G.column_dimensions['Y'].width
+
 # 사업부 담당 확인: 담당자·제목·날짜·날인 비우기
 B = wb['사업부 담당 확인']
 for a in ['A2', 'B2', 'C2']:

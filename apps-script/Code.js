@@ -59,18 +59,21 @@ function saveRates_(rates) {
 /** 웹앱이 처음 열릴 때 */
 function apiInit() {
   var items = {};
-  loadContracts_().forEach(function (c) { items[c.item] = c.desc; });
+  loadContracts_().forEach(function (c) {
+    var x = items[c.item] = items[c.item] || [c.desc, ''];
+    if (!x[1] && c.shipFrom) x[1] = c.shipFrom;
+  });
   return {
     today: fmtDate_(new Date()),
     rates: loadRates_(),
-    items: Object.keys(items).sort().map(function (k) { return [k, items[k]]; })   // Item 자동완성용
+    items: Object.keys(items).sort().map(function (k) { return [k, items[k][0], items[k][1]]; })   // [Item, Description, Ship From]
   };
 }
 
 /** 판정. Date는 문자열로 바꿔서 돌려준다 (google.script.run 직렬화 안전). */
 /** baseDateStr = 작성일 (파일명·환율 기준일·리드타임 계산). 계약 판정은 품목별 Need-by-date 기준. */
-function apiClassify(text, baseDateStr) {
-  var parsed = parseRequest_(text);
+function apiClassify(input, baseDateStr) {
+  var parsed = Array.isArray(input) ? parseRows_(input) : parseRequest_(input);   // 화면 표(배열) 또는 붙여넣기 글
   var base = toDate_(baseDateStr) || toDate_(new Date());
   var result = classify_(parsed.requests, loadContracts_(), base).map(function (r) {
     r.needBy = fmtDate_(r.needBy);
@@ -86,7 +89,8 @@ function apiClassify(text, baseDateStr) {
 
 /**
  * 구매내역서 생성.
- * payload = { baseDate, rates: {USD: 1339.3, ...}, remarks: {업체명: '비고'}, lines: [{item, qty, needBy, program, contractRow}] }
+ * payload = { baseDate, rates: {USD: 1339.3, ...}, remarks: {업체명: '비고'},
+ *             lines: [{item, qty, needBy, program, shipFrom, taxCode, contractRow}] }
  * contractRow 로 자재정보 행을 다시 읽어 단가를 서버에서 확정한다(화면 값 신뢰 안 함).
  */
 function apiCreatePurchase(payload) {
@@ -98,7 +102,9 @@ function apiCreatePurchase(payload) {
     var o = {};
     Object.keys(c).forEach(function (k) { o[k] = c[k]; });
     o.qty = Number(l.qty);
-    o.program = '';   // Program은 생성된 시트에서 담당자가 입력
+    o.program = l.program || '';                                  // 비우면 시트에서 노란 칸으로 입력
+    if (l.shipFrom) o.shipFrom = l.shipFrom;                      // 화면 입력이 있으면 자재정보 값 대신
+    if (l.taxCode !== undefined && l.taxCode !== '') o.taxCode = isNaN(+l.taxCode) ? l.taxCode : +l.taxCode;
     o.needBy = toDate_(l.needBy);
     o.remark = (payload.remarks || {})[c.supplier] || '';
     return o;
