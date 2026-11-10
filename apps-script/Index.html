@@ -129,20 +129,40 @@ main { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px }
 .q-table textarea { width: 100%; min-width: 180px; min-height: 34px; padding: 5px 6px; font: .82rem var(--font-body); resize: vertical }
 .q-table .ro { font-size: .82rem; white-space: pre-wrap; max-width: 220px }
 
-/* 업체 견적 입력 창 (오른쪽에서 밀려 들어옴) */
-.drawer-wrap { position: fixed; inset: 0; z-index: 60 }
-.drawer-backdrop { position: absolute; inset: 0; background: rgba(10, 16, 32, .45); opacity: 0; transition: opacity .18s ease }
-.drawer { position: absolute; top: 0; right: 0; bottom: 0; width: min(760px, 100%); display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto;
-  background: var(--bg); box-shadow: -12px 0 40px rgba(0, 0, 0, .25); transform: translateX(100%); transition: transform .22s cubic-bezier(.2, .8, .2, 1); will-change: transform;
-  padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); padding-right: env(safe-area-inset-right, 0px) }
-.drawer-wrap.open .drawer { transform: none }
+/* 업체 견적 입력 창 (화면 가운데 팝업) */
+.drawer-wrap { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
+  padding: max(24px, env(safe-area-inset-top, 0px)) 16px max(24px, env(safe-area-inset-bottom, 0px)) }
+.drawer-backdrop { position: absolute; inset: 0; background: rgba(10, 16, 32, .5); opacity: 0; transition: opacity .18s ease }
+.drawer { position: relative; width: min(920px, 100%); max-height: 100%; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--bg); border-radius: 14px; box-shadow: 0 24px 70px rgba(0, 0, 0, .35);
+  opacity: 0; transform: translateY(14px) scale(.97); transition: transform .22s cubic-bezier(.2, .8, .2, 1), opacity .18s ease; will-change: transform, opacity }
+.drawer-wrap.open .drawer { opacity: 1; transform: none }
 .drawer-wrap.open .drawer-backdrop { opacity: 1 }
-@media (prefers-reduced-motion: reduce) { .drawer, .drawer-backdrop { transition: none } }
+@media (prefers-reduced-motion: reduce) { .drawer, .drawer-backdrop, .vd-progress i, .vd-step { transition: none } }
+@media (max-width: 560px) { .drawer-wrap { padding: 8px } .drawer { border-radius: 10px } }
+.drawer > header, .drawer > nav, .drawer > .drawer-tools, .drawer > .vd-rates, .drawer > footer { flex: none }
+.vd-progress { position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; background: var(--line) }
+.vd-progress i { display: block; height: 100%; background: var(--accent); transition: width .3s cubic-bezier(.2, .8, .2, 1) }
+.vd-steps { display: flex; gap: 6px; overflow-x: auto; padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--line); scrollbar-width: thin }
+.vd-step { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--bg); color: var(--ink); font: 500 .82rem var(--font-body); cursor: pointer; transition: background .2s, color .2s, border-color .2s, transform .2s }
+.vd-step:hover { border-color: var(--accent) }
+.vd-step .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line) }
+.vd-step.st-done .dot { background: var(--ok) }
+.vd-step.st-part .dot { background: var(--spot) }
+.vd-step.st-none { color: var(--muted) }
+.vd-step.st-none .dot { background: var(--muted) }
+.vd-step.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); transform: scale(1.04) }
+.vd-step.on .dot { box-shadow: 0 0 0 2px var(--accent-ink) }
+.vd-rates { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 8px 20px; background: var(--surface-2); border-bottom: 1px solid var(--line); font-size: .88rem }
+.vd-rates input { width: 110px; font-family: var(--font-data); text-align: right }
+.vd-rates input.missing { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn) }
+.drawer-head { position: relative }
 .drawer-head { display: flex; justify-content: space-between; gap: 12px; align-items: start; padding: 16px 20px 10px; background: var(--surface); border-bottom: 1px solid var(--line) }
 .drawer-head h2 { font-size: 1.15rem }
 .drawer-x { font-size: 1.1rem; width: 36px }
 .drawer-tools { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--line) }
-.drawer-body { overflow: auto; padding: 14px 20px; display: grid; gap: 10px; align-content: start; overscroll-behavior: contain }
+.drawer-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 14px 20px; display: grid; gap: 10px; align-content: start; overscroll-behavior: contain }
 .drawer-foot { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; padding: 12px 20px; background: var(--surface); border-top: 1px solid var(--line) }
 .toggle { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; font-weight: 600; font-size: .88rem }
 .toggle:has(input:checked) { background: var(--surface-2); border-color: var(--muted); color: var(--muted) }
@@ -593,14 +613,17 @@ table.list td.nw { white-space: nowrap }
   <div class="drawer-backdrop" id="vdBackdrop"></div>
   <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="vdTitle">
     <header class="drawer-head">
-      <div><div class="eyebrow" id="vdRfq"></div><h2 id="vdTitle"></h2><div class="muted" id="vdMeta"></div></div>
+      <div><div class="eyebrow" id="vdRfq"></div><div id="vdWho"><h2 id="vdTitle"></h2><div class="muted" id="vdMeta"></div></div></div>
       <button class="btn-x drawer-x" id="vdClose" type="button" aria-label="닫기">✕</button>
+      <div class="vd-progress" aria-hidden="true"><i id="vdBar"></i></div>
     </header>
+    <nav class="vd-steps" id="vdSteps" aria-label="업체"></nav>
     <div class="drawer-tools">
       <label class="toggle" for="vdNoReply"><input type="checkbox" id="vdNoReply"><span>회신 없음</span></label>
       <label class="inline" for="vdCur">통화 일괄<select id="vdCur"><option value="">선택</option></select></label>
       <button class="btn-ghost" id="vdNoBid" type="button">모든 품목 NO BID</button>
     </div>
+    <div class="vd-rates" id="vdRates" hidden></div>
     <div class="drawer-body" id="vdBody"></div>
     <footer class="drawer-foot">
       <div class="row"><button class="btn-ghost" id="vdPrev" type="button">← 이전 업체</button><button class="btn-ghost" id="vdNext" type="button">다음 업체 →</button></div>
@@ -1132,8 +1155,8 @@ function refreshVendorList(rec) {
   if (box) { box.innerHTML = vendorListHtml(rec); bindVendorList(box); }
 }
 
-/* 오른쪽 입력 창 */
-var dr = { rec: null, v: null, closing: null };
+/* 업체 견적 입력 창 (가운데 팝업) */
+var dr = { rec: null, v: null, closing: null, busy: false };
 function openDrawer(rec, v) {
   dr.rec = rec; dr.v = v;
   var c = quoteFor(rec);
@@ -1165,6 +1188,13 @@ function renderDrawer() {
   $('vdCur').disabled = none; $('vdNoBid').disabled = none;
   $('vdPrev').disabled = idx <= 0; $('vdNext').disabled = idx >= c.vendors.length - 1;
   $('vdSaved').textContent = '';
+  $('vdBar').style.width = ((idx + 1) / c.vendors.length * 100) + '%';
+  $('vdSteps').innerHTML = c.vendors.map(function (x, i) {
+    var st = vendorStatus(c, x), cls = st.cls ? 'st-' + st.cls : '';
+    return '<button type="button" class="vd-step ' + cls + (x === v ? ' on' : '') + '" data-step="' + i + '"' + (x === v ? ' aria-current="true"' : '') + '><span class="dot"></span>' + esc(x) + '</button>';
+  }).join('');
+  $('vdSteps').querySelectorAll('[data-step]').forEach(function (b) { b.onclick = function () { var i = +b.dataset.step, cur = c.vendors.indexOf(dr.v); goVendor(c.vendors[i], i > cur ? 1 : -1); }; });
+  var on = $('vdSteps').querySelector('.on'); if (on) on.scrollIntoView({ block: 'nearest', inline: 'center' });
   $('vdBody').classList.toggle('disabled', none);
   var f = function (q, key, label, cls, ph) {
     return '<label class="field ' + (cls || '') + '">' + label + '<input data-f="' + key + '" value="' + esc(q[key] || '') + '"' + (ph ? ' placeholder="' + ph + '"' : '') + (none ? ' disabled' : '') + '></label>';
@@ -1189,17 +1219,51 @@ function renderDrawer() {
     box.querySelectorAll('[data-f]').forEach(function (el) {
       var h = function () {
         q[el.dataset.f] = el.value;
+        if (el.dataset.f === 'cur') renderVdRates();
         if (el.dataset.f === 'price') { box.classList.toggle('nobid', /^no\s*bid$/i.test(el.value.trim())); box.classList.toggle('filled', qFilled(q)); }
       };
       el.oninput = h; el.onchange = h;
     });
   });
+  renderVdRates();
+}
+function renderVdRates() {   // 이 업체가 쓴 외화의 환율 (모든 업체 공통, 견적 종합 화면과 같은 값)
+  var c = quoteFor(dr.rec), box = $('vdRates'), used = [];
+  if (!c.noReply[dr.v]) c.items.forEach(function (x) { var cur = qOf(x, dr.v).cur; if (cur && cur !== 'KRW' && used.indexOf(cur) < 0) used.push(cur); });
+  box.hidden = !used.length;
+  if (!used.length) { box.innerHTML = ''; return; }
+  box.innerHTML = '<b>환율</b>' + used.map(function (cur) {
+    var val = c.rates[cur] || '';
+    return '<label class="inline">1 ' + cur + ' =<input data-vrate="' + cur + '" type="number" step="0.01" min="0" inputmode="decimal" value="' + esc(val) + '"' + (val ? '' : ' class="missing"') + '>원</label>';
+  }).join('') + '<span class="muted">모든 업체 공통 · 견적 종합에서도 바꿀 수 있음</span>';
+  box.querySelectorAll('[data-vrate]').forEach(function (el) {
+    el.oninput = function () { c.rates[el.dataset.vrate] = el.value; el.classList.toggle('missing', !el.value); };
+  });
+}
+function goVendor(nv, dir) {   // 이전/다음 업체로: 저장하고 밀어내듯 바꿔 보여 줌
+  var c = quoteFor(dr.rec);
+  if (dr.busy || !nv || nv === dr.v) return;
+  var from = dr.v;
+  var saving = saveQuoteSilently(c);
+  var note = function () { saving.then(function () { if (dr.v === nv) $('vdSaved').textContent = '✓ ' + from + ' 저장됨'; }, function (e) { $('vdSaved').textContent = '저장 실패: ' + (e.message || e); }); };
+  var parts = [$('vdWho'), $('vdBody')], dx = dir > 0 ? -48 : 48;
+  var swap = function () { dr.v = nv; renderDrawer(); $('vdBody').scrollTop = 0; note(); };
+  var focus = function () { var f = $('vdBody').querySelector('input:not([disabled])'); if (f) f.focus({ preventScroll: true }); };
+  if (!parts[1].animate || matchMedia('(prefers-reduced-motion: reduce)').matches) { swap(); focus(); return; }
+  dr.busy = true;
+  var outs = parts.map(function (el) { return el.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateX(' + dx + 'px)', opacity: 0 }], { duration: 130, easing: 'ease-in', fill: 'forwards' }); });
+  Promise.all(outs.map(function (a) { return a.finished; })).then(function () {
+    swap();
+    var ins = parts.map(function (el) { return el.animate([{ transform: 'translateX(' + (-dx) + 'px)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 220, easing: 'cubic-bezier(.2, .8, .2, 1)' }); });
+    outs.forEach(function (a) { a.cancel(); });
+    return Promise.all(ins.map(function (a) { return a.finished; }));
+  }).catch(function () {}).then(function () { dr.busy = false; focus(); });
 }
 $('vdNoReply').onchange = function () { var c = quoteFor(dr.rec); if (this.checked) c.noReply[dr.v] = true; else delete c.noReply[dr.v]; renderDrawer(); };
 $('vdCur').onchange = function () { var c = quoteFor(dr.rec), cur = this.value; if (!cur) return; c.items.forEach(function (x) { qOf(x, dr.v).cur = cur; }); renderDrawer(); };
 $('vdNoBid').onclick = function () { var c = quoteFor(dr.rec); c.items.forEach(function (x) { qOf(x, dr.v).price = 'NO BID'; }); renderDrawer(); };
-$('vdPrev').onclick = function () { var c = quoteFor(dr.rec), i = c.vendors.indexOf(dr.v); if (i > 0) { saveQuoteSilently(c); dr.v = c.vendors[i - 1]; renderDrawer(); $('vdBody').scrollTop = 0; } };
-$('vdNext').onclick = function () { var c = quoteFor(dr.rec), i = c.vendors.indexOf(dr.v); if (i < c.vendors.length - 1) { saveQuoteSilently(c); dr.v = c.vendors[i + 1]; renderDrawer(); $('vdBody').scrollTop = 0; } };
+$('vdPrev').onclick = function () { var c = quoteFor(dr.rec); goVendor(c.vendors[c.vendors.indexOf(dr.v) - 1], -1); };
+$('vdNext').onclick = function () { var c = quoteFor(dr.rec); goVendor(c.vendors[c.vendors.indexOf(dr.v) + 1], 1); };
 $('vdDone').onclick = closeDrawer;
 $('vdClose').onclick = closeDrawer;
 $('vdBackdrop').onclick = closeDrawer;
