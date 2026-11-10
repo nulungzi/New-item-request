@@ -88,7 +88,7 @@ for i, cur in enumerate(curs):
     D.cell(r, 13).number_format = fmt[cur]
     D.cell(r, 13).value = '=SUMIF($K$11:$K$1000,"%s",$M$11:$M$1000)' % cur
     D.row_dimensions[r].height = D.row_dimensions[2].height
-D.cell(2, 11).value = '통화별 합계'
+D.cell(2, 11).value = ' 총 합계'
 D.merge_cells('K2:K6')
 for c in (11, 12, 13):
     D.cell(7, c)._style = copy([tot_lbl, tot_lbl, tot_val][c - 11])
