@@ -12,6 +12,7 @@
  *   SHEET_ID         (선택) 자재정보가 있는 스프레드시트 ID (없으면 이 스크립트가 붙은 시트)
  *   RFQ_TEMPLATE_ID  (견적요청서) 견적요청서 템플릿 구글 시트 ID — templates/견적요청서_템플릿.xlsx
  *   ARCHIVE_SHEET_ID (완료 보관) 완료된 기록을 옮겨 둘 다른 스프레드시트 ID
+ *   SPOT_TEMPLATE_ID (Spot 견적) Spot 견적 구매내역서 템플릿 구글 시트 ID — templates/Spot_구매내역서_템플릿.xlsx
  */
 var SHEET_MASTER = '자재정보';
 var SHEET_RATE = '환율';
@@ -160,20 +161,30 @@ function apiRegisterItem(rec) {
  */
 function apiCreatePurchase(payload) {
   var lines = purchaseLines_(payload);
-  var curs = uniq_(lines.map(function (l) { return l.cur; })).filter(function (c) { return c !== 'KRW'; });
-  var rates = checkedRates_(payload.rates, curs);
+  var rates = checkedRates_(payload.rates, uniq_(lines.map(function (l) { return l.cur; })).filter(function (c) { return c !== 'KRW'; }));
   saveRates_(rates);
-
   var base = toDate_(payload.baseDate) || toDate_(new Date());
-  var name = purchaseFileName_(payload.name, base, uniq_(lines.map(function (l) { return l.supplier; })));
-  var ss = copyTemplate_(name, payload.folder);
-  applyPlan_(ss, buildPurchasePlan_(lines, curs, rates, base, payload.schedule, { title: name, confirmer: payload.confirmer }));
-  var proto = ss.getSheetByName(TPL.PROTO);
-  if (proto) ss.deleteSheet(proto);
-  ss.setActiveSheet(ss.getSheetByName(TPL.SUMMARY));
-  var rec = addRecord_({ kind: '계약 구매내역서', title: name, url: ss.getUrl(), fileId: ss.getId(), status: '작성',
-    items: lines.map(function (l) { return { item: l.item, qty: l.qty, needBy: fmtDate_(l.needBy), supplier: l.supplier, price: l.price, cur: l.cur }; }) });
-  return { url: ss.getUrl(), name: name, id: ss.getId(), recordId: rec.id };
+  // Spot 단가(DB) 품목은 따로 (계약과 같은 양식, 업체선정사유 Sole source)
+  var groups = payload.split === false ? [{ spot: false, lines: lines }] : [
+    { spot: false, lines: lines.filter(function (l) { return !isSpotMode_(l.priceMode); }) },
+    { spot: true, lines: lines.filter(function (l) { return isSpotMode_(l.priceMode); }) }
+  ].filter(function (g) { return g.lines.length; });
+  var files = groups.map(function (g) {
+    var sups = uniq_(g.lines.map(function (l) { return l.supplier; }));
+    var name = String(payload.name || '').trim()
+      ? purchaseFileName_(payload.name, base, sups) + (groups.length > 1 && g.spot ? ' (Spot)' : '')
+      : purchaseFileName_('', base, sups).replace(' 구매내역서_', g.spot ? ' Spot 구매내역서_' : ' 구매내역서_');
+    var curs = uniq_(g.lines.map(function (l) { return l.cur; })).filter(function (c) { return c !== 'KRW'; });
+    var ss = copyTemplate_(name, payload.folder);
+    applyPlan_(ss, buildPurchasePlan_(g.lines, curs, rates, base, payload.schedule, { title: name, confirmer: payload.confirmer }));
+    var proto = ss.getSheetByName(TPL.PROTO);
+    if (proto) ss.deleteSheet(proto);
+    ss.setActiveSheet(ss.getSheetByName(TPL.SUMMARY));
+    var rec = addRecord_({ kind: g.spot ? 'Spot 구매내역서' : '계약 구매내역서', title: name, url: ss.getUrl(), fileId: ss.getId(), status: '작성',
+      items: g.lines.map(function (l) { return { item: l.item, qty: l.qty, needBy: fmtDate_(l.needBy), supplier: l.supplier, price: l.price, cur: l.cur }; }) });
+    return { url: ss.getUrl(), name: name, id: ss.getId(), recordId: rec.id, spot: g.spot };
+  });
+  return { files: files, url: files[0].url, name: files[0].name, id: files[0].id, recordId: files[0].recordId };
 }
 
 /** 화면에서 받은 줄 + 자재정보 계약 행 → 구매내역서 한 줄 */
@@ -361,6 +372,8 @@ function applyPlan_(ss, ops) {
           SpreadsheetApp.newDataValidation().requireValueInList(o.items, true).setAllowInvalid(true).build());
         break;
       case 'freeze': sh(o.s).setFrozenRows(o.rows); sh(o.s).setFrozenColumns(o.cols); break;
+      case 'checkbox': sh(o.s).getRange(o.r1, o.c, o.r2 - o.r1 + 1, 1).insertCheckboxes(); break;
+      case 'deleteCols': sh(o.s).deleteColumns(o.c, o.n); break;
       case 'width': sh(o.s).setColumnWidth(o.c, o.px); break;
       default: throw new Error('알 수 없는 작업: ' + o.op);
     }
@@ -473,6 +486,10 @@ function checkSetup() {
   var rid = prop_('RFQ_TEMPLATE_ID');
   if (!rid) bad('스크립트 속성 RFQ_TEMPLATE_ID 가 없습니다 (견적요청서 템플릿)');
   else { try { var rt = SpreadsheetApp.openById(rid); if (rt.getSheetByName(RFQ.SHEET)) ok('견적요청서 템플릿: ' + rt.getName()); else bad('견적요청서 템플릿에 "' + RFQ.SHEET + '" 탭이 없습니다'); } catch (e) { bad('견적요청서 템플릿을 열 수 없습니다: ' + e.message); } }
+  var sid = prop_('SPOT_TEMPLATE_ID');
+  if (!sid) bad('스크립트 속성 SPOT_TEMPLATE_ID 가 없습니다 (Spot 견적 구매내역서 템플릿)');
+  else { try { var st = SpreadsheetApp.openById(sid), miss = [SPOT.SUMMARY, SPOT.DETAIL, SPOT.QUOTE, SPOT.PROTO].filter(function (n) { return !st.getSheetByName(n); });
+    if (miss.length) bad('Spot 템플릿에 없는 탭: ' + miss.join(', ')); else ok('Spot 견적 구매내역서 템플릿: ' + st.getName()); } catch (e) { bad('Spot 템플릿을 열 수 없습니다: ' + e.message); } }
   var aid = prop_('ARCHIVE_SHEET_ID');
   if (!aid) bad('스크립트 속성 ARCHIVE_SHEET_ID 가 없습니다 (완료 보관 파일)');
   else { try { ok('완료 보관 파일: ' + SpreadsheetApp.openById(aid).getName()); } catch (e) { bad('완료 보관 파일을 열 수 없습니다: ' + e.message); } }
@@ -560,7 +577,8 @@ function apiCreateRfqDraft(payload) {
   var blob = resp.getBlob().setName(rec.title + '.xlsx');
   var mail = rfqEmail_(rec.items, dueText_(rec.due), signature_().html);
   var draft = GmailApp.createDraft('', rec.title, mail.text, { htmlBody: mail.html, bcc: bcc.join(','), attachments: [blob] });
-  updateRecord_(found, { status: '메일 초안', draft: draft.getId(), bcc: bcc.join(', ') });
+  var names = uniq_((payload.vendors || []).map(function (v) { return String(v).trim(); }));
+  updateRecord_(found, { status: '메일 초안', draft: draft.getId(), bcc: bcc.join(', '), data: names.length ? { vendors: names } : null });
   return { draftId: draft.getId(), link: 'https://mail.google.com/mail/#drafts', bccCount: bcc.length };
 }
 
@@ -586,7 +604,8 @@ function rowToRecord_(r) {
   return {
     id: String(r[0]), kind: r[1], owner: String(r[2]).toLowerCase(), created: Object.prototype.toString.call(r[3]) === '[object Date]' ? fmtDate_(r[3]) : String(r[3]),
     title: r[4], url: r[5], fileId: r[6], status: r[7], draft: r[8], bcc: r[9],
-    items: extra ? extra.items : items, due: extra ? extra.due : '', updated: r[11] instanceof Date ? r[11].toISOString() : String(r[11] || '')
+    items: extra ? extra.items : items, due: extra ? extra.due : '', vendors: extra && extra.vendors || [], quote: extra && extra.quote || null,
+    updated: r[11] instanceof Date ? r[11].toISOString() : String(r[11] || '')
   };
 }
 
@@ -616,6 +635,13 @@ function findRecord_(id, mine) {
 
 function updateRecord_(found, patch) {
   var sh = found.sheet, r = found.row;
+  if (patch.data) {   // 품목(JSON) 칸에 값 합치기
+    var cur = {};
+    try { cur = JSON.parse(found.values[10] || '{}'); } catch (e) {}
+    if (Array.isArray(cur)) cur = { items: cur };
+    Object.keys(patch.data).forEach(function (k) { cur[k] = patch.data[k]; });
+    sh.getRange(r, 11).setValue(JSON.stringify(cur));
+  }
   if (patch.status !== undefined) sh.getRange(r, 8).setValue(patch.status);
   if (patch.draft !== undefined) sh.getRange(r, 9).setValue(patch.draft);
   if (patch.bcc !== undefined) sh.getRange(r, 10).setValue(patch.bcc);
@@ -651,4 +677,50 @@ function apiCompleteRecord(id) {
     found.sheet.deleteRow(found.row);
     return { ok: true };
   } finally { lock.releaseLock(); }
+}
+
+/* ================================================================
+ * Spot 견적 구매내역서 — 견적요청서 기록에서 견적값을 입력해 만든다
+ * ================================================================ */
+/** 견적 입력 임시 저장. quote = {vendors, items:[{prev, program, quotes}], rates} */
+function apiSaveQuotes(recordId, quote) {
+  var found = findRecord_(recordId, true);
+  if (found.rec.kind !== '견적요청서') throw new Error('견적요청서 기록이 아닙니다.');
+  updateRecord_(found, { data: { quote: quote } });
+  return { ok: true, saved: new Date().toISOString() };
+}
+
+/**
+ * payload = {recordId, baseDate, rates, folder, name, confirmer, schedule, vendors:[업체명],
+ *            items:[{item, name, desc, material, qpl, uom, remark, qty, needBy, program, prev, quotes}]}
+ */
+function apiCreateSpotPurchase(payload) {
+  var found = findRecord_(payload.recordId, true);
+  if (found.rec.kind !== '견적요청서') throw new Error('견적요청서 기록이 아닙니다.');
+  var tid = prop_('SPOT_TEMPLATE_ID');
+  if (!tid) throw new Error('스크립트 속성 SPOT_TEMPLATE_ID(Spot 견적 구매내역서 템플릿 시트 ID)를 설정해 주세요. README 참고.');
+  var items = (payload.items || []).map(function (it) {
+    var o = {};
+    Object.keys(it).forEach(function (k) { o[k] = it[k]; });
+    o.needBy = toDate_(it.needBy);
+    return o;
+  });
+  if (!items.length) throw new Error('구매내역서에 넣을 품목이 없습니다.');
+  var vendors = uniq_((payload.vendors || []).map(function (v) { return String(v).trim(); }));
+  var rates = {};
+  Object.keys(payload.rates || {}).forEach(function (k) { var n = Number(payload.rates[k]); if (n > 0) rates[k] = n; });
+  if (Object.keys(rates).length) saveRates_(rates);
+  var base = toDate_(payload.baseDate) || toDate_(new Date());
+  var name = String(payload.name || '').trim() || found.rec.title.replace(/^\[KE\] RFQ \/\/ /, '') + ' 견적 구매내역서';
+  var folder = targetFolder_(payload.folder), tpl = DriveApp.getFileById(tid);
+  var file = folder ? tpl.makeCopy(name, folder) : tpl.makeCopy(name);
+  var ss = SpreadsheetApp.openById(file.getId());
+  applyPlan_(ss, buildSpotPlan_(items, vendors, rates, base, payload.schedule, { title: name, confirmer: payload.confirmer }));
+  var proto = ss.getSheetByName(SPOT.PROTO);
+  if (proto) ss.deleteSheet(proto);
+  ss.setActiveSheet(ss.getSheetByName(SPOT.SUMMARY));
+  updateRecord_(found, { status: '견적 구매내역서 작성', data: { quote: { vendors: vendors, items: payload.items, rates: payload.rates }, spotFile: ss.getUrl() } });
+  var rec = addRecord_({ kind: '견적 구매내역서', title: name, url: ss.getUrl(), fileId: ss.getId(), status: '작성',
+    items: items.map(function (it) { return { item: it.item, qty: it.qty, needBy: fmtDate_(it.needBy) }; }) });
+  return { url: ss.getUrl(), name: name, id: ss.getId(), recordId: rec.id };
 }

@@ -204,3 +204,45 @@ test('견적요청서 → 메일 초안 → 내 기록 → 완료 보관', () =>
   assert.strictEqual(archive.tabs['완료기록'].rows.length, 2);   // 머리글 + 1건
   assert.strictEqual(archive.tabs['완료기록'].rows[1][7], '완료');
 });
+
+test('견적 저장 → Spot 견적 구매내역서, 계약+Spot 단가는 두 파일로', () => {
+  const db = fakeBook({});
+  const ops = [];
+  const book = (name) => ({ getUrl: () => 'URL-' + name, getId: () => 'ID-' + name, getName: () => name, deleteSheet: () => {}, setActiveSheet: () => {},
+    getSheetByName: () => { const rec = new Proxy({}, { get: (t, k) => (...a) => { ops.push(k); return rec; } }); return rec; } });
+  const made = [];
+  const ctx = inContext({
+    console: { warn: () => {}, log: () => {} },
+    SpreadsheetApp: { getActive: () => db, openById: id => book(id), CopyPasteType: { PASTE_FORMAT: 'F' }, BorderStyle: { SOLID: 'S' },
+      newDataValidation: () => { const b = new Proxy({}, { get: (t, k) => () => (k === 'build' ? {} : b) }); return b; } },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: k => ({ TEMPLATE_ID: 'tpl', SPOT_TEMPLATE_ID: 'spot', RFQ_TEMPLATE_ID: 'rfq' })[k] || null }) },
+    DriveApp: { getFileById: () => ({ makeCopy: n => (made.push(n), { getId: () => n }) }) },
+    LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
+    Session: { getActiveUser: () => ({ getEmail: () => 'me@ke.com' }), getEffectiveUser: () => ({ getEmail: () => 'me@ke.com' }) },
+    Utilities: { formatDate: () => '261110-120000' },
+  });
+  // 자재정보: LTA 1개 + Spot 단가 1개
+  db.insertSheet('자재정보').rows.push(['Item', '계약 구분', '업체명', '단가', 'CUR', '계약시작', '계약종료'],
+    ['A1', 'LTA', 'AKZO', 2, 'USD', new Date(2026, 0, 1), new Date(2028, 11, 31)],
+    ['S1', 'Spot', 'Airtech', 462, 'USD', new Date(2025, 0, 1), new Date(2027, 11, 31)]);
+  db.insertSheet('환율');
+  const res = ctx.apiCreatePurchase({ baseDate: '2026-11-10', rates: { USD: 1350 }, remarks: {}, lines: [
+    { item: 'A1', qty: 3, needBy: '2027-06-10', contractRow: 2 }, { item: 'S1', qty: 30, needBy: '2027-06-10', contractRow: 3 }] });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(res.files.map(f => [f.name, f.spot]))), [['261110 구매내역서_AKZO', false], ['261110 Spot 구매내역서_Airtech', true]]);
+
+  // 견적요청서 기록 → 업체 이름 저장 → 견적 임시 저장 → Spot 견적 구매내역서
+  const rfq = ctx.apiCreateRfq({ baseDate: '2026-11-10', title: '[KE] RFQ // 261110 Boeing Chemical Material Spot (due 11/20)', due: '2026-11-20',
+    items: [{ item: 'MS20995C20', registered: false, name: 'MS20995C20', desc: 'Safety Wire', uom: 'RL', qty: 3, needBy: '2027-01-15' }] });
+  const found = ctx.findRecord_(rfq.recordId, true);
+  ctx.updateRecord_(found, { data: { vendors: ['Hexcel', '3M'] } });
+  const quote = { vendors: ['Hexcel', '3M'], items: [{ quotes: { Hexcel: { sel: true, review: '최저가', price: 10, cur: 'USD' } } }] };
+  ctx.apiSaveQuotes(rfq.recordId, quote);
+  let mine = ctx.apiMyRecords().records.find(r => r.id === rfq.recordId);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify([mine.vendors, mine.quote])), [['Hexcel', '3M'], quote]);
+  const sp = ctx.apiCreateSpotPurchase({ recordId: rfq.recordId, baseDate: '2026-11-10', rates: { USD: 1350 }, vendors: ['Hexcel', '3M'],
+    items: [{ item: 'MS20995C20', desc: 'Safety Wire', uom: 'RL', qty: 3, needBy: '2027-01-15', program: '', quotes: quote.items[0].quotes }] });
+  assert.strictEqual(sp.name, '261110 Boeing Chemical Material Spot (due 11/20) 견적 구매내역서');
+  assert.ok(ops.includes('insertCheckboxes') && ops.includes('deleteColumns'));
+  mine = ctx.apiMyRecords().records;
+  assert.deepStrictEqual(mine.map(r => [r.kind, r.status]).sort(), [['Spot 구매내역서', '작성'], ['견적 구매내역서', '작성'], ['견적요청서', '견적 구매내역서 작성'], ['계약 구매내역서', '작성']].sort());
+});

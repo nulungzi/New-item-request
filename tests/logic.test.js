@@ -322,3 +322,42 @@ test('견적요청 메일 본문', () => {
   assert.ok(m.html.indexOf('Thank you') < m.html.indexOf('김민형'));
   assert.match(m.text, /1\. LOCTITE EA 9837\.1 \| BMS 8-341/);
 });
+
+test('Spot 견적 구매내역서 계획: 업체 수만큼 줄·비교 칸, 선정 체크, NO BID, 요약 순서 수식', () => {
+  const base = L.toDate_('2026-11-10');
+  const items = [
+    { item: 'KERN00278-001', desc: 'FEP FILM 2MIL', material: 'FEP Film', qpl: 'Airtech', uom: 'RL', qty: 64, needBy: L.toDate_('2027-05-10'), program: '공통 / 18M DOS',
+      prev: { year: 2026, qty: 24, cur: 'usd', price: 964.19 },
+      quotes: { Airtech: { sel: true, review: 'Sole source', qty: 64, mfg: 'A4000V', uom: 'RL', price: 1, cur: 'usd', lt: '4~6' }, Hexcel: { price: 'no bid' } } },
+    { item: 'MS20995C20', desc: 'Safety Wire', uom: 'RL', qty: 3, needBy: L.toDate_('2027-01-15'), program: '', quotes: {} },
+  ];
+  const ops = L.buildSpotPlan_(items, ['Airtech', 'Hexcel', '3M'], { USD: 1355.6, EUR: 1740.98 }, base, null, { title: 'T', confirmer: '안성미 과장' });
+  const get = (s, r, c) => (ops.filter(o => o.op === 'set' && o.s === s && o.r === r && o.c === c).pop() || {}).v;
+  // 견적종합: 품목 2 × 업체 3 = 6줄 (5~10행)
+  assert.deepStrictEqual([5, 6, 7, 8, 9, 10].map(r => get('견적종합', r, 30)), ['Airtech', 'Hexcel', '3M', 'Airtech', 'Hexcel', '3M']);
+  assert.deepStrictEqual([get('견적종합', 5, 1), get('견적종합', 5, 2), get('견적종합', 6, 1)], [true, 'Sole source', false]);
+  assert.deepStrictEqual([get('견적종합', 5, 34), get('견적종합', 5, 35), get('견적종합', 6, 34)], [1, 'USD', 'NO BID']);
+  assert.strictEqual(get('견적종합', 5, 18), 64);                 // 2027-05 → 7번째 달(R열)
+  assert.strictEqual(get('견적종합', 8, 14), 3);                  // 2027-01 → 3번째 달(N열)
+  assert.match(get('견적종합', 5, 29), /INT\(\(ROW\(\)-5\)\/3\)\*3, 0, 3, 1\)/);
+  assert.match(get('견적종합', 5, 28), /IF\(AI5="SGD", AE5\*AH5\*\$AS\$2/);
+  assert.deepStrictEqual(ops.filter(o => o.op === 'checkbox').map(o => [o.r1, o.r2]), [[5, 10]]);
+  // 구매내역서: 비교 칸은 3개 업체(W~AH)만 남기고 AI부터 지움
+  assert.deepStrictEqual([get('구매내역서', 8, 23), get('구매내역서', 8, 27), get('구매내역서', 8, 31)], ['Airtech', 'Hexcel', '3M']);
+  assert.deepStrictEqual(ops.filter(o => o.op === 'deleteCols').map(o => [o.c, o.n]), [[35, 68]]);
+  assert.strictEqual(get('구매내역서', 11, 2), "=OFFSET('견적종합'!$F$5, (A11-1)*3, 0)");
+  assert.strictEqual(get('구매내역서', 11, 16), "=IFERROR(INDEX('견적종합'!$AD:$AD, MATCH(TRUE&$B11, '견적종합'!$D:$D, 0))&\"\", \"미정\")");
+  assert.strictEqual(get('구매내역서', 11, 23), "=IFERROR(INDEX('견적종합'!$AH:$AH, MATCH($B11&W$8, '견적종합'!$C:$C, 0)), \"\")");
+  assert.deepStrictEqual([6, 7, 8, 9].map(c => get('구매내역서', 11, c)), [2026, 24, 'USD', 964.19]);
+  assert.strictEqual(get('구매내역서', 12, 14), undefined);       // Program 비면 노란 칸
+  assert.ok(ops.some(o => o.op === 'bg' && o.s === '구매내역서' && o.r === 12 && o.c === 14));
+  assert.deepStrictEqual([get('구매내역서', 3, 16), get('구매내역서', 3, 17), get('구매내역서', 3, 18)], [1355.6, undefined, 1740.98]);
+  // 전체구매요약: K열 L/I → L=K+10 → 구매내역서 행
+  assert.deepStrictEqual([get('전체구매요약', 5, 11), get('전체구매요약', 5, 12), get('전체구매요약', 6, 12)], [1, '=K5+10', '=K6+10']);
+  assert.strictEqual(get('전체구매요약', 7, 3), 'CUR 별 합계');
+  assert.strictEqual(get('전체구매요약', 12, 3), '총 합계 (KRW 표기)');
+  // 사업부 담당 확인 · 구매일정도 들어감
+  assert.strictEqual(get('사업부 담당 확인', 2, 1), '안성미 과장');
+  assert.ok(ops.some(o => o.s === '구매일정' && o.op === 'width'));
+  assert.throws(() => L.buildSpotPlan_(items, [], {}, base), /업체가 없습니다/);
+});

@@ -580,7 +580,7 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule, extra) {
     set(S, r, 7, g.cur);
     set(S, r, 8, '=SUMIFS(' + KC + ',' + crit + ')');
     nf(S, r, 8, curFmt_(g.cur));
-    set(S, r, 9, g.priceMode);
+    set(S, r, 9, isSpotMode_(g.priceMode) ? 'Sole source' : g.priceMode);   // Spot 단가(DB) = 단독 공급
     set(S, r, 12, g.supplier);   // 수식용 도우미(회색 글자). C열은 "PPG(제작사, US)"처럼 자유롭게 고쳐도 됨
     r++;
   });
@@ -612,6 +612,15 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule, extra) {
   add({ op: 'merge', s: S, r1: r, c1: 6, r2: r, c2: 9 });
   set(S, r, 6, '=' + DP + 'L' + detailTotalRow);
 
+  return ops.concat(scheduleConfirmOps_(base, schedule, extra));
+}
+
+/** 구매일정·사업부 담당 확인 탭 (계약·Spot 구매내역서 공통) */
+function scheduleConfirmOps_(base, schedule, extra) {
+  extra = extra || {};
+  var ops = [];
+  var add = function (o) { ops.push(o); };
+  var set = function (s, r, c, v) { add({ op: 'set', s: s, r: r, c: c, v: v }); };
   /* ---------- 구매일정: 작성일 달부터 12개월 머리글 (E~AB열, 달마다 2칸) ---------- */
   var G = TPL.SCHEDULE;
   // 일정 칸 24개(E~AB) 너비를 모두 같게 (템플릿에 따라 Y·AA·AB가 넓게 남는 경우가 있음)
@@ -750,4 +759,161 @@ function rfqEmail_(items, due, signatureHtml) {
     .concat(items.map(function (it, i) { return (i + 1) + '. ' + [it.name, it.desc, it.qpl, it.uom, it.remark === undefined ? RFQ.REMARK : it.remark, qty(it.qty), need(it.needBy)].join(' | '); }))
     .concat(['', 'Thank you']).join('\n');
   return { html: html, text: text };
+}
+
+/* ------------------------------------------------------------------
+ * Spot 견적 구매내역서 (템플릿: templates/Spot_구매내역서_템플릿.xlsx)
+ *   견적종합   품목마다 업체 수(N)만큼 줄. A 선정 체크 · B 검토 문구 · AD~AN 업체 견적
+ *   구매내역서 견적종합에서 A=TRUE 인 줄을 찾아 선정 결과, 오른쪽은 업체별 비교(업체마다 4칸)
+ *   전체구매요약 K열(L/I)을 바꾸면 순서가 바뀜 (L=K+10 → 구매내역서 행)
+ * ------------------------------------------------------------------ */
+var SPOT = {
+  SUMMARY: '전체구매요약', DETAIL: '구매내역서', QUOTE: '견적종합', PROTO: '_proto',
+  P_SUM_ROW: 1, P_SUM_CUR1: 2, P_SUM_CUR: 3, P_SUM_TOTAL: 4, P_SUM_NOTE: 5, P_DET_ROW: 11, P_Q_ROW: 21,
+  Q_FIRST: 5, Q_M0: 12, Q_LAST: 45,           // 견적종합: 5행부터, 월 L~W, 마지막 열 AS
+  D_FIRST: 11, D_V0: 23, D_LAST: 102, MAX_VENDORS: 20,
+  CURS: ['USD', 'EUR', 'JPY', 'SGD', 'KRW'],
+  RATE_COL: { USD: 'P', JPY: 'Q', EUR: 'R', SGD: 'S' }   // 구매내역서 3행 환율
+};
+
+/**
+ * items: [{item, name, desc, material, qpl, uom, remark, qty, needBy(Date), program,
+ *          prev: {year, qty, cur, price},
+ *          quotes: {업체명: {sel, review, qty, mfg, uom, price('NO BID' 가능), cur, moq, lt, shelf, remark}}}]
+ * vendors: 견적종합·비교 칸에 넣을 업체 이름 순서, rates: {USD, JPY, EUR, SGD}, base: 작성일
+ */
+function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
+  var ops = [], N = vendors.length, n = items.length;
+  if (!N) throw new Error('견적을 받은 업체가 없습니다.');
+  if (N > SPOT.MAX_VENDORS) throw new Error('업체는 ' + SPOT.MAX_VENDORS + '곳까지 넣을 수 있습니다.');
+  var add = function (o) { ops.push(o); };
+  var set = function (s, r, c, v) { add({ op: 'set', s: s, r: r, c: c, v: v }); };
+  var Q = SPOT.QUOTE, D = SPOT.DETAIL, S = SPOT.SUMMARY;
+  var A = colA_, QR = "'" + Q + "'!", DR = "'" + D + "'!";
+  var num = function (v) { var x = toNumber_(v); return x === null ? (v === undefined || v === null ? '' : String(v).trim()) : x; };
+
+  /* ---------- 견적종합 ---------- */
+  for (var k = 0; k < 12; k++) set(Q, 3, SPOT.Q_M0 + k, { date: fmtDate_(new Date(base.getFullYear(), base.getMonth() + k, 1)) });
+  var qLast = SPOT.Q_FIRST + n * N - 1;
+  items.forEach(function (it, i) {
+    var mk = rfqMonth_(base, it.needBy).k;
+    vendors.forEach(function (v, j) {
+      var r = SPOT.Q_FIRST + i * N + j, q = (it.quotes || {})[v] || {};
+      add({ op: 'fmt', s: Q, r: r, from: SPOT.P_Q_ROW, c1: 1, c2: SPOT.Q_LAST, fs: SPOT.PROTO });
+      set(Q, r, 1, !!q.sel);
+      if (q.review) set(Q, r, 2, q.review);
+      set(Q, r, 3, '=F' + r + '&AD' + r);
+      set(Q, r, 4, '=A' + r + '&F' + r);
+      set(Q, r, 5, i + 1);
+      set(Q, r, 6, it.item);
+      set(Q, r, 7, it.desc || it.name || '');
+      set(Q, r, 8, it.material || '');
+      set(Q, r, 9, it.qpl || '');
+      set(Q, r, 10, it.uom || '');
+      set(Q, r, 11, it.remark === undefined ? RFQ.REMARK : it.remark);
+      set(Q, r, SPOT.Q_M0 + mk, Number(it.qty));
+      set(Q, r, 24, '=AE' + r);
+      set(Q, r, 25, '=IF(OR(Z' + r + '="", Z' + r + '="NO BID"), "", COUNTA(L' + r + ':W' + r + '))');
+      set(Q, r, 26, '=AH' + r);
+      set(Q, r, 27, '=IF(Z' + r + '="NO BID", "NO BID", IF(AND(ISNUMBER(Z' + r + '), ISNUMBER(X' + r + ')), Z' + r + '*X' + r + ', ""))');
+      // 원화가격: 통화별 환율(AP~AS 2행) 곱하기. 중첩 IF (모든 프로그램에서 계산됨)
+      var amt = 'AE' + r + '*AH' + r, cur = 'AI' + r;
+      set(Q, r, 28, '=IF(AND(ISNUMBER(AE' + r + '), ISNUMBER(AH' + r + ')), IF(' + cur + '="KRW", ' + amt + ', IF(' + cur + '="USD", ' + amt + '*$AP$2, IF(' +
+        cur + '="JPY", ' + amt + '*$AQ$2, IF(' + cur + '="EUR", ' + amt + '*$AR$2, IF(' + cur + '="SGD", ' + amt + '*$AS$2, ""))))), "")');
+      set(Q, r, 29, '=IF(AB' + r + '="", "", RANK(AB' + r + ', OFFSET($AB$' + SPOT.Q_FIRST + ', INT((ROW()-' + SPOT.Q_FIRST + ')/' + N + ')*' + N + ', 0, ' + N + ', 1), 1))');
+      set(Q, r, 30, v);
+      var put = function (c, x) { if (x !== undefined && x !== null && String(x).trim() !== '') set(Q, r, c, x); };
+      put(31, num(q.qty)); put(32, q.mfg); put(33, q.uom);
+      put(34, /^no\s*bid$/i.test(String(q.price || '').trim()) ? 'NO BID' : num(q.price));
+      put(35, q.cur ? String(q.cur).toUpperCase() : ''); put(37, q.moq); put(38, q.lt); put(39, q.shelf); put(40, q.remark);
+      set(Q, r, 36, '=IF(AND(ISNUMBER(AE' + r + '), ISNUMBER(AH' + r + ')), AE' + r + ' * AH' + r + ', "")');
+    });
+  });
+  if (qLast >= SPOT.Q_FIRST) add({ op: 'checkbox', s: Q, r1: SPOT.Q_FIRST, r2: qLast, c: 1 });
+  add({ op: 'freeze', s: Q, rows: 4, cols: 7 });
+
+  /* ---------- 구매내역서 ---------- */
+  set(D, 2, 15, { date: fmtDate_(base) });
+  ['USD', 'JPY', 'EUR', 'SGD'].forEach(function (c, i) { if (Number(rates[c]) > 0) set(D, 3, 16 + i, Number(rates[c])); });
+  vendors.forEach(function (v, j) { set(D, 8, SPOT.D_V0 + j * 4, v); });
+  var dLast = SPOT.D_FIRST + n - 1;
+  items.forEach(function (it, i) {
+    var r = SPOT.D_FIRST + i, p = it.prev || {};
+    // 찾기 수식: INDEX/MATCH (구글 시트·엑셀 모두 동작). col 'F:H' = F열에서 찾아 H열 값
+    // text: 글자 칸은 &"" 를 붙여 빈 칸이 0 으로 보이지 않게
+    var xl = function (key, col, dflt, text) {
+      var k = col.split(':')[0], v = col.split(':')[1];
+      return '=IFERROR(INDEX(' + QR + '$' + v + ':$' + v + ', MATCH(' + key + ', ' + QR + '$' + k + ':$' + k + ', 0))' + (text ? '&""' : '') + ', "' + (dflt || '') + '")';
+    };
+    add({ op: 'fmt', s: D, r: r, from: SPOT.P_DET_ROW, c1: 1, c2: SPOT.D_V0 + N * 4 - 1, fs: SPOT.PROTO });
+    add({ op: 'height', s: D, r: r, pt: 57 });
+    set(D, r, 1, i + 1);
+    set(D, r, 2, '=OFFSET(' + QR + '$F$' + SPOT.Q_FIRST + ', (A' + r + '-1)*' + N + ', 0)');
+    set(D, r, 3, '=OFFSET(' + QR + '$G$' + SPOT.Q_FIRST + ', (A' + r + '-1)*' + N + ', 0)');
+    set(D, r, 4, xl('$B' + r, 'F:H', '미정', true));
+    set(D, r, 5, xl('$B' + r, 'F:J', '미정', true));
+    [p.year, p.qty, p.cur, p.price].forEach(function (x, k2) { if (x !== undefined && x !== null && String(x).trim() !== '') set(D, r, 6 + k2, k2 === 2 ? String(x).toUpperCase() : num(x)); });
+    set(D, r, 10, '=Q' + r); set(D, r, 11, '=T' + r); set(D, r, 12, '=R' + r);
+    set(D, r, 13, '=IF(ISNUMBER(L' + r + '), J' + r + ' * L' + r + ', "")');
+    if (it.program) set(D, r, 14, it.program); else add({ op: 'bg', s: D, r: r, c: 14, color: TPL.FILL });
+    var key = 'TRUE&$B' + r;
+    set(D, r, 15, xl(key, 'D:B', '', true));
+    set(D, r, 16, xl(key, 'D:AD', '미정', true));
+    set(D, r, 17, xl(key, 'D:X')); set(D, r, 18, xl(key, 'D:AH')); set(D, r, 19, xl(key, 'D:AJ'));
+    set(D, r, 20, xl(key, 'D:AI', '', true)); set(D, r, 21, xl(key, 'D:AL', '', true)); set(D, r, 22, xl(key, 'D:AN', '', true));
+    vendors.forEach(function (v, j) {
+      var c = SPOT.D_V0 + j * 4, vk = '$B' + r + '&' + A(c) + '$8';
+      ['AH', 'AI', 'AL', 'AN'].forEach(function (src, k3) {
+        set(D, r, c + k3, '=IFERROR(INDEX(' + QR + '$' + src + ':$' + src + ', MATCH(' + vk + ', ' + QR + '$C:$C, 0))' + (k3 ? '&""' : '') + ', "")');
+      });
+    });
+  });
+  var used = SPOT.D_V0 + N * 4;   // 고른 업체 수만큼만 남기고 오른쪽 비교 칸은 지움
+  if (used <= SPOT.D_LAST) add({ op: 'deleteCols', s: D, c: used, n: SPOT.D_LAST - used + 1 });
+  add({ op: 'freeze', s: D, rows: 0, cols: 5 });
+
+  /* ---------- 전체구매요약 ---------- */
+  var sLast = 4 + n;
+  items.forEach(function (it, i) {
+    var r = 5 + i, vl = function (col) { return '=VLOOKUP(P' + r + ', ' + DR + '$B:$V, ' + col + '$2, FALSE)'; };   // B~V: 선정 결과까지 (비교 칸은 지워질 수 있음)
+    add({ op: 'fmt', s: S, r: r, from: SPOT.P_SUM_ROW, c1: 1, c2: 16, fs: SPOT.PROTO });
+    add({ op: 'height', s: S, r: r, pt: 30 });
+    set(S, r, 3, i + 1);
+    set(S, r, 4, '=N' + r);
+    set(S, r, 5, vl('E'));
+    set(S, r, 6, '=COUNTIF($N$5:$N$' + sLast + ', N' + r + ')');
+    set(S, r, 7, vl('G')); set(S, r, 8, vl('H')); set(S, r, 9, vl('I')); set(S, r, 10, vl('J'));
+    set(S, r, 11, i + 1);                       // L/I: 바꾸면 순서가 바뀜
+    set(S, r, 12, '=K' + r + '+' + (SPOT.D_FIRST - 1));
+    set(S, r, 14, '=INDIRECT("' + DR.replace(/"/g, '""') + 'P" & L' + r + ')');
+    set(S, r, 15, '=INDIRECT("' + DR.replace(/"/g, '""') + 'K" & L' + r + ')');
+    set(S, r, 16, '=INDIRECT("' + DR.replace(/"/g, '""') + 'B" & L' + r + ')');
+  });
+  var r0 = sLast + 1, rng = function (c) { return '$' + c + '$5:$' + c + '$' + sLast; };
+  SPOT.CURS.forEach(function (c, k4) {
+    var r = r0 + k4;
+    add({ op: 'fmt', s: S, r: r, from: k4 ? SPOT.P_SUM_CUR : SPOT.P_SUM_CUR1, c1: 1, c2: 16, fs: SPOT.PROTO });
+    add({ op: 'height', s: S, r: r, pt: 22.5 });
+    set(S, r, 8, c);
+    set(S, r, 9, '=SUMIF(' + rng('H') + ', H' + r + ', ' + rng('I') + ')');
+    add({ op: 'nf', s: S, r: r, c: 9, f: curFmt_(c) });
+    add({ op: 'merge', s: S, r1: r, c1: 9, r2: r, c2: 10 });
+  });
+  var rEnd = r0 + SPOT.CURS.length - 1;
+  set(S, r0, 3, 'CUR 별 합계');
+  add({ op: 'merge', s: S, r1: r0, c1: 3, r2: rEnd, c2: 5 });
+  set(S, r0, 6, n); add({ op: 'merge', s: S, r1: r0, c1: 6, r2: rEnd, c2: 6 });
+  set(S, r0, 7, '=SUM(G5:G' + sLast + ')'); add({ op: 'merge', s: S, r1: r0, c1: 7, r2: rEnd, c2: 7 });
+  var rT = rEnd + 1, rc = function (c) { return DR + '$' + SPOT.RATE_COL[c] + '$3'; };
+  add({ op: 'fmt', s: S, r: rT, from: SPOT.P_SUM_TOTAL, c1: 1, c2: 16, fs: SPOT.PROTO });
+  add({ op: 'height', s: S, r: rT, pt: 22.5 });
+  set(S, rT, 3, '총 합계 (KRW 표기)');
+  add({ op: 'merge', s: S, r1: rT, c1: 3, r2: rT, c2: 8 });
+  set(S, rT, 9, '=I' + (r0 + 4) + '+I' + r0 + '*' + rc('USD') + '+I' + (r0 + 1) + '*' + rc('EUR') + '+I' + (r0 + 2) + '*' + rc('JPY') + '+I' + (r0 + 3) + '*' + rc('SGD'));
+  add({ op: 'merge', s: S, r1: rT, c1: 9, r2: rT, c2: 10 });
+  add({ op: 'fmt', s: S, r: rT + 1, from: SPOT.P_SUM_NOTE, c1: 1, c2: 16, fs: SPOT.PROTO });
+  set(S, rT + 1, 3, '="*적용환율 (KRW)  USD "&TEXT(' + rc('USD') + ',"#,##0.00")&" · EUR "&TEXT(' + rc('EUR') + ',"#,##0.00")&" · JPY "&TEXT(' + rc('JPY') + ',"#,##0.00")&" · SGD "&TEXT(' + rc('SGD') + ',"#,##0.00")');
+
+  /* ---------- 구매일정 · 사업부 담당 확인 (계약 구매내역서와 같음) ---------- */
+  return ops.concat(scheduleConfirmOps_(base, schedule, extra));
 }
