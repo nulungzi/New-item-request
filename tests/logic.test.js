@@ -223,3 +223,18 @@ test('구매일정 E~AB열 너비 23px', () => {
   assert.deepStrictEqual(w.map(o => o.c), Array.from({ length: 24 }, (_, i) => 5 + i));
   assert.ok(w.every(o => o.s === '구매일정' && o.px === 23));
 });
+
+test('드라이브 폴더 주소 → ID', () => {
+  const id = '1AbCdEfGhIjKlMnOpQrStUvWxYz012345';
+  assert.strictEqual(L.parseFolderId_('https://drive.google.com/drive/folders/' + id + '?usp=sharing'), id);
+  assert.strictEqual(L.parseFolderId_('https://drive.google.com/drive/u/1/folders/' + id), id);
+  assert.strictEqual(L.parseFolderId_('https://drive.google.com/open?id=' + id), id);
+  assert.strictEqual(L.parseFolderId_('  ' + id + ' '), id);
+  assert.strictEqual(L.parseFolderId_(''), '');
+  assert.strictEqual(L.parseFolderId_('내 폴더'), '');
+});
+
+test('입력용 시트: 열 순서가 웹앱 표와 같고, 머리글 줄을 알아본다', () => {
+  assert.deepStrictEqual(L.INPUT_SHEET.COLUMNS.map(c => c[0]), ['Item', '수량', 'Need-by', 'Program', 'Shelf Life', 'Ship', 'Tax']);
+  assert.ok(L.isInputHeader_(['Item', '수량']) && L.isInputHeader_([' item ']) && !L.isInputHeader_(['KERC00053', '50']));
+});

@@ -239,6 +239,34 @@ function normPerson_(s) { return String(s || '').replace(/\s+/g, ' ').trim().sli
 /** "이름 직급" 형식인지 (예: 김정환 차장, 남궁민수 대리) */
 function isPersonFormat_(s) { return /^[가-힣]{2,5} [가-힣A-Za-z]{1,10}$/.test(normPerson_(s)); }
 
+/** 드라이브 폴더 주소나 ID에서 폴더 ID만 뽑는다. 없으면 '' */
+function parseFolderId_(s) {
+  s = String(s || '').trim();
+  var m = s.match(/\/folders\/([\w-]{10,})/) || s.match(/[?&]id=([\w-]{10,})/) || s.match(/^([\w-]{10,})$/);
+  return m ? m[1] : '';
+}
+
+/* ------------------------------------------------------------------
+ * 입력용 시트 (엑셀·구글 시트에서 복사해 웹앱 표에 붙여넣기)
+ * 열 순서는 웹앱 입력 표와 같다.
+ * ------------------------------------------------------------------ */
+var INPUT_SHEET = {
+  TAB: '소요제기 입력', GUIDE: '사용 방법',
+  COLUMNS: [
+    // [머리글, 필수, 설명, 예시, 표시 형식, 너비(px)]
+    ['Item', '필수', '자재정보의 품번', 'KERC00053', '@', 140],
+    ['수량', '필수', '숫자만 (쉼표 가능)', '50', '#,##0.##', 70],
+    ['Need-by', '필수', '출고 필요일. 계약 여부를 이 날짜로 판정합니다', '2027-06-10', 'yyyy-mm-dd', 100],
+    ['Program', '선택', '비우면 구매내역서에 노란 칸으로 남습니다', '787AB / 737WL', '@', 180],
+    ['Shelf Life', '선택', '비우면 자재정보 값을 씁니다', '12MM', '@', 100],
+    ['Ship', '선택', 'Air 또는 Ocean. 비우면 자재정보 값을 씁니다', 'Ocean', '@', 80],
+    ['Tax', '선택', 'Tax Code', '1', '@', 60]
+  ]
+};
+
+/** 붙여넣은 첫 줄이 입력용 시트 머리글인지 (Item 으로 시작) */
+function isInputHeader_(cells) { return /^item$/i.test(String((cells || [])[0] || '').trim()); }
+
 /** 구매내역서 파일 이름: 작업자가 적은 이름(다듬어서) 또는 "yymmdd 구매내역서_업체_업체" */
 function purchaseFileName_(custom, base, suppliers) {
   var n = String(custom || '').replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150);

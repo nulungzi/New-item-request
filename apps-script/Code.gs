@@ -149,7 +149,8 @@ function apiRegisterItem(rec) {
  * payload = { baseDate, rates: {USD: 1339.3}, remarks: {업체명: '비고'},
  *             lines: [{item, qty, needBy, program, shelfLife, shipFrom, taxCode, contractRow}],
  *             schedule: [{start, len}] × 5 (구매일정, 반 달 단위),
- *             name: 구매내역서 제목 (비우면 자동), confirmer: 사업부 담당자 '홍길동 과장' }
+ *             name: 구매내역서 제목 (비우면 자동), confirmer: 사업부 담당자 '홍길동 과장',
+ *             folder: 저장할 드라이브 폴더 주소/ID (비우면 OUTPUT_FOLDER_ID 또는 기본 위치) }
  * 단가는 contractRow 로 자재정보를 다시 읽어 서버에서 확정한다(화면 값은 믿지 않음).
  */
 function apiCreatePurchase(payload) {
@@ -160,7 +161,7 @@ function apiCreatePurchase(payload) {
 
   var base = toDate_(payload.baseDate) || toDate_(new Date());
   var name = purchaseFileName_(payload.name, base, uniq_(lines.map(function (l) { return l.supplier; })));
-  var ss = copyTemplate_(name);
+  var ss = copyTemplate_(name, payload.folder);
   applyPlan_(ss, buildPurchasePlan_(lines, curs, rates, base, payload.schedule, { title: name, confirmer: payload.confirmer }));
   var proto = ss.getSheetByName(TPL.PROTO);
   if (proto) ss.deleteSheet(proto);
@@ -202,13 +203,83 @@ function checkedRates_(input, curs) {
   return rates;
 }
 
-/** 템플릿 시트를 복사해 새 스프레드시트를 연다 */
-function copyTemplate_(name) {
+/** 템플릿 시트를 복사해 새 스프레드시트를 연다. folderInput: 담당자가 고른 폴더 주소/ID (없으면 OUTPUT_FOLDER_ID) */
+function copyTemplate_(name, folderInput) {
   var templateId = prop_('TEMPLATE_ID');
   if (!templateId) throw new Error('스크립트 속성 TEMPLATE_ID(구매내역서 템플릿 시트 ID)를 설정해 주세요. README 참고.');
-  var folderId = prop_('OUTPUT_FOLDER_ID'), tpl = DriveApp.getFileById(templateId);
-  var file = folderId ? tpl.makeCopy(name, DriveApp.getFolderById(folderId)) : tpl.makeCopy(name);
+  var folder = targetFolder_(folderInput), tpl = DriveApp.getFileById(templateId);
+  var file = folder ? tpl.makeCopy(name, folder) : tpl.makeCopy(name);
   return SpreadsheetApp.openById(file.getId());
+}
+
+/** 저장할 드라이브 폴더: 화면에서 고른 폴더 → 스크립트 속성 OUTPUT_FOLDER_ID → null(기본 위치) */
+function targetFolder_(folderInput) {
+  var picked = parseFolderId_(folderInput);
+  if (String(folderInput || '').trim() && !picked) throw new Error('드라이브 폴더 주소를 확인해 주세요. 폴더를 열었을 때 주소창의 주소를 그대로 붙여넣으면 됩니다.');
+  var id = picked || prop_('OUTPUT_FOLDER_ID');
+  if (!id) return null;
+  try { var f = DriveApp.getFolderById(id); f.getName(); return f; }
+  catch (e) { throw new Error('드라이브 폴더를 열 수 없습니다. 주소가 맞는지, 이 폴더에 파일을 만들 권한(편집자)이 있는지 확인해 주세요.'); }
+}
+
+/** 화면 "확인" 버튼: 폴더 이름을 돌려준다 */
+function apiCheckFolder(folderInput) {
+  var f = targetFolder_(folderInput);
+  return f ? { name: f.getName(), url: f.getUrl(), picked: !!parseFolderId_(folderInput) } : { name: '내 드라이브 (기본 위치)', url: '', picked: false };
+}
+
+/* ================================================================
+ * 입력용 시트: 엑셀처럼 적어 두고 웹앱 표에 복사·붙여넣기
+ * ================================================================ */
+function apiCreateInputSheet(folderInput, title) {
+  var folder = targetFolder_(folderInput);
+  var name = String(title || '').trim() || '소요제기 입력 시트';
+  var ss = SpreadsheetApp.create(name);
+  var cols = INPUT_SHEET.COLUMNS, n = cols.length, ROWS = 300;
+
+  // 1) 입력 탭
+  var sh = ss.getSheets()[0].setName(INPUT_SHEET.TAB);
+  sh.getRange(1, 1, 1, n).setValues([cols.map(function (c) { return c[0]; })])
+    .setFontWeight('bold').setBackground('#c9daf8').setHorizontalAlignment('center').setVerticalAlignment('middle');
+  cols.forEach(function (c, i) {
+    sh.setColumnWidth(i + 1, c[5]);
+    sh.getRange(2, i + 1, ROWS, 1).setNumberFormat(c[4]);
+    sh.getRange(1, i + 1).setNote(c[1] + ' · ' + c[2] + '\n예: ' + c[3]);
+    if (c[1] === '필수') sh.getRange(1, i + 1).setFontColor('#1c3d8f');
+  });
+  sh.getRange(2, 6, ROWS, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Air', 'Ocean'], true).setAllowInvalid(true).build());
+  sh.getRange(2, 3, ROWS, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(true).setHelpText('날짜를 넣어 주세요. 예: 2027-06-10').build());
+  sh.getRange(1, 1, ROWS + 1, n).setBorder(true, true, true, true, true, true, '#d0d7e2', SpreadsheetApp.BorderStyle.SOLID);
+  sh.setRowHeight(1, 28);
+  sh.setFrozenRows(1);
+  if (sh.getMaxColumns() > n) sh.deleteColumns(n + 1, sh.getMaxColumns() - n);
+
+  // 2) 사용 방법 탭
+  var g = ss.insertSheet(INPUT_SHEET.GUIDE);
+  var guide = [
+    ['소요제기 입력 시트 사용 방법', '', '', ''],
+    ['', '', '', ''],
+    ['1. 적기', '"' + INPUT_SHEET.TAB + '" 탭 2행부터 한 줄에 한 품목씩 적습니다. 열 순서를 바꾸지 마세요.', '', ''],
+    ['2. 복사', '2행부터 마지막 품목까지 A~G열을 드래그해서 복사(Ctrl+C)합니다. 머리글(1행)을 같이 복사해도 괜찮습니다.', '', ''],
+    ['3. 붙여넣기', '웹앱 "소요제기 입력" 표의 1번 Item 칸을 누르고 붙여넣기(Ctrl+V) 합니다. 줄이 모자라면 자동으로 늘어납니다.', '', ''],
+    ['4. 다음에', '2행 아래 내용을 지우고 다시 씁니다. 이 시트는 계속 써도 됩니다.', '', ''],
+    ['', '', '', ''],
+    ['열', '필수', '설명', '예시']
+  ].concat(cols.map(function (c) { return [c[0], c[1], c[2], c[3]]; }));
+  g.getRange(1, 1, guide.length, 4).setValues(guide);
+  g.getRange(1, 1).setFontSize(14).setFontWeight('bold');
+  g.getRange(3, 1, 4, 1).setFontWeight('bold').setFontColor('#1c3d8f');
+  var head = 8;
+  g.getRange(head, 1, 1, 4).setFontWeight('bold').setBackground('#c9daf8');
+  g.getRange(head, 1, cols.length + 1, 4).setBorder(true, true, true, true, true, true, '#d0d7e2', SpreadsheetApp.BorderStyle.SOLID);
+  g.getRange(head + 1, 4, cols.length, 1).setNumberFormat('@').setFontColor('#5a6680');
+  g.setColumnWidth(1, 110); g.setColumnWidth(2, 60); g.setColumnWidth(3, 420); g.setColumnWidth(4, 140);
+  g.getRange(3, 2, 4, 3).mergeAcross();
+  g.getRange(1, 1, guide.length, 4).setVerticalAlignment('middle').setWrap(true);
+  ss.setActiveSheet(sh);
+
+  if (folder) DriveApp.getFileById(ss.getId()).moveTo(folder);
+  return { url: ss.getUrl(), name: ss.getName(), folder: folder ? folder.getName() : '내 드라이브' };
 }
 
 /* ================================================================

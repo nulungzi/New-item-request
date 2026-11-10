@@ -158,6 +158,13 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-size: .
 .reg-mode label:has(input:checked) { border-color: var(--accent); color: var(--accent); background: var(--accent-soft) }
 .ok-msg { color: var(--ok); font-size: .9rem }
 
+/* 저장 위치 */
+.where { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px 10px; align-items: center; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface) }
+.where-label { font-size: .8rem; font-weight: 600; letter-spacing: .04em; color: var(--muted) }
+.where input { width: 100%; font-family: var(--font-data); font-size: .85rem }
+.where-msg { grid-column: 2 / -1 }
+@media (max-width: 640px) { .where { grid-template-columns: minmax(0, 1fr) auto } .where-label, .where-msg { grid-column: 1 / -1 } }
+
 /* 판정 결과 */
 .summary { display: flex; flex-wrap: wrap; gap: 8px }
 .tally { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 12px; border-radius: 999px; background: var(--surface-2); font-size: .85rem }
@@ -229,6 +236,13 @@ table.list td.nw { white-space: nowrap }
   <div class="legend"><span class="chip chip-ok">LTA</span><span class="chip chip-ok">3PP</span> 계약 단가로 구매내역서 작성 · <span class="chip chip-spot">SPOT</span> 견적 필요</div>
 </header>
 
+<section class="where" aria-label="저장 위치">
+  <label for="folder" class="where-label">저장 위치</label>
+  <input id="folder" type="text" autocomplete="off" spellcheck="false" placeholder="구글 드라이브 폴더 주소를 붙여넣으세요 (비우면 기본 위치)">
+  <button class="btn-ghost" id="btnFolder" type="button">확인</button>
+  <span id="folderMsg" class="muted where-msg">구매내역서와 입력용 시트를 이 폴더에 만듭니다. 이 브라우저에 기억됩니다.</span>
+</section>
+
 <section class="step" id="step1">
   <div class="step-no">1</div>
   <div class="panel">
@@ -246,6 +260,7 @@ table.list td.nw { white-space: nowrap }
       <div class="row">
         <button class="btn-ghost" id="btnAdd" type="button">+ 행 추가</button>
         <button class="btn-ghost" id="btnClear" type="button">모두 지우기</button>
+        <button class="btn-ghost" id="btnInputSheet" type="button" title="엑셀처럼 적어 두고 복사해 붙여넣는 구글 시트를 저장 위치에 만듭니다">입력용 시트 만들기</button>
       </div>
       <div class="row">
         <label class="inline" for="base">작성일 <input type="date" id="base" class="data"></label>
@@ -423,6 +438,8 @@ function onPaste(e) {
   }
   e.preventDefault();
   var lines = t.replace(/\r/g, '').replace(/\n+$/, '').split('\n');
+  if (lines.length && /^item$/i.test(lines[0].split('\t')[0].trim())) lines.shift();   // 입력용 시트 머리글은 건너뜀
+  if (!lines.length) return;
   var all = rows(), start = all.indexOf(e.target.closest('.req-row'));
   var fields = ['f-item', 'f-qty', 'f-need', 'f-prog', 'f-shelf', 'f-ship', 'f-tax'];
   var col = fields.findIndex(function (f) { return e.target.classList.contains(f); });
@@ -450,6 +467,29 @@ function requestRows() {
 $('btnAdd').onclick = function () { addRow().querySelector('.f-item').focus(); };
 $('btnClear').onclick = function () { $('reqRows').innerHTML = ''; for (var i = 0; i < 3; i++) addRow(); };
 for (var i = 0; i < 3; i++) addRow();
+
+/* ---------- 저장 위치 (드라이브 폴더) ---------- */
+var FOLDER_KEY = 'sojeongi.folder';
+try { $('folder').value = localStorage.getItem(FOLDER_KEY) || ''; } catch (e) {}
+function rememberFolder() { try { localStorage.setItem(FOLDER_KEY, $('folder').value.trim()); } catch (e) {} }
+$('folder').addEventListener('change', function () { rememberFolder(); checkFolder(); });
+$('btnFolder').onclick = function () { rememberFolder(); checkFolder(); };
+function checkFolder() {
+  var el = $('folderMsg');
+  el.className = 'muted where-msg'; el.textContent = '폴더를 확인하는 중…';
+  return call('apiCheckFolder', $('folder').value).then(function (f) {
+    el.innerHTML = '저장 위치: <b>' + esc(f.name) + '</b>' + (f.url ? ' · <a href="' + esc(f.url) + '" target="_blank" rel="noopener">열기 ↗</a>' : '');
+  }).catch(function (e) { el.className = 'err where-msg'; el.textContent = e.message || e; });
+}
+if ($('folder').value) checkFolder();
+
+$('btnInputSheet').onclick = function () {
+  var b = this; b.disabled = true; b.textContent = '만드는 중…'; $('msg1').textContent = '';
+  call('apiCreateInputSheet', $('folder').value, '').then(function (d) {
+    $('msg1').innerHTML = '<span class="ok-msg">입력용 시트를 ' + esc(d.folder) + '에 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.name) + ' 열기 ↗</a> — "사용 방법" 탭을 참고하세요.</span>';
+  }).catch(function (e) { $('msg1').textContent = e.message || e; })
+    .finally(function () { b.disabled = false; b.textContent = '입력용 시트 만들기'; });
+};
 
 call('apiInit').then(function (d) {
   $('base').value = d.today; state.rates = d.rates || {};
@@ -755,7 +795,7 @@ $('btnCreate').onclick = function () {
   var lines = state.results.filter(function (r) { return r.status === '계약'; }).map(function (r) {
     return { item: r.item, qty: r.qty, needBy: r.needBy, program: r.program, shelfLife: r.shelfLife, shipFrom: r.shipFrom, taxCode: r.taxCode, contractRow: chosen(r).row };
   });
-  call('apiCreatePurchase', { baseDate: $('base').value, rates: rates, remarks: remarks, lines: lines, schedule: state.sched, name: $('fileName').value, confirmer: $('confirmer').value }).then(function (d) {
+  call('apiCreatePurchase', { baseDate: $('base').value, rates: rates, remarks: remarks, lines: lines, schedule: state.sched, name: $('fileName').value, confirmer: $('confirmer').value, folder: $('folder').value }).then(function (d) {
     state.rates = Object.assign(state.rates, rates);
     $('purchaseCard').classList.add('done');
     $('doneNote').innerHTML = '구매내역서를 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.name) + ' 열기 ↗</a>';
