@@ -25,13 +25,23 @@ test('apiCreatePurchase: 템플릿 복사 후 계획 적용', () => {
   assert.ok(calls.includes('copyTo') && calls.includes('merge') && calls.includes('deleteSheet'));
 });
 
-test('Code.gs: 첫 줄, 보이지 않는 문자, 문법', () => {
-  const src = source();
-  assert.ok(src.startsWith('// ===== 소요제기 판정 웹앱'), '첫 줄이 바뀌었습니다');
-  const bad = [...src].filter(ch => { const c = ch.codePointAt(0); return (c < 32 && c !== 9 && c !== 10 && c !== 13) || [0xa0, 0x2028, 0x2029, 0xfeff].includes(c); });
-  assert.deepStrictEqual(bad, [], '보이지 않는 문자가 있습니다');
-  assert.ok(!/module\.exports|require\(/.test(src), 'Node 전용 코드가 들어 있습니다');
-  assert.doesNotThrow(() => new vm.Script(src, { filename: 'Code.gs' }));
+for (const f of ['Logic.gs', 'Code.gs']) {
+  test(f + ': 첫 줄, 보이지 않는 문자, 문법', () => {
+    const src = source(f);
+    assert.ok(src.startsWith('// ===== 소요제기 판정 웹앱 · ' + f), '첫 줄이 바뀌었습니다');
+    const bad = [...src].filter(ch => { const c = ch.codePointAt(0); return (c < 32 && c !== 9 && c !== 10 && c !== 13) || [0xa0, 0x2028, 0x2029, 0xfeff].includes(c); });
+    assert.deepStrictEqual(bad, [], '보이지 않는 문자가 있습니다');
+    assert.ok(!/module\.exports|require\(/.test(src), 'Node 전용 코드가 들어 있습니다');
+    assert.doesNotThrow(() => new vm.Script(src, { filename: f }));
+  });
+}
+
+test('파일 읽는 순서와 상관없이 올라가고, 판정 함수는 Logic.gs 에 있다', () => {
+  for (const order of [['Logic.gs', 'Code.gs'], ['Code.gs', 'Logic.gs']]) assert.doesNotThrow(() => inContext({}, order), order.join(' → '));
+  const onlyCode = inContext({}, ['Code.gs']);
+  assert.strictEqual(typeof onlyCode.parseRows_, 'undefined');
+  const both = inContext({});
+  for (const fn of ['parseRows_', 'classify_', 'buildPurchasePlan_', 'apiClassify', 'apiCreatePurchase', 'checkSetup']) assert.strictEqual(typeof both[fn], 'function', fn);
 });
 
 test('checkSetup: 자재정보·템플릿 점검', () => {

@@ -6,7 +6,7 @@
 
 | 폴더 | 내용 |
 |---|---|
-| `apps-script/` | **Apps Script에 붙여넣을 파일** — `Code.gs` (판정 로직 + 서버), `Index.html` (화면), `appsscript.json` |
+| `apps-script/` | **Apps Script에 붙여넣을 파일** — `Logic.gs` (판정·계산), `Code.gs` (시트·웹앱), `Index.html` (화면), `appsscript.json` |
 | `templates/구매내역서_템플릿.xlsx` | 구매내역서 서식 (구매요약 · 구매세부내역 · 구매일정 · 사업부 담당 확인) |
 | `tools/` | 템플릿 생성(`build_template.py`), 미리보기 파일 생성(`apply_plan.py`) |
 | `tests/` | 테스트 (`npm test`) |
@@ -31,20 +31,21 @@
 
 ## 설치 · 업데이트
 
-Apps Script 편집기에는 **파일 2개만** 붙여넣습니다. 저장소 `apps-script/` 폴더의 파일과 이름·내용이 같습니다.
+Apps Script 편집기에는 **파일 3개**를 붙여넣습니다. 저장소 `apps-script/` 폴더의 파일과 이름·내용이 같습니다.
 
 | 편집기 파일 | 붙여넣을 내용 |
 |---|---|
+| `Logic.gs` | `apps-script/Logic.gs` 전체 |
 | `Code.gs` | `apps-script/Code.gs` 전체 |
 | `Index.html` | `apps-script/Index.html` 전체 |
 
 - GitHub에서 파일을 열고 오른쪽 위 **Copy raw file**(복사 아이콘) 버튼으로 복사하면 화면 글자가 섞이지 않습니다.
-  붙여넣은 뒤 1번째 줄이 `// ===== 소요제기 판정 웹앱` 으로 시작하는지 확인하세요.
+  붙여넣은 뒤 1번째 줄이 `// ===== 소요제기 판정 웹앱 · 파일이름` 으로 시작하는지 확인하세요.
 - 붙여넣은 뒤 **저장(Ctrl+S)** 해서 파일 이름 앞 주황색 점이 사라졌는지 확인하고, **새 버전으로 배포**해야 웹앱에 반영됩니다.
 
 ### 처음 한 번
 1. 자재정보가 있는 스프레드시트에서 **확장 프로그램 → Apps Script** 를 엽니다.
-2. 위 표대로 `Code.gs`, `Index.html` 을 붙여넣습니다.
+2. 위 표대로 `Logic.gs`, `Code.gs`, `Index.html` 을 붙여넣습니다 (스크립트 파일은 + → 스크립트로 추가).
 3. **구매내역서 템플릿 올리기**: `templates/구매내역서_템플릿.xlsx` 를 구글 드라이브에 올리고
    **연결 앱 → Google Sheets로 열기** 후 **파일 → Google Sheets로 저장**합니다.
    만들어진 시트 주소의 `/d/` 와 `/edit` 사이 값이 템플릿 ID입니다.
@@ -57,8 +58,8 @@ Apps Script 편집기에는 **파일 2개만** 붙여넣습니다. 저장소 `ap
    업데이트 때는 **배포 관리 → 수정 → 버전: 새 버전**.
 
 ### 개발 (이 저장소)
-- `apps-script/Code.gs` 하나가 서버 코드 전부입니다. 1부는 판정·계산(순수 함수), 2부는 시트·드라이브 입출력
-- `npm test` 로 1부 함수와 2부(가짜 시트 사용)를 검사합니다
+- `Logic.gs` 는 판정·계산(순수 함수), `Code.gs` 는 시트·드라이브 입출력. Code.gs 는 Logic.gs 의 값을 함수 안에서만 씀 (파일 순서 무관)
+- `npm test` 로 Logic.gs 함수와 Code.gs(가짜 시트 사용)를 검사합니다
 - clasp 를 쓰면 `.clasp.json` 의 `rootDir` 을 `apps-script` 로 두고 `clasp push`
 
 ## 사용법
