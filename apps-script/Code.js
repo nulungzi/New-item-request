@@ -145,7 +145,8 @@ function apiClassify(input, baseDateStr) {
  * 구매내역서 생성.
  * payload = { baseDate, rates: {USD: 1339.3, ...}, remarks: {업체명: '비고'},
  *             lines: [{item, qty, needBy, program, shipFrom, taxCode, contractRow}],
- *             schedule: [{start, len}] × 5 (구매일정 막대, 반 달 단위) }
+ *             schedule: [{start, len}] × 5 (구매일정 막대, 반 달 단위),
+ *             name: 파일 이름 (비우면 자동) }
  * contractRow 로 자재정보 행을 다시 읽어 단가를 서버에서 확정한다(화면 값 신뢰 안 함).
  */
 function apiCreatePurchase(payload) {
@@ -180,8 +181,7 @@ function apiCreatePurchase(payload) {
   var base = toDate_(payload.baseDate) || toDate_(new Date());
   var suppliers = [];
   lines.forEach(function (l) { if (suppliers.indexOf(l.supplier) < 0) suppliers.push(l.supplier); });
-  var ymd = fmtDate_(base).replace(/-/g, '').slice(2);
-  var name = ymd + ' 구매내역서_' + suppliers.join('_');
+  var name = purchaseFileName_(payload.name, base, suppliers);   // 작업자가 적은 이름 우선
 
   var props = PropertiesService.getScriptProperties();
   var templateId = props.getProperty('TEMPLATE_ID');

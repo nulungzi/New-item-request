@@ -186,3 +186,10 @@ test('신규 자재 등록 검사와 행 만들기', () => {
   assert.strictEqual(row[11], 'memo');
   assert.deepStrictEqual(headers.map(L.keyForHeader_).slice(1), ['item', 'priceMode', 'supplier', 'price', 'cur', 'start', 'end', 'moq', 'leadtime', 'shipFrom', 'x:비고2']);
 });
+
+test('구매내역서 파일 이름: 작업자 입력 우선, 비우면 자동', () => {
+  const base = L.toDate_('2026-11-10');
+  assert.strictEqual(L.purchaseFileName_('', base, ['Syensqo', 'AKZO']), '261110 구매내역서_Syensqo_AKZO');
+  assert.strictEqual(L.purchaseFileName_('  보잉 화공자재\n LTA 품의  ', base, ['AKZO']), '보잉 화공자재 LTA 품의');
+  assert.strictEqual(L.purchaseFileName_('x'.repeat(200), base, []).length, 150);
+});

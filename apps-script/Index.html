@@ -136,6 +136,10 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-size: .
   .req-row .req-desc { grid-row: 4 }
 }
 
+.name-row { flex-wrap: nowrap }
+.name-input { flex: 1 1 auto; min-width: 0; font-weight: 500 }
+@media (max-width: 520px) { .name-row { flex-wrap: wrap } .name-input { flex-basis: 100% } }
+
 /* 신규 자재 등록 */
 .link-btn { border: 0; background: transparent; color: var(--accent); padding: 0 0 0 6px; font: 600 .76rem var(--font-body); text-decoration: underline; cursor: pointer }
 .reg { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--accent-soft); border-radius: 8px; background: var(--surface-2) }
@@ -298,6 +302,15 @@ table.list td.nw { white-space: nowrap }
       </div>
       <p class="muted lead">줄마다 시작 칸에서 끝 칸까지 <b>끌어서</b> 기간을 고르세요. 그린 막대는 가운데를 끌어 옮기고, 양 끝을 끌어 늘이거나 줄입니다. 한 칸은 반 달이고, 고르지 않은 줄은 시트에서 비어 있게 됩니다.</p>
       <div class="gantt-wrap"><div class="gantt" id="gantt"></div></div>
+    </div>
+
+    <div class="sub">
+      <h3>파일 이름</h3>
+      <div class="row name-row">
+        <input id="fileName" class="name-input" type="text" maxlength="150" autocomplete="off" spellcheck="false" aria-label="구매내역서 파일 이름">
+        <button class="btn-ghost" id="btnNameAuto" type="button">자동 이름</button>
+      </div>
+      <span class="muted">구글 드라이브에 이 이름으로 저장됩니다. 비우면 자동 이름을 씁니다.</span>
     </div>
 
     <div class="row"><button class="btn" id="btnCreate" type="button">구매내역서 만들기</button><span id="msg2"></span></div>
@@ -573,8 +586,17 @@ function renderPurchase() {
     var id = 'remark-' + i;
     return '<label class="field" for="' + id + '">' + esc(s) + '<textarea data-remark="' + esc(s) + '" id="' + id + '" placeholder="구매세부내역 비고 열에 들어갑니다">' + esc(keep[id] || '') + '</textarea></label>';
   }).join('');
+  state.autoName = autoFileName(sups);
+  if (!state.nameEdited) $('fileName').value = state.autoName;
+  $('fileName').placeholder = state.autoName;
   renderGantt();
 }
+function autoFileName(sups) {
+  var d = ($('base').value || '').replace(/-/g, '').slice(2);
+  return d + ' 구매내역서_' + sups.join('_');
+}
+$('fileName').addEventListener('input', function () { state.nameEdited = this.value.trim() !== '' && this.value !== state.autoName; });
+$('btnNameAuto').onclick = function () { state.nameEdited = false; $('fileName').value = state.autoName || ''; $('fileName').focus(); };
 
 /* 구매일정 간트: 한 칸 = 반 달, 작성일 달부터 24칸(12개월) */
 var SLOTS = 24;
@@ -695,7 +717,7 @@ $('btnSchedClear').onclick = function () {
   state.sched = state.tasks.map(function () { return { start: 0, len: 0 }; });
   renderGantt();
 };
-$('base').addEventListener('change', function () { if (!$('purchaseCard').hidden) renderGantt(); });
+$('base').addEventListener('change', function () { if (!$('purchaseCard').hidden) renderPurchase(); });
 
 $('btnCreate').onclick = function () {
   var b = this; $('msg2').innerHTML = '';
@@ -712,7 +734,7 @@ $('btnCreate').onclick = function () {
   var lines = state.results.filter(function (r) { return r.status === '계약'; }).map(function (r) {
     return { item: r.item, qty: r.qty, needBy: r.needBy, program: r.program, shipFrom: r.shipFrom, taxCode: r.taxCode, contractRow: chosen(r).row };
   });
-  call('apiCreatePurchase', { baseDate: $('base').value, rates: rates, remarks: remarks, lines: lines, schedule: state.sched }).then(function (d) {
+  call('apiCreatePurchase', { baseDate: $('base').value, rates: rates, remarks: remarks, lines: lines, schedule: state.sched, name: $('fileName').value }).then(function (d) {
     state.rates = Object.assign(state.rates, rates);
     $('purchaseCard').classList.add('done');
     $('doneNote').innerHTML = '구매내역서를 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.name) + ' 열기 ↗</a>';

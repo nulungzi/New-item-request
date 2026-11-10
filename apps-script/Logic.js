@@ -222,6 +222,12 @@ function classify_(requests, contracts, today) {
   });
 }
 
+/** 구매내역서 파일 이름: 작업자가 적은 이름(다듬어서) 또는 "yymmdd 구매내역서_업체_업체" */
+function purchaseFileName_(custom, base, suppliers) {
+  var n = String(custom || '').replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150);
+  return n || fmtDate_(base).replace(/-/g, '').slice(2) + ' 구매내역서_' + suppliers.join('_');
+}
+
 /* ------------------------------------------------------------------
  * 신규 자재 등록
  * ------------------------------------------------------------------ */
@@ -546,5 +552,5 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { keyForHeader_: keyForHeader_, validateNewItem_: validateNewItem_, newItemRow_: newItemRow_, isSpotMode_: isSpotMode_, normSchedule_: normSchedule_, SCHEDULE_EXAMPLE: SCHEDULE_EXAMPLE, parseRows_: parseRows_, buildPurchasePlan_: buildPurchasePlan_, curFmt_: curFmt_, leadDays_: leadDays_, parseContracts_: parseContracts_, parseRequest_: parseRequest_, classify_: classify_, summarize_: summarize_, toDate_: toDate_, fmtDate_: fmtDate_ };
+  module.exports = { purchaseFileName_: purchaseFileName_, keyForHeader_: keyForHeader_, validateNewItem_: validateNewItem_, newItemRow_: newItemRow_, isSpotMode_: isSpotMode_, normSchedule_: normSchedule_, SCHEDULE_EXAMPLE: SCHEDULE_EXAMPLE, parseRows_: parseRows_, buildPurchasePlan_: buildPurchasePlan_, curFmt_: curFmt_, leadDays_: leadDays_, parseContracts_: parseContracts_, parseRequest_: parseRequest_, classify_: classify_, summarize_: summarize_, toDate_: toDate_, fmtDate_: fmtDate_ };
 }
