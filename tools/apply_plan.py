@@ -1,5 +1,5 @@
 """
-Logic.js 의 buildPurchasePlan_ 결과(JSON)를 엑셀 템플릿에 적용해 미리보기 파일을 만든다.
+Code.gs 의 buildPurchasePlan_ 결과(JSON)를 엑셀 템플릿에 적용해 미리보기 파일을 만든다.
 Apps Script의 applyPlan_ 과 같은 동작을 openpyxl로 흉내 낸다 (테스트·미리보기용).
 
 사용: python3 -I tools/apply_plan.py <템플릿.xlsx> <plan.json> <출력.xlsx>

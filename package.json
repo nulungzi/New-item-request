@@ -3,7 +3,6 @@
   "private": true,
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "push": "clasp push",
-    "build": "node tools/bundle.js"
+    "push": "clasp push"
   }
 }

@@ -6,10 +6,9 @@
 
 | 폴더 | 내용 |
 |---|---|
-| `dist/` | **Apps Script에 붙여넣을 파일** (`Code.gs`, `Index.html`) — `npm run build` 로 생성 |
-| `apps-script/` | 원본 코드 (`Logic.js` 판정 로직, `Code.js` 서버, `Index.html` 화면) |
+| `apps-script/` | **Apps Script에 붙여넣을 파일** — `Code.gs` (판정 로직 + 서버), `Index.html` (화면), `appsscript.json` |
 | `templates/구매내역서_템플릿.xlsx` | 구매내역서 서식 (구매요약 · 구매세부내역 · 구매일정 · 사업부 담당 확인) |
-| `tools/` | 배포 파일 생성(`bundle.js`), 템플릿 생성(`build_template.py`), 미리보기 파일 생성(`apply_plan.py`) |
+| `tools/` | 템플릿 생성(`build_template.py`), 미리보기 파일 생성(`apply_plan.py`) |
 | `tests/` | 테스트 (`npm test`) |
 | `index.html` | (이전) 구매이력 구매처·MFG 검색 페이지 |
 
@@ -32,16 +31,16 @@
 
 ## 설치 · 업데이트
 
-Apps Script 편집기에는 **파일 2개만** 붙여넣습니다. `dist/` 폴더에 붙여넣기용 파일이 있습니다.
+Apps Script 편집기에는 **파일 2개만** 붙여넣습니다. 저장소 `apps-script/` 폴더의 파일과 이름·내용이 같습니다.
 
 | 편집기 파일 | 붙여넣을 내용 |
 |---|---|
-| `Code.gs` | `dist/Code.gs` 전체 (판정 로직 + 서버 코드를 합친 파일) |
-| `Index.html` | `dist/Index.html` 전체 |
+| `Code.gs` | `apps-script/Code.gs` 전체 |
+| `Index.html` | `apps-script/Index.html` 전체 |
 
-- 예전에 만든 `Logic.gs` 파일이 있으면 **삭제**합니다 (Code.gs 안에 이미 들어 있음).
 - GitHub에서 파일을 열고 오른쪽 위 **Copy raw file**(복사 아이콘) 버튼으로 복사하면 화면 글자가 섞이지 않습니다.
   붙여넣은 뒤 1번째 줄이 `// ===== 소요제기 판정 웹앱` 으로 시작하는지 확인하세요.
+- 붙여넣은 뒤 **저장(Ctrl+S)** 해서 파일 이름 앞 주황색 점이 사라졌는지 확인하고, **새 버전으로 배포**해야 웹앱에 반영됩니다.
 
 ### 처음 한 번
 1. 자재정보가 있는 스프레드시트에서 **확장 프로그램 → Apps Script** 를 엽니다.
@@ -58,9 +57,9 @@ Apps Script 편집기에는 **파일 2개만** 붙여넣습니다. `dist/` 폴�
    업데이트 때는 **배포 관리 → 수정 → 버전: 새 버전**.
 
 ### 개발 (이 저장소)
-- 원본은 `apps-script/` (`Logic.js` 판정·계산, `Code.js` 시트·드라이브 입출력, `Index.html` 화면)
-- 고친 뒤 `npm run build` 로 `dist/` 를 다시 만들고 `npm test` (dist 가 오래되면 테스트가 실패합니다)
-- clasp 를 쓰면 `.clasp.json` 의 `rootDir` 을 `dist` 로 두고 `clasp push`
+- `apps-script/Code.gs` 하나가 서버 코드 전부입니다. 1부는 판정·계산(순수 함수), 2부는 시트·드라이브 입출력
+- `npm test` 로 1부 함수와 2부(가짜 시트 사용)를 검사합니다
+- clasp 를 쓰면 `.clasp.json` 의 `rootDir` 을 `apps-script` 로 두고 `clasp push`
 
 ## 사용법
 1. 표에 **Item · 수량 · Need-by** 를 칸마다 입력합니다. Program · Shelf Life · Ship · Tax는 선택 (Shelf Life·Ship은 비우면 자재정보 값) (입력한 Item의 Description이 아래에 표시).

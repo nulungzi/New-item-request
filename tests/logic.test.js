@@ -1,7 +1,7 @@
 // node --test tests/
 const test = require('node:test');
 const assert = require('node:assert');
-const L = require('../apps-script/Logic.js');
+const L = require('./load.js').load();
 
 const sheet = [
   [null, null, null, null, null, null, null, null],
