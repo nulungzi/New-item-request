@@ -136,6 +136,22 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-size: .
   .req-row .req-desc { grid-row: 4 }
 }
 
+/* 신규 자재 등록 */
+.link-btn { border: 0; background: transparent; color: var(--accent); padding: 0 0 0 6px; font: 600 .76rem var(--font-body); text-decoration: underline; cursor: pointer }
+.reg { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--accent-soft); border-radius: 8px; background: var(--surface-2) }
+.reg h3 { font-size: .98rem; font-weight: 600 }
+.reg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 12px }
+.reg-grid .field { color: var(--muted) }
+.reg-grid .field input, .reg-grid .field select, .reg-grid .field textarea { width: 100%; text-align: left; font-family: var(--font-body) }
+.reg-grid .field .data { font-family: var(--font-data) }
+.reg-grid .field.full { grid-column: 1 / -1 }
+.reg-grid .req::after { content: " *"; color: var(--warn) }
+.reg-mode { display: flex; gap: 6px; flex-wrap: wrap }
+.reg-mode label { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); cursor: pointer; font: 600 .8rem var(--font-data) }
+.reg-mode input { width: auto; margin: 0 }
+.reg-mode label:has(input:checked) { border-color: var(--accent); color: var(--accent); background: var(--accent-soft) }
+.ok-msg { color: var(--ok); font-size: .9rem }
+
 /* 판정 결과 */
 .summary { display: flex; flex-wrap: wrap; gap: 8px }
 .tally { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 12px; border-radius: 999px; background: var(--surface-2); font-size: .85rem }
@@ -219,7 +235,6 @@ table.list td.nw { white-space: nowrap }
     <div>
       <div class="req-head"><span></span><span>ITEM</span><span>수량</span><span>NEED-BY</span><span>PROGRAM</span><span>SHIP</span><span>TAX</span><span></span></div>
       <div id="reqRows"></div>
-      <datalist id="itemList"></datalist>
     </div>
     <div class="row spread">
       <div class="row">
@@ -232,6 +247,19 @@ table.list td.nw { white-space: nowrap }
       </div>
     </div>
     <div id="msg1" class="err"></div>
+
+    <div class="reg" id="regPanel" hidden>
+      <div class="panel-head">
+        <h3>신규 자재 등록</h3>
+        <span class="muted">자재정보 시트 맨 아래에 한 줄로 추가됩니다</span>
+      </div>
+      <form id="regForm" class="reg-grid" novalidate></form>
+      <div class="row">
+        <button class="btn" id="btnRegSave" type="button">DB에 등록</button>
+        <button class="btn-ghost" id="btnRegCancel" type="button">취소</button>
+        <span id="regMsg" class="err"></span>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -298,7 +326,7 @@ table.list td.nw { white-space: nowrap }
 </main>
 
 <script>
-var state = { results: [], rates: {}, sched: null, schedExample: null, tasks: [] };
+var state = { results: [], rates: {}, sched: null, schedExample: null, tasks: [], fields: [] };
 var $ = function (id) { return document.getElementById(id); };
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 function fmt(n) { return n == null ? '' : Number(n).toLocaleString('ko-KR', { maximumFractionDigits: 4 }); }
@@ -324,7 +352,7 @@ function addRow(v) {
   var row = document.createElement('div');
   row.className = 'req-row';
   row.innerHTML = '<span class="req-no"></span>' +
-    '<input class="f-item" id="item-' + id + '" list="itemList" placeholder="Item" autocomplete="off" autocapitalize="characters" aria-label="Item">' +
+    '<input class="f-item" id="item-' + id + '" placeholder="Item" autocomplete="off" spellcheck="false" autocapitalize="characters" aria-label="Item">' +
     '<input class="f-qty" id="qty-' + id + '" type="number" min="0" step="any" inputmode="decimal" placeholder="수량" aria-label="수량">' +
     '<input class="f-need data" id="need-' + id + '" type="date" aria-label="Need-by">' +
     '<input class="f-prog" id="prog-' + id + '" placeholder="Program (선택)" aria-label="Program">' +
@@ -349,8 +377,14 @@ function showDesc(row) {
   var opt = row.querySelector('.f-ship option[value=""]');
   if (!k) { el.textContent = ''; opt.textContent = '기본'; return; }
   var d = itemDesc[k];
-  el.textContent = d ? d[0] : '자재정보에 없는 Item이라 Spot으로 판정됩니다';
-  el.className = 'req-desc' + (d ? '' : ' bad');
+  if (!d) {
+    el.className = 'req-desc bad';
+    el.innerHTML = 'DB에 없는 Item입니다 <button type="button" class="link-btn">신규 등록</button>';
+    el.querySelector('button').onclick = function () { openRegister(k); };
+  } else {
+    el.className = 'req-desc';
+    el.textContent = (d[2] === 'SPOT' ? 'SPOT 자재 · ' : '') + (d[0] || '(Description 없음)');
+  }
   opt.textContent = d && d[1] ? '기본(' + d[1] + ')' : '기본';
 }
 function onPaste(e) {
@@ -391,10 +425,8 @@ for (var i = 0; i < 3; i++) addRow();
 
 call('apiInit').then(function (d) {
   $('base').value = d.today; state.rates = d.rates || {};
-  (d.items || []).forEach(function (x) { itemDesc[x[0]] = [x[1], x[2] || '']; });
-  $('itemList').innerHTML = (d.items || []).map(function (x) {
-    return '<option value="' + esc(x[0]) + '">' + esc(String(x[1]).slice(0, 60)) + '</option>';
-  }).join('');
+  (d.items || []).forEach(function (x) { itemDesc[x[0]] = [x[1], x[2] || '', x[3] || '']; });
+  state.fields = d.fields || [];
   rows().forEach(showDesc);
   if (d.schedule) {
     state.tasks = d.schedule.tasks;
@@ -454,10 +486,71 @@ function render() {
 
   $('spotCard').hidden = !spot.length;
   $('spotTbl').innerHTML = '<tr><th>ITEM</th><th class="n">수량</th><th>NEED-BY</th><th>사유</th></tr>' + spot.map(function (r) {
-    return '<tr><td class="data">' + esc(r.item) + '</td><td class="n data">' + fmt(r.qty) + '</td><td class="data nw">' + esc(r.needBy) + '</td><td class="muted">' + esc(r.reason) + '</td></tr>';
+    return '<tr><td class="data">' + esc(r.item) + '</td><td class="n data">' + fmt(r.qty) + '</td><td class="data nw">' + esc(r.needBy) + '</td><td class="muted">' + esc(r.reason) +
+      (r.registered || itemDesc[r.item] ? '' : ' <button type="button" class="link-btn" data-reg="' + esc(r.item) + '">신규 등록</button>') + '</td></tr>';
   }).join('');
+  document.querySelectorAll('#spotTbl [data-reg]').forEach(function (b) { b.onclick = function () { openRegister(b.dataset.reg); }; });
   renderPurchase();
 }
+
+/* ---------- 1-1. 신규 자재 등록 ---------- */
+var REG_TYPES = {
+  item: { type: 'text', cls: 'data', ph: 'KERC00000' },
+  priceMode: { type: 'mode' },
+  supplier: { type: 'text', ph: '업체명' },
+  price: { type: 'number', cls: 'data', ph: '0.00' },
+  cur: { type: 'select', options: ['', 'USD', 'EUR', 'SGD', 'KRW', 'JPY'] },
+  start: { type: 'date', cls: 'data' }, end: { type: 'date', cls: 'data' },
+  moq: { type: 'text', cls: 'data', ph: '없음 또는 숫자' },
+  uom: { type: 'text', cls: 'data', ph: 'EA, KT, GAL…' },
+  leadtime: { type: 'text', cls: 'data', ph: '10-12wks' },
+  shipFrom: { type: 'select', options: ['', 'Air', 'Ocean'] },
+  desc: { type: 'textarea', full: true, ph: 'BMS10-11,TY-1,CL-A,,,GREEN,,,MEP10-059,,GL,PRIMER' }
+};
+var DEAL_REQUIRED = ['supplier', 'price', 'cur', 'start', 'end'];
+function openRegister(item) {
+  var f = state.fields && state.fields.length ? state.fields : [{ key: 'item', header: 'Item' }, { key: 'priceMode', header: '계약 구분' }, { key: 'desc', header: 'Description' }];
+  $('regForm').innerHTML = f.map(function (x, i) {
+    var t = REG_TYPES[x.key] || { type: 'text' }, id = 'reg-' + i, ctl;
+    if (t.type === 'mode') {
+      return '<div class="field full"><span class="req">' + esc(x.header) + '</span><div class="reg-mode">' +
+        ['SPOT', 'LTA', '3PP'].map(function (m) { return '<label><input type="radio" name="regMode" value="' + m + '"' + (m === 'SPOT' ? ' checked' : '') + '>' + m + '</label>'; }).join('') + '</div></div>';
+    }
+    if (t.type === 'select') ctl = '<select id="' + id + '" data-key="' + esc(x.key) + '">' + t.options.map(function (o) { return '<option value="' + o + '">' + (o || '선택') + '</option>'; }).join('') + '</select>';
+    else if (t.type === 'textarea') ctl = '<textarea id="' + id + '" data-key="' + esc(x.key) + '" rows="2" placeholder="' + esc(t.ph || '') + '"></textarea>';
+    else ctl = '<input id="' + id + '" data-key="' + esc(x.key) + '" type="' + t.type + '"' + (t.type === 'number' ? ' step="any" inputmode="decimal"' : '') +
+      ' class="' + (t.cls || '') + '" placeholder="' + esc(t.ph || '') + '" autocomplete="off">';
+    return '<label class="field' + (t.full ? ' full' : '') + '" for="' + id + '"><span data-for="' + esc(x.key) + '"' + (x.key === 'item' ? ' class="req"' : '') + '>' + esc(x.header) + '</span>' + ctl + '</label>';
+  }).join('');
+  var itemInput = $('regForm').querySelector('[data-key="item"]');
+  if (itemInput) itemInput.value = item || '';
+  $('regForm').querySelectorAll('input[name="regMode"]').forEach(function (r) { r.onchange = markRequired; });
+  markRequired();
+  $('regMsg').textContent = ''; $('regMsg').className = 'err';
+  $('regPanel').hidden = false;
+  $('regPanel').scrollIntoView({ block: 'center' });
+  var first = $('regForm').querySelector('[data-key="supplier"]') || itemInput;
+  if (first) first.focus({ preventScroll: true });
+}
+function regMode() { var c = $('regForm').querySelector('input[name="regMode"]:checked'); return c ? c.value : 'SPOT'; }
+function markRequired() {
+  var deal = regMode() !== 'SPOT';
+  DEAL_REQUIRED.forEach(function (k) { var el = $('regForm').querySelector('[data-for="' + k + '"]'); if (el) el.classList.toggle('req', deal); });
+}
+$('btnRegCancel').onclick = function () { $('regPanel').hidden = true; };
+$('btnRegSave').onclick = function () {
+  var b = this, rec = { priceMode: regMode() };
+  $('regForm').querySelectorAll('[data-key]').forEach(function (el) { rec[el.dataset.key] = el.value; });
+  b.disabled = true; $('regMsg').className = 'err'; $('regMsg').textContent = '';
+  call('apiRegisterItem', rec).then(function (d) {
+    itemDesc[d.item] = [d.desc, d.ship, d.mode];
+    rows().forEach(showDesc);
+    $('regPanel').hidden = true;
+    $('msg1').innerHTML = '<span class="ok-msg">' + esc(d.item) + ' (' + esc(d.mode) + ')를 자재정보 ' + d.row + '행에 등록했습니다.' +
+      (state.results.length ? ' 판정하기를 다시 누르면 반영됩니다.' : '') + '</span>';
+  }).catch(function (e) { $('regMsg').textContent = e.message || e; })
+    .finally(function () { b.disabled = false; });
+};
 
 /* ---------- 3. 구매내역서 ---------- */
 function renderPurchase() {

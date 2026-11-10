@@ -36,7 +36,7 @@ test('품목별 Need-by-date로 계약/Spot과 연도별 단가를 판정한다'
   assert.match(r[2].reason, /Need-by 시점 계약 만료 \(PPG, 2026-12-31 종료\)/);
   assert.strictEqual(r[3].candidates[0].price, 105);
   assert.strictEqual(r[4].candidates[0].price, 130);
-  assert.strictEqual(r[5].reason, '계약 없음');
+  assert.strictEqual(r[5].reason, '계약 없음 · DB 미등록 자재');
   assert.deepStrictEqual(r[6].candidates.map(c => c.supplier), ['Mapaero', 'AKZO']);
 });
 
@@ -145,4 +145,44 @@ test('구매일정 막대: 예시·사용자 값·빈 줄·범위 보정', () =>
   assert.strictEqual(ops.filter(o => o.op === 'bg' && o.s === '구매일정' && o.r === 7 && o.color !== '#ffffff').length, 0);
   const lt = ops.filter(o => o.op === 'set' && o.s === '구매일정' && o.c === 4).map(o => o.v);
   assert.deepStrictEqual(lt, ['1.5M', '', '', '', '']);
+});
+
+test('SPOT 등록 행은 계약으로 보지 않는다', () => {
+  const c = L.parseContracts_([
+    ['Item', '계약 구분', '업체명', '단가', 'CUR', '계약시작', '계약종료', 'Description'],
+    ['S1', 'SPOT', 'ACME', '', '', '', '', 'SPOT ONLY'],
+    ['S2', 'SPOT', 'ACME', '', '', '', '', 'X'],
+    ['S2', 'LTA', 'PPG', 5, 'USD', '2026-01-01', '2028-12-31', 'X'],
+  ]);
+  const r = L.classify_(L.parseRequest_('S1 1 2027-01-01\nS2 1 2027-01-01\nNEW 1 2027-01-01').requests, c, L.toDate_('2026-11-10'));
+  assert.deepStrictEqual(r.map(x => [x.status, x.registered]), [['Spot', true], ['계약', true], ['Spot', false]]);
+  assert.strictEqual(r[0].reason, 'Spot 자재 (DB 등록: ACME)');
+  assert.strictEqual(r[0].desc, 'SPOT ONLY');
+  assert.deepStrictEqual(r[1].candidates.map(x => x.supplier), ['PPG']);
+});
+
+test('신규 자재 등록 검사와 행 만들기', () => {
+  const c = L.parseContracts_([
+    ['Item', '계약 구분', '업체명', '단가', 'CUR', '계약시작', '계약종료'],
+    ['A1', 'LTA', 'PPG', 1, 'USD', '2026-01-01', '2026-12-31'],
+  ]);
+  // SPOT: Item·구분만 있어도 됨
+  let v = L.validateNewItem_({ item: ' new-1 42l ', priceMode: 'spot', desc: 'SEAL' }, c);
+  assert.deepStrictEqual(v.errors, []);
+  assert.strictEqual(v.rec.item, 'NEW-1 42L');
+  // LTA: 필수값 누락
+  v = L.validateNewItem_({ item: 'B1', priceMode: 'LTA' }, c);
+  assert.strictEqual(v.errors.length, 4);
+  // LTA: 기간 겹침
+  v = L.validateNewItem_({ item: 'A1', priceMode: 'LTA', supplier: 'ppg', price: '2', cur: 'usd', start: '2026-06-01', end: '2027-05-31' }, c);
+  assert.match(v.errors[0], /겹치는 계약.*2행/);
+  // 다음 해 계약은 가능, 값 정리
+  v = L.validateNewItem_({ item: 'A1', priceMode: 'LTA', supplier: 'PPG', price: '1,234.5', cur: 'usd', start: '2027-01-01', end: '2027-12-31', moq: '6,000', 'x:비고2': ' memo ' }, c);
+  assert.deepStrictEqual(v.errors, []);
+  assert.deepStrictEqual([v.rec.price, v.rec.cur, v.rec.moq, L.fmtDate_(v.rec.start)], [1234.5, 'USD', 6000, '2027-01-01']);
+  const headers = ['', 'Item', '계약 구분', '업체명', '단가', 'CUR', '계약시작', '계약종료', 'MOQ', 'Lead Time', 'Ship Form', '비고2'];
+  const row = L.newItemRow_(headers, v.rec);
+  assert.deepStrictEqual(row.slice(0, 6), ['', 'A1', 'LTA', 'PPG', 1234.5, 'USD']);
+  assert.strictEqual(row[11], 'memo');
+  assert.deepStrictEqual(headers.map(L.keyForHeader_).slice(1), ['item', 'priceMode', 'supplier', 'price', 'cur', 'start', 'end', 'moq', 'leadtime', 'shipFrom', 'x:비고2']);
 });

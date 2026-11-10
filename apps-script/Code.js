@@ -21,9 +21,7 @@ function db_() {
 }
 
 function loadContracts_() {
-  var sh = db_().getSheetByName(SHEET_MASTER);
-  if (!sh) throw new Error('"' + SHEET_MASTER + '" 시트가 없습니다.');
-  return parseContracts_(sh.getDataRange().getValues());
+  return parseContracts_(masterSheet_().getDataRange().getValues());
 }
 
 /** 환율 시트: A열 통화, B열 환율(KRW). 없으면 만든다. */
@@ -58,17 +56,72 @@ function saveRates_(rates) {
 
 /** 웹앱이 처음 열릴 때 */
 function apiInit() {
+  var sh = masterSheet_(), values = sh.getDataRange().getValues();
   var items = {};
-  loadContracts_().forEach(function (c) {
-    var x = items[c.item] = items[c.item] || [c.desc, ''];
-    if (!x[1] && c.shipFrom) x[1] = c.shipFrom;
+  parseContracts_(values).forEach(function (c) {
+    var x = items[c.item] = items[c.item] || { desc: c.desc, ship: '', modes: [] };
+    if (!x.ship && c.shipFrom) x.ship = c.shipFrom;
+    if (!x.desc && c.desc) x.desc = c.desc;
+    var m = c.priceMode.toUpperCase();
+    if (m && x.modes.indexOf(m) < 0) x.modes.push(m);
   });
   return {
     today: fmtDate_(new Date()),
     rates: loadRates_(),
     schedule: { tasks: SCHEDULE_TASKS, example: SCHEDULE_EXAMPLE, slots: SCHEDULE_SLOTS },
-    items: Object.keys(items).sort().map(function (k) { return [k, items[k][0], items[k][1]]; })   // [Item, Description, Ship From]
+    // [Item, Description, Ship From, 계약 구분들]
+    items: Object.keys(items).sort().map(function (k) { return [k, items[k].desc, items[k].ship, items[k].modes.join('/')]; }),
+    fields: masterFields_(values)   // 신규 등록 양식 (자재정보 머리글 순서)
   };
+}
+
+function masterSheet_() {
+  var sh = db_().getSheetByName(SHEET_MASTER);
+  if (!sh) throw new Error('"' + SHEET_MASTER + '" 시트가 없습니다.');
+  return sh;
+}
+
+/** 자재정보 머리글 위치 */
+function masterHeader_(values) {
+  for (var r = 0; r < Math.min(values.length, 10); r++) {
+    if (values[r].some(function (h) { return keyForHeader_(h) === 'item'; })) return { row: r + 1, headers: values[r] };
+  }
+  throw new Error('자재정보 시트에서 "Item" 머리글을 찾지 못했습니다.');
+}
+
+function masterFields_(values) {
+  return masterHeader_(values).headers
+    .map(function (h) { return { header: String(h).replace(/\s+/g, ' ').trim(), key: keyForHeader_(h) }; })
+    .filter(function (f) { return f.key; });
+}
+
+/**
+ * 신규 자재를 자재정보 시트 맨 아래에 추가한다. rec 키는 masterFields_ 의 key.
+ * 머리글이 없는 맨 앞 열(번호 열)은 윗줄 번호 + 1.
+ */
+function apiRegisterItem(rec) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sh = masterSheet_(), values = sh.getDataRange().getValues();
+    var head = masterHeader_(values);
+    var v = validateNewItem_(rec, parseContracts_(values));
+    if (v.errors.length) throw new Error(v.errors.join('\n'));
+    var row = newItemRow_(head.headers, v.rec);
+    var last = sh.getLastRow(), n = row.length;
+    if (!String(head.headers[0]).trim() && last > head.row && typeof values[last - 1][0] === 'number') row[0] = values[last - 1][0] + 1;
+    var target = sh.getRange(last + 1, 1, 1, n);
+    if (last > head.row) sh.getRange(last, 1, 1, n).copyTo(target, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);   // 윗줄 서식
+    head.headers.forEach(function (h, i) {
+      var k = keyForHeader_(h);
+      if (k === 'item' || k === 'x:Program') sh.getRange(last + 1, i + 1).setNumberFormat('@');
+      if (k === 'start' || k === 'end') sh.getRange(last + 1, i + 1).setNumberFormat('yyyy-mm-dd');
+    });
+    target.setValues([row]);
+    return { row: last + 1, item: v.rec.item, desc: v.rec.desc || '', ship: v.rec.shipFrom || '', mode: v.rec.priceMode };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** 판정. Date는 문자열로 바꿔서 돌려준다 (google.script.run 직렬화 안전). */

@@ -191,11 +191,12 @@ function classify_(requests, contracts, today) {
   return requests.map(function (q) {
     var d = q.needBy || today;
     var all = byItem[q.item] || [];
-    var valid = all.filter(function (c) {
+    var deals = all.filter(function (c) { return !isSpotMode_(c.priceMode); });   // SPOT 등록 행은 계약이 아님
+    var valid = deals.filter(function (c) {
       return (!c.start || c.start <= d) && (!c.end || d <= c.end);
     }).sort(function (a, b) { return (a.price || 0) - (b.price || 0); });
     var res = { line: q.line, item: q.item, qty: q.qty, needBy: q.needBy, program: q.program,
-      shipFrom: q.shipFrom || '', taxCode: q.taxCode || '', candidates: valid, warnings: [] };
+      shipFrom: q.shipFrom || '', taxCode: q.taxCode || '', candidates: valid, warnings: [], registered: all.length > 0 };
     if (valid.length) {
       res.status = '계약';
       res.reason = valid.length > 1 ? '유효 계약 ' + valid.length + '건 — 업체 선택 필요' : '';
@@ -203,9 +204,14 @@ function classify_(requests, contracts, today) {
     } else {
       res.status = 'Spot';
       if (!all.length) {
-        res.reason = '계약 없음';
+        res.reason = '계약 없음 · DB 미등록 자재';
+      } else if (!deals.length) {
+        var sups = [];
+        all.forEach(function (c) { if (c.supplier && sups.indexOf(c.supplier) < 0) sups.push(c.supplier); });
+        res.reason = 'Spot 자재 (DB 등록' + (sups.length ? ': ' + sups.join(', ') : '') + ')';
+        res.desc = all[0].desc;
       } else {
-        var last = all.reduce(function (a, b) { return (b.end || 0) > (a.end || 0) ? b : a; });
+        var last = deals.reduce(function (a, b) { return (b.end || 0) > (a.end || 0) ? b : a; });
         res.reason = last.end && last.end < d
           ? 'Need-by 시점 계약 만료 (' + last.supplier + ', ' + fmtDate_(last.end) + ' 종료)'
           : 'Need-by 시점 계약 시작 전 (' + last.supplier + ', ' + fmtDate_(last.start) + ' 시작)';
@@ -213,6 +219,77 @@ function classify_(requests, contracts, today) {
       }
     }
     return res;
+  });
+}
+
+/* ------------------------------------------------------------------
+ * 신규 자재 등록
+ * ------------------------------------------------------------------ */
+var PRICE_MODES = ['LTA', '3PP', 'SPOT'];
+function isSpotMode_(m) { return /^spot$/i.test(String(m || '').trim()); }
+
+/** 시트 머리글 → 내부 키 (모르는 머리글은 'x:머리글') */
+function keyForHeader_(h) {
+  var hk = headerKey_(h);
+  if (!hk) return '';
+  var found = '';
+  Object.keys(MASTER_COLUMNS).forEach(function (k) {
+    if (!found && MASTER_COLUMNS[k].some(function (a) { return headerKey_(a) === hk; })) found = k;
+  });
+  return found || 'x:' + String(h).trim();
+}
+
+/**
+ * 등록 값 검사. rec: {item, priceMode, supplier, price, cur, start, end, moq, ... , 'x:머리글': 값}
+ * 반환: {errors: [...], rec: 정리된 값(날짜는 Date, 숫자는 Number)}
+ */
+function validateNewItem_(rec, contracts) {
+  var e = [], out = {};
+  Object.keys(rec || {}).forEach(function (k) { out[k] = typeof rec[k] === 'string' ? rec[k].trim() : rec[k]; });
+  out.item = itemKey_(rec.item);
+  out.priceMode = String(rec.priceMode || '').trim().toUpperCase();
+  out.supplier = String(rec.supplier || '').trim();
+  out.cur = String(rec.cur || '').trim().toUpperCase();
+  var isDeal = out.priceMode === 'LTA' || out.priceMode === '3PP';
+
+  if (!out.item) e.push('Item을 입력해 주세요.');
+  if (PRICE_MODES.indexOf(out.priceMode) < 0) e.push('계약 구분을 LTA, 3PP, SPOT 중에서 골라 주세요.');
+  var hasPrice = rec.price !== undefined && rec.price !== null && String(rec.price).trim() !== '';
+  out.price = hasPrice ? toNumber_(rec.price) : '';
+  if (hasPrice && out.price === null) e.push('단가는 숫자로 입력해 주세요.');
+  out.start = toDate_(rec.start) || '';
+  out.end = toDate_(rec.end) || '';
+  if (rec.start && !out.start) e.push('계약시작 날짜 형식을 확인해 주세요.');
+  if (rec.end && !out.end) e.push('계약종료 날짜 형식을 확인해 주세요.');
+  if (isDeal) {
+    if (!out.supplier) e.push('LTA·3PP는 업체명이 필요합니다.');
+    if (!hasPrice) e.push('LTA·3PP는 단가가 필요합니다.');
+    if (!out.cur) e.push('LTA·3PP는 통화(CUR)가 필요합니다.');
+    if (!out.start || !out.end) e.push('LTA·3PP는 계약시작과 계약종료가 필요합니다.');
+  }
+  if (out.start && out.end && out.start > out.end) e.push('계약종료가 계약시작보다 빠릅니다.');
+  var moqN = toNumber_(rec.moq);
+  if (moqN !== null && /^[\d,.\s]+$/.test(String(rec.moq))) out.moq = moqN;
+
+  if (out.item && !e.length) {
+    (contracts || []).forEach(function (c) {
+      if (c.item !== out.item || c.supplier.toUpperCase() !== out.supplier.toUpperCase()) return;
+      if (isDeal && !isSpotMode_(c.priceMode) && (!c.end || out.start <= c.end) && (!c.start || c.start <= out.end)) {
+        e.push('같은 업체·기간에 겹치는 계약이 이미 있습니다 (자재정보 ' + c.row + '행).');
+      }
+      if (!isDeal && isSpotMode_(c.priceMode)) e.push('같은 업체로 이미 SPOT 등록되어 있습니다 (자재정보 ' + c.row + '행).');
+    });
+  }
+  return { errors: e, rec: out };
+}
+
+/** 머리글 목록(시트 열 순서)과 정리된 값으로 시트 한 행을 만든다. 머리글 없는 열은 '' */
+function newItemRow_(headers, rec) {
+  return headers.map(function (h) {
+    var k = keyForHeader_(h);
+    if (!k) return '';
+    var v = rec[k];
+    return v === undefined || v === null ? '' : v;
   });
 }
 
@@ -469,5 +546,5 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { normSchedule_: normSchedule_, SCHEDULE_EXAMPLE: SCHEDULE_EXAMPLE, parseRows_: parseRows_, buildPurchasePlan_: buildPurchasePlan_, curFmt_: curFmt_, leadDays_: leadDays_, parseContracts_: parseContracts_, parseRequest_: parseRequest_, classify_: classify_, summarize_: summarize_, toDate_: toDate_, fmtDate_: fmtDate_ };
+  module.exports = { keyForHeader_: keyForHeader_, validateNewItem_: validateNewItem_, newItemRow_: newItemRow_, isSpotMode_: isSpotMode_, normSchedule_: normSchedule_, SCHEDULE_EXAMPLE: SCHEDULE_EXAMPLE, parseRows_: parseRows_, buildPurchasePlan_: buildPurchasePlan_, curFmt_: curFmt_, leadDays_: leadDays_, parseContracts_: parseContracts_, parseRequest_: parseRequest_, classify_: classify_, summarize_: summarize_, toDate_: toDate_, fmtDate_: fmtDate_ };
 }
