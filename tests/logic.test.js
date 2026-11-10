@@ -377,3 +377,47 @@ test('회신 없음 업체는 견적종합에 NO BID · "회신 없음" 으로',
   const get = (r, c) => (ops.filter(o => o.op === 'set' && o.s === '견적종합' && o.r === r && o.c === c).pop() || {}).v;
   assert.deepStrictEqual([get(5, 34), get(5, 40), get(5, 31)], ['NO BID', '회신 없음', 5]);
 });
+
+test('같은 자재는 Need-by 가 달라도 견적요청서 한 줄, 해당 월 칸마다 수량', () => {
+  const rows = [
+    { item: 'KERN00534-001', name: 'PC938', qty: 244, needBy: '2027-09-10', program: '787' },
+    { item: 'KERN00718-001', name: 'EDDING 751', qty: 360, needBy: '2027-05-01' },
+    { item: 'kern00534-001', name: 'PC938', qty: 244, needBy: '2027-03-15', program: '737' },
+    { item: 'KERN00534-001', name: 'PC938', qty: 10, needBy: '2027-03-30' }];
+  const m = L.mergeRfqItems_(rows);
+  assert.strictEqual(m.length, 2);
+  assert.strictEqual(m[0].item, 'KERN00534-001');
+  assert.strictEqual(m[0].qty, 498);
+  assert.strictEqual(m[0].needBy, '2027-03-15');               // 가장 이른 날
+  assert.deepStrictEqual(m[0].parts.map(p => p.needBy), ['2027-03-15', '2027-03-30', '2027-09-10']);
+  assert.strictEqual(m[0].program, '737, 787');
+  assert.strictEqual(L.mergeRfqItems_(m).length, 2);            // 다시 합쳐도 그대로
+  assert.strictEqual(L.mergeRfqItems_(m)[0].qty, 498);
+
+  const base = L.toDate_('2026-11-10');
+  const ops = L.buildRfqPlan_(m, base);
+  const cell = (r, c) => ops.filter(o => o.op === 'set' && o.r === r && o.c === c).pop();
+  const M0 = L.RFQ.C.M0;
+  assert.strictEqual(cell(3, M0 + 4).v, 254);                   // 2027-03: 244 + 10
+  assert.strictEqual(cell(3, M0 + 10).v, 244);                  // 2027-09
+  assert.strictEqual(cell(3, M0 + 5).v, '');
+  assert.strictEqual(cell(4, M0 + 6).v, 360);
+  assert.strictEqual(cell(4, L.RFQ.C.LI).v, 2);                 // L/I 1, 2 …
+
+  const mail = L.rfqEmail_(m, '11/18', '');
+  assert.match(mail.html, /2027-03-15 \(244\)<br>2027-03-30 \(10\)<br>2027-09-10 \(244\)/);
+  assert.match(mail.html, />498</);
+  assert.match(mail.text, /\| 498 \| 2027-03-15 \(244\), 2027-03-30 \(10\), 2027-09-10 \(244\)/);
+
+  const sp = L.buildSpotPlan_([Object.assign({ quotes: {} }, m[0])], ['A'], {}, base);
+  const q = (c) => sp.filter(o => o.op === 'set' && o.s === L.SPOT.QUOTE && o.r === 5 && o.c === c).pop();
+  assert.strictEqual(q(L.SPOT.Q_M0 + 4).v, 254);
+  assert.strictEqual(q(L.SPOT.Q_M0 + 10).v, 244);
+});
+
+test('예전 기록(parts 없음)은 Need-by 한 건으로', () => {
+  const ps = L.rfqParts_({ qty: '1,200', needBy: '2027-01-05' });
+  assert.strictEqual(ps.length, 1);
+  assert.strictEqual(ps[0].qty, 1200);
+  assert.strictEqual(L.fmtDate_(ps[0].needBy), '2027-01-05');
+});

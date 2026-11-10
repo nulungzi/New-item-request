@@ -178,6 +178,8 @@ main { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px }
 .vq-grid textarea { width: 100%; min-height: 54px; resize: vertical; font-family: var(--font-body) }
 @media (max-width: 560px) { .vq-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) } .drawer-head, .drawer-tools, .drawer-body, .drawer-foot { padding-left: 14px; padding-right: 14px } }
 .drawer-body.disabled .vq { opacity: .45; pointer-events: none }
+.nb-line + .nb-line { margin-top: 4px }
+.merged { font: .74rem var(--font-body); margin-top: 3px }
 .noreply-note { padding: 12px 14px; border-radius: 8px; background: var(--surface-2); color: var(--muted) }
 
 /* 진행 중: 견적요청서 펼치기 */
@@ -951,7 +953,20 @@ function render() {
 /* ---------- 4. 견적요청서 (단가 없는 Spot) ---------- */
 var RFQ_REMARK = 'MFG COC/TR';
 state.rfqEdit = {};      // 품목별로 고친 값 (다시 그려도 유지)
-function rfqKey(r) { return r.line + '|' + r.item; }
+function rfqKey(r) { return String(r.item || '').trim().toUpperCase(); }
+function rfqGroups(list) {   // 같은 자재는 Need-by 가 달라도 한 줄 (견적요청서에서 월별 칸에 나눠 들어감)
+  var out = [], at = {};
+  list.forEach(function (r) {
+    var k = rfqKey(r) || ('#' + r.line), g = out[at[k]];
+    if (!g) { at[k] = out.length; out.push(g = { key: k, first: r, rows: [] }); }
+    g.rows.push(r);
+  });
+  out.forEach(function (g) {
+    g.rows.sort(function (a, b) { return String(a.needBy || '9999').localeCompare(String(b.needBy || '9999')); });
+    g.qty = g.rows.reduce(function (t, r) { return t + (Number(r.qty) || 0); }, 0);
+  });
+  return out;
+}
 function rfqMonthNote(needBy) {
   var b = ($('base').value || '').split('-'), n = String(needBy || '').split('-');
   if (n.length < 3) return 'Need-by 없음 → 첫 달 칸';
@@ -961,14 +976,19 @@ function rfqMonthNote(needBy) {
 function renderRfq(list) {
   state.rfqList = list;
   var cols = [['name', 'Item name *', 'w-name'], ['desc', 'Description', 'w-desc'], ['qpl', 'QPL (Mfg)', ''], ['uom', 'UOM', 'w-s'], ['remark', 'Remark', 'w-r']];
+  var groups = state.rfqGroups = rfqGroups(list);
   $('spotTbl').innerHTML = '<tr><th>ITEM</th>' + cols.map(function (c) { return '<th>' + c[1].toUpperCase() + '</th>'; }).join('') +
-    '<th class="n">수량</th><th>NEED-BY</th><th>사유</th></tr>' + list.map(function (r) {
-      var k = rfqKey(r), e = state.rfqEdit[k] = state.rfqEdit[k] || { name: '', desc: r.desc || '', qpl: r.qpl || '', uom: r.uom || '', remark: RFQ_REMARK };
-      var note = rfqMonthNote(r.needBy);
-      return '<tr><td class="data nw">' + esc(r.item) + '</td>' + cols.map(function (c) {
+    '<th class="n">수량</th><th>NEED-BY</th><th>사유</th></tr>' + groups.map(function (g) {
+      var r = g.first, k = g.key, e = state.rfqEdit[k] = state.rfqEdit[k] || { name: '', desc: r.desc || '', qpl: r.qpl || '', uom: r.uom || '', remark: RFQ_REMARK };
+      var multi = g.rows.length > 1;
+      var needs = g.rows.map(function (x) {
+        var note = rfqMonthNote(x.needBy);
+        return '<div class="nb-line">' + esc(x.needBy || 'ASAP') + (multi ? ' <span class="muted">· ' + fmt(x.qty) + '</span>' : '') + (note ? '<div class="warn">' + esc(note) + '</div>' : '') + '</div>';
+      }).join('');
+      return '<tr><td class="data nw">' + esc(r.item) + (multi ? '<div class="muted merged">' + g.rows.length + '건 → 한 줄</div>' : '') + '</td>' + cols.map(function (c) {
           return '<td><input class="' + c[2] + '" data-k="' + esc(k) + '" data-f="' + c[0] + '" value="' + esc(e[c[0]]) + '" aria-label="' + esc(r.item + ' ' + c[1]) + '"' + (c[0] === 'name' ? ' placeholder="예: LOCTITE EA 9837.1"' : '') + '></td>';
         }).join('') +
-        '<td class="n data">' + fmt(r.qty) + '</td><td class="data nw">' + esc(r.needBy) + (note ? '<div class="warn">' + esc(note) + '</div>' : '') + '</td><td class="muted">' + esc(r.reason) +
+        '<td class="n data">' + fmt(g.qty) + '</td><td class="data nw">' + needs + '</td><td class="muted">' + esc(r.reason) +
         (r.registered || itemDesc[r.item] ? '' : ' <button type="button" class="link-btn" data-reg="' + esc(r.item) + '">신규 등록</button>') + '</td></tr>';
     }).join('');
   $('spotTbl').querySelectorAll('input[data-k]').forEach(function (el) {
@@ -989,15 +1009,16 @@ $('base').addEventListener('change', updateRfqTitle);
 $('rfqTitle').addEventListener('input', function () { state.rfqTitleEdited = this.value !== autoRfqTitle(); });
 
 $('btnRfq').onclick = function () {
-  var b = this, list = state.rfqList || [];
+  var b = this, groups = state.rfqGroups || [];
   $('rfqMsg').innerHTML = '';
-  var missing = list.filter(function (r) { return !String(state.rfqEdit[rfqKey(r)].name).trim(); });
-  if (missing.length) { $('rfqMsg').innerHTML = '<span class="err">Item name을 적어 주세요: ' + esc(missing.map(function (r) { return r.item; }).join(', ')) + '</span>'; return; }
+  var missing = groups.filter(function (g) { return !String(state.rfqEdit[g.key].name).trim(); });
+  if (missing.length) { $('rfqMsg').innerHTML = '<span class="err">Item name을 적어 주세요: ' + esc(missing.map(function (g) { return g.first.item; }).join(', ')) + '</span>'; return; }
   if (!$('rfqDue').value) { $('rfqMsg').innerHTML = '<span class="err">회신 기한(due)을 골라 주세요.</span>'; $('rfqDue').focus(); return; }
-  var items = list.map(function (r) {
-    var e = state.rfqEdit[rfqKey(r)];
+  var items = groups.map(function (g) {
+    var r = g.first, e = state.rfqEdit[g.key];
     return { item: r.item, registered: !!(r.registered || itemDesc[r.item]), name: e.name.trim(), desc: e.desc.trim(), qpl: e.qpl.trim(), uom: e.uom.trim(), remark: e.remark.trim(), material: r.material || '',
-      qty: r.qty, needBy: r.needBy, program: r.program, shelfLife: r.shelfLife, shipFrom: r.shipFrom, taxCode: r.taxCode };
+      qty: g.qty, needBy: g.rows[0].needBy, program: r.program, shelfLife: r.shelfLife, shipFrom: r.shipFrom, taxCode: r.taxCode,
+      parts: g.rows.map(function (x) { return { qty: x.qty, needBy: x.needBy || '', program: x.program || '' }; }) };
   });
   pickFolder('견적요청서').then(function (folder) {
     if (!folder) return;
@@ -1178,6 +1199,10 @@ function closeDrawer() {
   saveQuoteSilently(c).then(function () { $('recMsg').innerHTML = '<span class="muted">' + esc(dr.v) + ' 견적을 저장했습니다.</span>'; })
     .catch(function (e) { $('recMsg').innerHTML = '<span class="err">저장하지 못했습니다: ' + esc(e.message || e) + '</span>'; });
 }
+function needText(it) {   // 견적요청서 품목의 Need-by (같은 자재 여러 건이면 날짜별 수량)
+  var ps = it.parts && it.parts.length > 1 ? it.parts : null;
+  return ps ? ps.map(function (p) { return (p.needBy || 'ASAP') + ' (' + fmt(p.qty) + ')'; }).join(', ') : (it.needBy || 'ASAP');
+}
 function renderDrawer() {
   var c = quoteFor(dr.rec), v = dr.v, idx = c.vendors.indexOf(v), none = !!c.noReply[v];
   $('vdRfq').textContent = dr.rec.title;
@@ -1204,7 +1229,7 @@ function renderDrawer() {
       var q = qOf(x, v), it = x.src, nb = /^no\s*bid$/i.test(String(q.price || '').trim());
       return '<div class="vq' + (nb ? ' nobid' : '') + (qFilled(q) ? ' filled' : '') + '" data-i="' + i + '">' +
         '<div class="vq-head"><span class="chip chip-spot">' + (i + 1) + '</span><span class="data">' + esc(it.item) + '</span><span>' + esc(it.name || '') + '</span>' +
-          '<span class="muted data">요청 ' + fmt(it.qty) + ' ' + esc(it.uom || '') + ' · ' + esc(it.needBy || 'ASAP') + '</span></div>' +
+          '<span class="muted data">요청 ' + fmt(it.qty) + ' ' + esc(it.uom || '') + ' · ' + esc(needText(it)) + '</span></div>' +
         '<div class="vq-grid">' +
           f(q, 'price', 'U/P (단가)', '', '단가 또는 NO BID') +
           '<label class="field">CUR<select data-f="cur"' + (none ? ' disabled' : '') + '><option value=""></option>' + Q_CURS.map(function (x2) { return '<option' + (q.cur === x2 ? ' selected' : '') + '>' + x2 + '</option>'; }).join('') + '</select></label>' +
@@ -1305,7 +1330,7 @@ function renderQSum() {
     var it = x.src;
     return '<div class="q-item" data-i="' + i + '">' +
       '<div class="q-head"><span class="chip chip-spot">' + (i + 1) + '</span><span class="data">' + esc(it.item) + '</span><span>' + esc(it.name || '') + '</span>' +
-        '<span class="muted">' + esc(it.desc || '') + '</span><span class="muted data">수량 ' + fmt(it.qty) + ' ' + esc(it.uom || '') + ' · Need-by ' + esc(it.needBy || 'ASAP') + '</span></div>' +
+        '<span class="muted">' + esc(it.desc || '') + '</span><span class="muted data">수량 ' + fmt(it.qty) + ' ' + esc(it.uom || '') + ' · Need-by ' + esc(needText(it)) + '</span></div>' +
       '<div class="q-meta">' +
         '<label class="field">소요사업 (Program)<input data-m="program" value="' + esc(x.program) + '" placeholder="비우면 노란 칸"></label>' +
         '<label class="field">직전 구매 년도<input data-p="year" value="' + esc(x.prev.year) + '" inputmode="numeric" placeholder="선택"></label>' +
@@ -1391,7 +1416,7 @@ $('qCreate').onclick = function () {
   delete b.dataset.ok;
   var items = qs.items.map(function (x, i) {
     var it = x.src;
-    return { item: it.item, name: it.name, desc: it.desc, material: it.material || '', qpl: it.qpl, uom: it.uom, remark: it.remark, qty: it.qty, needBy: it.needBy,
+    return { item: it.item, name: it.name, desc: it.desc, material: it.material || '', qpl: it.qpl, uom: it.uom, remark: it.remark, qty: it.qty, needBy: it.needBy, parts: it.parts,
       program: x.program, prev: x.prev, quotes: p.items[i].quotes };
   });
   pickFolder('Spot 견적 구매내역서').then(function (folder) {

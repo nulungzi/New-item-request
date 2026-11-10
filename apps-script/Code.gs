@@ -517,7 +517,8 @@ function checkSetup() {
  * ================================================================ */
 /** 견적요청서 만들기. payload = {baseDate, title, due('yyyy-mm-dd'), folder, items:[{item, registered, name, desc, qpl, uom, remark, qty, needBy, program, shelfLife, shipFrom, taxCode}]} */
 function apiCreateRfq(payload) {
-  var items = (payload.items || []).map(function (it) {
+  var merged = mergeRfqItems_(payload.items || []);   // 같은 자재는 Need-by 가 달라도 한 줄
+  var items = merged.map(function (it) {
     var o = {};
     Object.keys(it).forEach(function (k) { o[k] = it[k]; });
     o.needBy = toDate_(it.needBy);
@@ -533,7 +534,7 @@ function apiCreateRfq(payload) {
   var ss = SpreadsheetApp.openById(file.getId());
   applyPlan_(ss, buildRfqPlan_(items, base));
   var rec = addRecord_({ kind: '견적요청서', title: title, url: ss.getUrl(), fileId: ss.getId(), status: '견적요청서 작성',
-    items: (payload.items || []), due: payload.due || '' });
+    items: merged, due: payload.due || '' });
   return { url: ss.getUrl(), name: title, id: ss.getId(), recordId: rec.id };
 }
 
