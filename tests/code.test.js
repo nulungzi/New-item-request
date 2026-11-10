@@ -104,3 +104,25 @@ test('apiCreateInputSheet · apiCheckFolder: 고른 폴더로 저장', () => {
   assert.throws(() => ctx.apiCheckFolder('https://drive.google.com/drive/folders/1ZZZZZZZZZZZZZZZZZ'), /열 수 없습니다/);
   assert.throws(() => ctx.apiCheckFolder('내 폴더'), /주소를 확인/);
 });
+
+test('apiListFolders · apiCreateFolder: 내 드라이브 폴더 탐색', () => {
+  const mkFolder = (id, name, parent, kids = []) => ({ getId: () => id, getName: () => name, isTrashed: () => false,
+    getParents: () => { let d = !parent; return { hasNext: () => !d, next: () => { d = true; return parent; } }; },
+    getFolders: () => { let i = 0; return { hasNext: () => i < kids.length, next: () => kids[i++] }; },
+    createFolder: n => mkFolder('new1', n, null) });
+  const root = mkFolder('ROOT', 'My Drive', null);
+  const team = mkFolder('T', '구매팀', root);
+  const kids = [mkFolder('B', '소요제기', team), mkFolder('A', '견적', team)];
+  Object.assign(team, { getFolders: () => { let i = 0; return { hasNext: () => i < kids.length, next: () => kids[i++] }; } });
+  Object.assign(root, { getFolders: () => { let i = 0; const k = [team]; return { hasNext: () => i < k.length, next: () => k[i++] }; } });
+  const byId = { T: team, A: kids[1], B: kids[0] };
+  const ctx = inContext({ DriveApp: { getRootFolder: () => root, getFolderById: id => { if (!byId[id]) throw new Error('x'); return byId[id]; } } });
+  const top = JSON.parse(JSON.stringify(ctx.apiListFolders('')));
+  assert.deepStrictEqual(top, { id: '', name: '내 드라이브', path: [{ id: '', name: '내 드라이브' }], folders: [{ id: 'T', name: '구매팀' }] });
+  const t = JSON.parse(JSON.stringify(ctx.apiListFolders('T')));
+  assert.deepStrictEqual(t.path.map(p => p.name), ['내 드라이브', '구매팀']);
+  assert.deepStrictEqual(t.folders.map(f => f.name), ['견적', '소요제기']);
+  assert.strictEqual(ctx.apiCreateFolder('T', '  2027 소요 ').name, '2027 소요');
+  assert.throws(() => ctx.apiCreateFolder('T', ' '), /폴더 이름/);
+  assert.throws(() => ctx.apiListFolders('NOPE'), /폴더를 열 수 없습니다/);
+});

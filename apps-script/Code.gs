@@ -222,6 +222,44 @@ function targetFolder_(folderInput) {
   catch (e) { throw new Error('드라이브 폴더를 열 수 없습니다. 주소가 맞는지, 이 폴더에 파일을 만들 권한(편집자)이 있는지 확인해 주세요.'); }
 }
 
+/* ================================================================
+ * 폴더 선택 창: 각자 내 드라이브의 폴더를 따라 들어가며 고른다
+ * (웹앱 실행 사용자를 "웹 앱에 액세스하는 사용자"로 배포하면 각자 자기 드라이브가 보인다)
+ * ================================================================ */
+/** parentId 안의 폴더 목록. parentId 가 없으면 내 드라이브 맨 위 */
+function apiListFolders(parentId) {
+  var root = DriveApp.getRootFolder(), rootId = root.getId();
+  var here;
+  try { here = parentId ? DriveApp.getFolderById(parentId) : root; here.getName(); }
+  catch (e) { throw new Error('폴더를 열 수 없습니다. 주소가 맞는지, 볼 수 있는 권한이 있는지 확인해 주세요.'); }
+  var folders = [], it = here.getFolders();
+  while (it.hasNext() && folders.length < 300) {
+    var f = it.next();
+    if (!f.isTrashed()) folders.push({ id: f.getId(), name: f.getName() });
+  }
+  folders.sort(function (a, b) { return a.name.localeCompare(b.name, 'ko'); });
+  // 위치 표시: 내 드라이브 > … > 현재 폴더
+  var path = [], cur = here, guard = 0;
+  while (cur && guard++ < 15) {
+    var isRoot = cur.getId() === rootId;
+    path.unshift({ id: isRoot ? '' : cur.getId(), name: isRoot ? '내 드라이브' : cur.getName() });
+    if (isRoot) break;
+    var ps = cur.getParents();
+    cur = ps.hasNext() ? ps.next() : null;
+  }
+  if (!path.length || path[0].name !== '내 드라이브') path.unshift({ id: '', name: '내 드라이브' });
+  return { id: here.getId() === rootId ? '' : here.getId(), name: here.getId() === rootId ? '내 드라이브' : here.getName(), path: path, folders: folders };
+}
+
+/** 폴더 선택 창의 "새 폴더" */
+function apiCreateFolder(parentId, name) {
+  name = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+  if (!name) throw new Error('폴더 이름을 입력해 주세요.');
+  var parent = parentId ? DriveApp.getFolderById(parentId) : DriveApp.getRootFolder();
+  var f = parent.createFolder(name);
+  return { id: f.getId(), name: f.getName() };
+}
+
 /** 화면 "확인" 버튼: 폴더 이름을 돌려준다 */
 function apiCheckFolder(folderInput) {
   var f = targetFolder_(folderInput);

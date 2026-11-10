@@ -158,12 +158,28 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-size: .
 .reg-mode label:has(input:checked) { border-color: var(--accent); color: var(--accent); background: var(--accent-soft) }
 .ok-msg { color: var(--ok); font-size: .9rem }
 
-/* 저장 위치 */
-.where { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px 10px; align-items: center; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface) }
-.where-label { font-size: .8rem; font-weight: 600; letter-spacing: .04em; color: var(--muted) }
-.where input { width: 100%; font-family: var(--font-data); font-size: .85rem }
-.where-msg { grid-column: 2 / -1 }
-@media (max-width: 640px) { .where { grid-template-columns: minmax(0, 1fr) auto } .where-label, .where-msg { grid-column: 1 / -1 } }
+/* 폴더 선택 창 */
+.modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(10, 16, 32, .45);
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)) }
+.modal-box { width: min(560px, 100%); max-height: 100%; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto auto; gap: 12px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; box-shadow: 0 12px 40px rgba(0, 0, 0, .25) }
+.modal-box h2 { font-size: 1.05rem; font-weight: 600 }
+.crumbs { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; font-size: .85rem }
+.crumbs button { border: 0; background: transparent; color: var(--accent); padding: 2px 4px; border-radius: 4px }
+.crumbs button:last-child { color: var(--ink); font-weight: 600 }
+.crumbs .sep { color: var(--muted) }
+.pk-list { min-height: 180px; max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2) }
+.pk-list button { display: flex; width: 100%; align-items: center; gap: 10px; border: 0; border-bottom: 1px solid var(--line); background: var(--surface); color: var(--ink); text-align: left; padding: 10px 12px; border-radius: 0 }
+.pk-list button:hover { background: var(--accent-soft) }
+.pk-list button::before { content: ""; width: 16px; height: 12px; border-radius: 2px; background: var(--bar-plan); border: 1px solid var(--bar-plan-edge); flex: none }
+.pk-list button::after { content: "›"; margin-left: auto; color: var(--muted) }
+.pk-empty { padding: 18px 12px; color: var(--muted); font-size: .86rem }
+.pk-new input, .pk-url input { flex: 1 1 160px; min-width: 0 }
+.pk-url summary { cursor: pointer; color: var(--muted); font-size: .85rem }
+.pk-url .row { margin-top: 8px }
+.pk-foot { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between }
+.pk-here { font-size: .85rem; color: var(--muted) }
+.pk-here b { color: var(--ink) }
 
 /* 판정 결과 */
 .summary { display: flex; flex-wrap: wrap; gap: 8px }
@@ -236,12 +252,6 @@ table.list td.nw { white-space: nowrap }
   <div class="legend"><span class="chip chip-ok">LTA</span><span class="chip chip-ok">3PP</span> 계약 단가로 구매내역서 작성 · <span class="chip chip-spot">SPOT</span> 견적 필요</div>
 </header>
 
-<section class="where" aria-label="저장 위치">
-  <label for="folder" class="where-label">저장 위치</label>
-  <input id="folder" type="text" autocomplete="off" spellcheck="false" placeholder="구글 드라이브 폴더 주소를 붙여넣으세요 (비우면 기본 위치)">
-  <button class="btn-ghost" id="btnFolder" type="button">확인</button>
-  <span id="folderMsg" class="muted where-msg">구매내역서와 입력용 시트를 이 폴더에 만듭니다. 이 브라우저에 기억됩니다.</span>
-</section>
 
 <section class="step" id="step1">
   <div class="step-no">1</div>
@@ -260,7 +270,7 @@ table.list td.nw { white-space: nowrap }
       <div class="row">
         <button class="btn-ghost" id="btnAdd" type="button">+ 행 추가</button>
         <button class="btn-ghost" id="btnClear" type="button">모두 지우기</button>
-        <button class="btn-ghost" id="btnInputSheet" type="button" title="엑셀처럼 적어 두고 복사해 붙여넣는 구글 시트를 저장 위치에 만듭니다">입력용 시트 만들기</button>
+        <button class="btn-ghost" id="btnInputSheet" type="button" title="엑셀처럼 적어 두고 복사해 붙여넣는 구글 시트를 내 드라이브에 만듭니다">입력용 시트 만들기</button>
       </div>
       <div class="row">
         <label class="inline" for="base">작성일 <input type="date" id="base" class="data"></label>
@@ -365,6 +375,27 @@ table.list td.nw { white-space: nowrap }
 </div>
 </main>
 
+<div class="modal" id="picker" hidden role="dialog" aria-modal="true" aria-labelledby="pkTitle">
+  <div class="modal-box">
+    <div class="panel-head"><h2 id="pkTitle">저장할 폴더 선택</h2><span class="muted" id="pkFor"></span></div>
+    <nav class="crumbs" id="pkPath" aria-label="현재 위치"></nav>
+    <div class="pk-list" id="pkList" role="list"></div>
+    <div class="row pk-new">
+      <input id="pkNewName" type="text" maxlength="100" placeholder="새 폴더 이름" autocomplete="off">
+      <button class="btn-ghost" id="pkNewBtn" type="button">새 폴더 만들기</button>
+    </div>
+    <details class="pk-url">
+      <summary>폴더 주소로 찾기 (공유 드라이브 등)</summary>
+      <div class="row"><input id="pkUrl" type="text" placeholder="https://drive.google.com/drive/folders/…" autocomplete="off" spellcheck="false"><button class="btn-ghost" id="pkUrlBtn" type="button">이동</button></div>
+    </details>
+    <div class="pk-foot">
+      <span class="pk-here" id="pkHere"></span>
+      <div class="row"><button class="btn-ghost" id="pkCancel" type="button">취소</button><button class="btn" id="pkOk" type="button">이 폴더에 저장</button></div>
+    </div>
+    <div class="err" id="pkMsg"></div>
+  </div>
+</div>
+
 <script>
 var state = { results: [], rates: {}, sched: null, schedExample: null, tasks: [], fields: [] };
 var $ = function (id) { return document.getElementById(id); };
@@ -468,25 +499,76 @@ $('btnAdd').onclick = function () { addRow().querySelector('.f-item').focus(); }
 $('btnClear').onclick = function () { $('reqRows').innerHTML = ''; for (var i = 0; i < 3; i++) addRow(); };
 for (var i = 0; i < 3; i++) addRow();
 
-/* ---------- 저장 위치 (드라이브 폴더) ---------- */
+/* ---------- 폴더 선택 창: 저장 버튼을 누르면 내 드라이브에서 폴더를 고른다 ---------- */
 var FOLDER_KEY = 'sojeongi.folder';
-try { $('folder').value = localStorage.getItem(FOLDER_KEY) || ''; } catch (e) {}
-function rememberFolder() { try { localStorage.setItem(FOLDER_KEY, $('folder').value.trim()); } catch (e) {} }
-$('folder').addEventListener('change', function () { rememberFolder(); checkFolder(); });
-$('btnFolder').onclick = function () { rememberFolder(); checkFolder(); };
-function checkFolder() {
-  var el = $('folderMsg');
-  el.className = 'muted where-msg'; el.textContent = '폴더를 확인하는 중…';
-  return call('apiCheckFolder', $('folder').value).then(function (f) {
-    el.innerHTML = '저장 위치: <b>' + esc(f.name) + '</b>' + (f.url ? ' · <a href="' + esc(f.url) + '" target="_blank" rel="noopener">열기 ↗</a>' : '');
-  }).catch(function (e) { el.className = 'err where-msg'; el.textContent = e.message || e; });
+var picker = { cur: null, done: null };
+function savedFolder() { try { return JSON.parse(localStorage.getItem(FOLDER_KEY) || 'null'); } catch (e) { return null; } }
+function folderIdFrom(s) {
+  var m = String(s || '').trim().match(/\/folders\/([\w-]{10,})/) || String(s || '').match(/[?&]id=([\w-]{10,})/) || String(s || '').trim().match(/^([\w-]{10,})$/);
+  return m ? m[1] : '';
 }
-if ($('folder').value) checkFolder();
+/** 폴더 선택 창을 열고, 고른 폴더 {id, name} 로 끝나는 Promise. 취소하면 null */
+function pickFolder(purpose) {
+  $('pkFor').textContent = purpose || '';
+  $('pkMsg').textContent = ''; $('pkNewName').value = ''; $('pkUrl').value = '';
+  $('picker').hidden = false;
+  var last = savedFolder();
+  loadFolder(last ? last.id : '', true);
+  return new Promise(function (res) { picker.done = res; });
+}
+function closePicker(result) {
+  $('picker').hidden = true;
+  if (picker.done) { var d = picker.done; picker.done = null; d(result); }
+}
+function loadFolder(id, fallback) {
+  $('pkList').innerHTML = '<div class="pk-empty">불러오는 중…</div>';
+  $('pkOk').disabled = true;
+  call('apiListFolders', id).then(function (d) {
+    picker.cur = d;
+    $('pkPath').innerHTML = d.path.map(function (p, i) {
+      return (i ? '<span class="sep">›</span>' : '') + '<button type="button" data-id="' + esc(p.id) + '">' + esc(p.name) + '</button>';
+    }).join('');
+    $('pkPath').querySelectorAll('button').forEach(function (b) { b.onclick = function () { loadFolder(b.dataset.id); }; });
+    $('pkList').innerHTML = d.folders.length ? d.folders.map(function (f) {
+      return '<button type="button" role="listitem" data-id="' + esc(f.id) + '">' + esc(f.name) + '</button>';
+    }).join('') : '<div class="pk-empty">하위 폴더가 없습니다. 이 폴더에 저장하거나 새 폴더를 만드세요.</div>';
+    $('pkList').querySelectorAll('button').forEach(function (b) { b.onclick = function () { loadFolder(b.dataset.id); }; });
+    $('pkHere').innerHTML = '저장 위치: <b>' + esc(d.name) + '</b>';
+    $('pkOk').disabled = false;
+    $('pkMsg').textContent = '';
+  }).catch(function (e) {
+    if (fallback && id) { loadFolder(''); return; }   // 기억한 폴더가 없어졌으면 내 드라이브부터
+    $('pkMsg').textContent = e.message || e;
+    $('pkList').innerHTML = '';
+  });
+}
+$('pkOk').onclick = function () {
+  var f = { id: picker.cur.id, name: picker.cur.name };
+  try { localStorage.setItem(FOLDER_KEY, JSON.stringify(f)); } catch (e) {}
+  closePicker(f);
+};
+$('pkCancel').onclick = function () { closePicker(null); };
+$('picker').addEventListener('click', function (e) { if (e.target === this) closePicker(null); });
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('picker').hidden) closePicker(null); });
+$('pkNewBtn').onclick = function () {
+  var b = this; b.disabled = true;
+  call('apiCreateFolder', picker.cur ? picker.cur.id : '', $('pkNewName').value).then(function (f) { $('pkNewName').value = ''; loadFolder(f.id); })
+    .catch(function (e) { $('pkMsg').textContent = e.message || e; }).finally(function () { b.disabled = false; });
+};
+$('pkUrlBtn').onclick = function () {
+  var id = folderIdFrom($('pkUrl').value);
+  if (!id) { $('pkMsg').textContent = '폴더 주소를 확인해 주세요. 드라이브에서 폴더를 열었을 때 주소창의 주소입니다.'; return; }
+  loadFolder(id);
+};
 
 $('btnInputSheet').onclick = function () {
-  var b = this; b.disabled = true; b.textContent = '만드는 중…'; $('msg1').textContent = '';
-  call('apiCreateInputSheet', $('folder').value, '').then(function (d) {
-    $('msg1').innerHTML = '<span class="ok-msg">입력용 시트를 ' + esc(d.folder) + '에 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.name) + ' 열기 ↗</a> — "사용 방법" 탭을 참고하세요.</span>';
+  var b = this; $('msg1').textContent = '';
+  pickFolder('입력용 시트').then(function (folder) {
+    if (!folder) return;
+    b.disabled = true; b.textContent = '만드는 중…';
+    return call('apiCreateInputSheet', folder.id, '').then(function (d) {
+      $('msg1').innerHTML = '<span class="ok-msg">입력용 시트를 ' + esc(d.folder) + '에 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.name) + ' 열기 ↗</a> — "사용 방법" 탭을 참고하세요.</span>';
+    });
   }).catch(function (e) { $('msg1').textContent = e.message || e; })
     .finally(function () { b.disabled = false; b.textContent = '입력용 시트 만들기'; });
 };
@@ -788,6 +870,9 @@ $('btnCreate').onclick = function () {
     return;
   }
   delete b.dataset.ok;
+  pickFolder('구매내역서').then(function (folder) { if (folder) createPurchase(b, folder); });
+};
+function createPurchase(b, folder) {
   b.disabled = true; b.textContent = '만드는 중…';
   var rates = {}, remarks = {};
   document.querySelectorAll('[data-rate]').forEach(function (el) { rates[el.dataset.rate] = el.value; });
@@ -795,14 +880,14 @@ $('btnCreate').onclick = function () {
   var lines = state.results.filter(function (r) { return r.status === '계약'; }).map(function (r) {
     return { item: r.item, qty: r.qty, needBy: r.needBy, program: r.program, shelfLife: r.shelfLife, shipFrom: r.shipFrom, taxCode: r.taxCode, contractRow: chosen(r).row };
   });
-  call('apiCreatePurchase', { baseDate: $('base').value, rates: rates, remarks: remarks, lines: lines, schedule: state.sched, name: $('fileName').value, confirmer: $('confirmer').value, folder: $('folder').value }).then(function (d) {
+  call('apiCreatePurchase', { baseDate: $('base').value, rates: rates, remarks: remarks, lines: lines, schedule: state.sched, name: $('fileName').value, confirmer: $('confirmer').value, folder: folder.id }).then(function (d) {
     state.rates = Object.assign(state.rates, rates);
     $('purchaseCard').classList.add('done');
-    $('doneNote').innerHTML = '구매내역서를 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.name) + ' 열기 ↗</a>';
+    $('doneNote').innerHTML = '구매내역서를 ' + esc(folder.name) + '에 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.name) + ' 열기 ↗</a>';
     loadPreview(d);
   }).catch(function (e) { $('msg2').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; })
     .finally(function () { b.disabled = false; b.textContent = '구매내역서 만들기'; });
-};
+}
 
 /* ---------- 5. 미리보기 ---------- */
 function loadPreview(d) {
