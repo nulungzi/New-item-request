@@ -10,7 +10,7 @@ test('apiCreatePurchase: 템플릿 복사 후 계획 적용', () => {
     getDataRange: () => ({ getValues: () => name === '자재정보'
       ? [['Item', '계약 구분', '업체명', '단가', 'CUR', '계약시작', '계약종료'], ['A1', 'LTA', 'AKZO', 2, 'USD', new Date(2026, 0, 1), new Date(2028, 11, 31)]]
       : [['CUR', 'KRW 환율', '수정일']] }), appendRow: () => {} });
-  const ss = { getSheetByName: n => sheet(n), deleteSheet: () => calls.push('deleteSheet'), setActiveSheet: () => {}, getUrl: () => 'URL' };
+  const ss = { getSheetByName: n => sheet(n), deleteSheet: () => calls.push('deleteSheet'), setActiveSheet: () => {}, getUrl: () => 'URL', getId: () => 'new' };
   const ctx = {
     SpreadsheetApp: { getActive: () => ss, openById: () => ss, CopyPasteType: { PASTE_FORMAT: 'F' }, BorderStyle: { SOLID: 'S' },
       newDataValidation: () => range },
@@ -21,5 +21,6 @@ test('apiCreatePurchase: 템플릿 복사 후 계획 적용', () => {
   for (const f of ['Logic.js', 'Code.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'apps-script', f), 'utf8'), ctx);
   const res = ctx.apiCreatePurchase({ baseDate: '2026-11-10', rates: { USD: 1350 }, remarks: {}, lines: [{ item: 'A1', qty: 3, needBy: '2027-06-10', contractRow: 2 }] });
   assert.strictEqual(res.name, '261110 구매내역서_AKZO');
+  assert.strictEqual(res.id, 'new');
   assert.ok(calls.includes('copyTo') && calls.includes('merge') && calls.includes('deleteSheet'));
 });
