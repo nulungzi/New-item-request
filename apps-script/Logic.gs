@@ -370,6 +370,7 @@ function summarize_(lines) {
  *   bottom {s, r, c1, c2}             아래 테두리(얇은 선)
  *   list   {s, r1, r2, c, items}      드롭다운
  *   freeze {s, rows, cols}
+ *   width  {s, c, px}                열 너비(픽셀)
  * ------------------------------------------------------------------ */
 var TPL = {
   SUMMARY: '구매요약', DETAIL: '구매세부내역', SCHEDULE: '구매일정', CONFIRM: '사업부 담당 확인', PROTO: '_proto',
@@ -387,6 +388,7 @@ var TPL = {
 var SCHEDULE_TASKS = ['현 재고+Open PO', 'PO Coverage', '품의 및 PR/PO', '업체생산 L/T', '운송, 통관, 검사'];
 var SCHEDULE_EXAMPLE = [{ start: 0, len: 9 }, { start: 8, len: 10 }, { start: 0, len: 1 }, { start: 1, len: 6 }, { start: 7, len: 1 }];
 var SCHEDULE_SLOTS = 24;
+var SCHEDULE_COL_PX = 23;   // 구매일정 반 달 칸 너비(픽셀)
 var SCHEDULE_COLORS = ['#cccccc', '#fff2cc', '#fff2cc', '#fff2cc', '#fff2cc'];
 
 /** 화면에서 받은 막대 값 검사·보정. len 0 = 비어 있음 */
@@ -547,6 +549,8 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule, extra) {
 
   /* ---------- 구매일정: 작성일 달부터 12개월 머리글 (E~AB열, 달마다 2칸) ---------- */
   var G = TPL.SCHEDULE;
+  // 일정 칸 24개(E~AB) 너비를 모두 같게 (템플릿에 따라 Y·AA·AB가 넓게 남는 경우가 있음)
+  for (var wc = 5; wc <= 28; wc++) add({ op: 'width', s: G, c: wc, px: SCHEDULE_COL_PX });
   add({ op: 'unmerge', s: G, r1: 4, c1: 5, r2: 4, c2: 28 });
   for (var c = 5; c <= 28; c++) set(G, 4, c, '');
   var y = base.getFullYear(), m = base.getMonth() + 1, segStart = 5;

@@ -244,6 +244,7 @@ function applyPlan_(ss, ops) {
           SpreadsheetApp.newDataValidation().requireValueInList(o.items, true).setAllowInvalid(true).build());
         break;
       case 'freeze': sh(o.s).setFrozenRows(o.rows); sh(o.s).setFrozenColumns(o.cols); break;
+      case 'width': sh(o.s).setColumnWidth(o.c, o.px); break;
       default: throw new Error('알 수 없는 작업: ' + o.op);
     }
   });

@@ -63,6 +63,8 @@ for o in ops:
         dv.add('%s%d:%s%d' % (col, o['r1'], col, o['r2']))
     elif op == 'freeze':
         wb[o['s']].freeze_panes = wb[o['s']].cell(o['rows'] + 1, o['cols'] + 1)
+    elif op == 'width':
+        wb[o['s']].column_dimensions[get_column_letter(o['c'])].width = round(o['px'] / 7, 2)
     else:
         raise SystemExit('unknown op ' + op)
 

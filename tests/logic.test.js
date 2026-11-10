@@ -216,3 +216,10 @@ test('uniq_ · itemIndex_', () => {
   ]);
   assert.deepStrictEqual(L.itemIndex_(c), [['A1', 'PRIMER', 'Air', 'LTA/3PP', '6+3(DOP)'], ['B2', 'SEAL', '', 'SPOT/LTA', '']]);
 });
+
+test('구매일정 E~AB열 너비 23px', () => {
+  const lines = [{ item: 'A', qty: 1, supplier: 'S', cur: 'USD', price: 1, priceMode: 'LTA' }];
+  const w = L.buildPurchasePlan_(lines, ['USD'], { USD: 1 }, L.toDate_('2026-11-10')).filter(o => o.op === 'width');
+  assert.deepStrictEqual(w.map(o => o.c), Array.from({ length: 24 }, (_, i) => 5 + i));
+  assert.ok(w.every(o => o.s === '구매일정' && o.px === 23));
+});
