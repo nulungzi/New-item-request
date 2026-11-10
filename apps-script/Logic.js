@@ -155,6 +155,7 @@ function parseRows_(rows) {
       line: i + 1, item: item, qty: qty, needBy: toDate_(r.needBy),
       program: String(r.program || '').trim(),
       shipFrom: String(r.shipFrom || '').trim(),
+      shelfLife: String(r.shelfLife || '').trim(),
       taxCode: String(r.taxCode == null ? '' : r.taxCode).trim()
     });
   });
@@ -196,7 +197,7 @@ function classify_(requests, contracts, today) {
       return (!c.start || c.start <= d) && (!c.end || d <= c.end);
     }).sort(function (a, b) { return (a.price || 0) - (b.price || 0); });
     var res = { line: q.line, item: q.item, qty: q.qty, needBy: q.needBy, program: q.program,
-      shipFrom: q.shipFrom || '', taxCode: q.taxCode || '', candidates: valid, warnings: [], registered: all.length > 0 };
+      shipFrom: q.shipFrom || '', shelfLife: q.shelfLife || '', taxCode: q.taxCode || '', candidates: valid, warnings: [], registered: all.length > 0 };
     if (valid.length) {
       res.status = '계약';
       res.reason = valid.length > 1 ? '유효 계약 ' + valid.length + '건 — 업체 선택 필요' : '';
@@ -221,6 +222,11 @@ function classify_(requests, contracts, today) {
     return res;
   });
 }
+
+/** 사업부 담당자 표기 다듬기: "김정환   차장" → "김정환 차장" */
+function normPerson_(s) { return String(s || '').replace(/\s+/g, ' ').trim().slice(0, 40); }
+/** "이름 직급" 형식인지 (예: 김정환 차장, 남궁민수 대리) */
+function isPersonFormat_(s) { return /^[가-힣]{2,5} [가-힣A-Za-z]{1,10}$/.test(normPerson_(s)); }
 
 /** 구매내역서 파일 이름: 작업자가 적은 이름(다듬어서) 또는 "yymmdd 구매내역서_업체_업체" */
 function purchaseFileName_(custom, base, suppliers) {
@@ -385,8 +391,10 @@ function rateNote_(curs, rates, base) {
  *          uom, shelfLife, taxCode, remark}]
  * curs: KRW 제외 통화 목록(등장 순), rates: {USD: 1339.3}, base: 작성일(Date)
  * schedule: 구매일정 막대 [{start, len}] × 5 (반 달 단위, len 0 = 빈 줄, 없으면 예시)
+ * extra: {title: 구매내역서 제목(사업부 담당 확인 B2), confirmer: '홍길동 과장'(A2)}
  */
-function buildPurchasePlan_(lines, curs, rates, base, schedule) {
+function buildPurchasePlan_(lines, curs, rates, base, schedule, extra) {
+  extra = extra || {};
   var ops = [];
   var S = TPL.SUMMARY, D = TPL.DETAIL;
   var add = function (o) { ops.push(o); };
@@ -539,18 +547,17 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule) {
   });
 
   /* ---------- 사업부 담당 확인 ---------- */
-  var modes = [], sups = [];
-  lines.forEach(function (l) {
-    if (l.priceMode && modes.indexOf(l.priceMode) < 0) modes.push(l.priceMode);
-    if (sups.indexOf(l.supplier) < 0) sups.push(l.supplier);
-  });
-  set(TPL.CONFIRM, 2, 2, sups.join(', ') + ' ' + modes.join('/') + ' 자재 구매 품의');
-  set(TPL.CONFIRM, 2, 3, { date: fmtDate_(base) });
-  add({ op: 'bg', s: TPL.CONFIRM, r: 2, c: 1, color: TPL.FILL });   // 담당자 이름 입력 칸
+  // A2 사업부 담당자(이름 직급), B2 제목 = 구매내역서 제목, C2 확인 날짜는 담당자가 직접 입력(노란 칸)
+  var who = normPerson_(extra.confirmer);
+  if (who) set(TPL.CONFIRM, 2, 1, who);
+  else add({ op: 'bg', s: TPL.CONFIRM, r: 2, c: 1, color: TPL.FILL });
+  set(TPL.CONFIRM, 1, 2, '구매내역서 제목');
+  set(TPL.CONFIRM, 2, 2, extra.title || '');
+  add({ op: 'bg', s: TPL.CONFIRM, r: 2, c: 3, color: TPL.FILL });
 
   return ops;
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { purchaseFileName_: purchaseFileName_, keyForHeader_: keyForHeader_, validateNewItem_: validateNewItem_, newItemRow_: newItemRow_, isSpotMode_: isSpotMode_, normSchedule_: normSchedule_, SCHEDULE_EXAMPLE: SCHEDULE_EXAMPLE, parseRows_: parseRows_, buildPurchasePlan_: buildPurchasePlan_, curFmt_: curFmt_, leadDays_: leadDays_, parseContracts_: parseContracts_, parseRequest_: parseRequest_, classify_: classify_, summarize_: summarize_, toDate_: toDate_, fmtDate_: fmtDate_ };
+  module.exports = { normPerson_: normPerson_, isPersonFormat_: isPersonFormat_, purchaseFileName_: purchaseFileName_, keyForHeader_: keyForHeader_, validateNewItem_: validateNewItem_, newItemRow_: newItemRow_, isSpotMode_: isSpotMode_, normSchedule_: normSchedule_, SCHEDULE_EXAMPLE: SCHEDULE_EXAMPLE, parseRows_: parseRows_, buildPurchasePlan_: buildPurchasePlan_, curFmt_: curFmt_, leadDays_: leadDays_, parseContracts_: parseContracts_, parseRequest_: parseRequest_, classify_: classify_, summarize_: summarize_, toDate_: toDate_, fmtDate_: fmtDate_ };
 }

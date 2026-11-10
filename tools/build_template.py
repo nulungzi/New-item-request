@@ -76,8 +76,14 @@ for r in range(4, 11):
     copy_style(G.cell(r, 25), G.cell(r, 27))   # Y → AA
     copy_style(G.cell(r, 26), G.cell(r, 28))   # Z → AB
 G.merge_cells('AA5:AB5')
-for col in ['AA', 'AB']:
-    G.column_dimensions[col].width = G.column_dimensions['Y'].width
+# 일정 칸(E~AB) 너비: 원본은 E~V, W~AH 처럼 묶음 범위로 지정되어 있어 Y 이후가 기본 너비로 넓어진다.
+# 묶음을 지우고 24칸을 같은 너비로 하나씩 지정한다.
+from openpyxl.utils import get_column_letter
+slot_w = G.column_dimensions['E'].width
+for key in [k for k, d in G.column_dimensions.items() if d.min and d.max and d.max >= 5]:
+    del G.column_dimensions[key]
+for c in range(5, 29):
+    G.column_dimensions[get_column_letter(c)].width = slot_w
 
 # 사업부 담당 확인: 담당자·제목·날짜·날인 비우기
 B = wb['사업부 담당 확인']

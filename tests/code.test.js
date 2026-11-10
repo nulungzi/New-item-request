@@ -59,5 +59,5 @@ test('apiRegisterItem: 자재정보 맨 아래에 머리글 순서대로 추가,
   // 초기화: 등록 양식 필드는 시트 머리글 순서
   const init = ctx.apiInit();
   assert.deepStrictEqual(JSON.parse(JSON.stringify(init.fields.map(f => f.key))), ['item', 'priceMode', 'supplier', 'price', 'cur', 'start', 'end', 'moq', 'shipFrom', 'desc']);
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(init.items[0])), ['A1', 'X', 'Air', 'LTA']);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(init.items[0])), ['A1', 'X', 'Air', 'LTA', '']);
 });

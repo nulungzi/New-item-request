@@ -193,3 +193,17 @@ test('구매내역서 파일 이름: 작업자 입력 우선, 비우면 자동',
   assert.strictEqual(L.purchaseFileName_('  보잉 화공자재\n LTA 품의  ', base, ['AKZO']), '보잉 화공자재 LTA 품의');
   assert.strictEqual(L.purchaseFileName_('x'.repeat(200), base, []).length, 150);
 });
+
+test('사업부 담당 확인: 담당자·제목, 확인 날짜는 비워 둠', () => {
+  const lines = [{ item: 'A', qty: 1, supplier: 'S', cur: 'USD', price: 1, priceMode: 'LTA', shipFrom: 'Air', leadtime: '1wks', shelfLife: '12MM' }];
+  const ops = L.buildPurchasePlan_(lines, ['USD'], { USD: 1 }, L.toDate_('2026-11-10'), null, { title: '보잉 LTA 품의', confirmer: ' 김정환   차장 ' });
+  const c = ops.filter(o => o.s === '사업부 담당 확인');
+  assert.deepStrictEqual(c.filter(o => o.op === 'set').map(o => [o.r, o.c, o.v]), [[2, 1, '김정환 차장'], [1, 2, '구매내역서 제목'], [2, 2, '보잉 LTA 품의']]);
+  assert.deepStrictEqual(c.filter(o => o.op === 'bg').map(o => o.c), [3]);
+  // Shelf Life는 구매세부내역 O열(15)
+  assert.ok(ops.some(o => o.op === 'set' && o.s === '구매세부내역' && o.c === 15 && o.v === '12MM'));
+  // 담당자 비우면 A2도 노란 칸
+  const ops2 = L.buildPurchasePlan_(lines, ['USD'], { USD: 1 }, L.toDate_('2026-11-10'), null, { title: 't' });
+  assert.deepStrictEqual(ops2.filter(o => o.s === '사업부 담당 확인' && o.op === 'bg').map(o => o.c), [1, 3]);
+  assert.ok(L.isPersonFormat_('김정환 차장') && L.isPersonFormat_('남궁민수 대리') && !L.isPersonFormat_('김정환') && !L.isPersonFormat_('차장 김정환 님'));
+});

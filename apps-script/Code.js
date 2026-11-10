@@ -59,8 +59,9 @@ function apiInit() {
   var sh = masterSheet_(), values = sh.getDataRange().getValues();
   var items = {};
   parseContracts_(values).forEach(function (c) {
-    var x = items[c.item] = items[c.item] || { desc: c.desc, ship: '', modes: [] };
+    var x = items[c.item] = items[c.item] || { desc: c.desc, ship: '', shelf: '', modes: [] };
     if (!x.ship && c.shipFrom) x.ship = c.shipFrom;
+    if (!x.shelf && c.shelfLife) x.shelf = c.shelfLife;
     if (!x.desc && c.desc) x.desc = c.desc;
     var m = c.priceMode.toUpperCase();
     if (m && x.modes.indexOf(m) < 0) x.modes.push(m);
@@ -69,8 +70,8 @@ function apiInit() {
     today: fmtDate_(new Date()),
     rates: loadRates_(),
     schedule: { tasks: SCHEDULE_TASKS, example: SCHEDULE_EXAMPLE, slots: SCHEDULE_SLOTS },
-    // [Item, Description, Ship From, 계약 구분들]
-    items: Object.keys(items).sort().map(function (k) { return [k, items[k].desc, items[k].ship, items[k].modes.join('/')]; }),
+    // [Item, Description, Ship From, 계약 구분들, Shelf Life]
+    items: Object.keys(items).sort().map(function (k) { return [k, items[k].desc, items[k].ship, items[k].modes.join('/'), items[k].shelf]; }),
     fields: masterFields_(values)   // 신규 등록 양식 (자재정보 머리글 순서)
   };
 }
@@ -118,7 +119,7 @@ function apiRegisterItem(rec) {
       if (k === 'start' || k === 'end') sh.getRange(last + 1, i + 1).setNumberFormat('yyyy-mm-dd');
     });
     target.setValues([row]);
-    return { row: last + 1, item: v.rec.item, desc: v.rec.desc || '', ship: v.rec.shipFrom || '', mode: v.rec.priceMode };
+    return { row: last + 1, item: v.rec.item, desc: v.rec.desc || '', ship: v.rec.shipFrom || '', shelf: v.rec.shelfLife || '', mode: v.rec.priceMode };
   } finally {
     lock.releaseLock();
   }
@@ -144,9 +145,10 @@ function apiClassify(input, baseDateStr) {
 /**
  * 구매내역서 생성.
  * payload = { baseDate, rates: {USD: 1339.3, ...}, remarks: {업체명: '비고'},
- *             lines: [{item, qty, needBy, program, shipFrom, taxCode, contractRow}],
+ *             lines: [{item, qty, needBy, program, shelfLife, shipFrom, taxCode, contractRow}],
  *             schedule: [{start, len}] × 5 (구매일정 막대, 반 달 단위),
- *             name: 파일 이름 (비우면 자동) }
+ *             name: 파일 이름 (비우면 자동, 사업부 담당 확인 제목으로도 씀),
+ *             confirmer: 사업부 담당자 '홍길동 과장' (비우면 노란 칸) }
  * contractRow 로 자재정보 행을 다시 읽어 단가를 서버에서 확정한다(화면 값 신뢰 안 함).
  */
 function apiCreatePurchase(payload) {
@@ -159,7 +161,8 @@ function apiCreatePurchase(payload) {
     Object.keys(c).forEach(function (k) { o[k] = c[k]; });
     o.qty = Number(l.qty);
     o.program = l.program || '';                                  // 비우면 시트에서 노란 칸으로 입력
-    if (l.shipFrom) o.shipFrom = l.shipFrom;                      // 화면 입력이 있으면 자재정보 값 대신
+    if (l.shipFrom) o.shipFrom = l.shipFrom;
+    if (l.shelfLife) o.shelfLife = l.shelfLife;                      // 화면 입력이 있으면 자재정보 값 대신
     if (l.taxCode !== undefined && l.taxCode !== '') o.taxCode = isNaN(+l.taxCode) ? l.taxCode : +l.taxCode;
     o.needBy = toDate_(l.needBy);
     o.remark = (payload.remarks || {})[c.supplier] || '';
@@ -192,7 +195,7 @@ function apiCreatePurchase(payload) {
     : DriveApp.getFileById(templateId).makeCopy(name);
   var ss = SpreadsheetApp.openById(file.getId());
 
-  applyPlan_(ss, buildPurchasePlan_(lines, curs, rates, base, payload.schedule));
+  applyPlan_(ss, buildPurchasePlan_(lines, curs, rates, base, payload.schedule, { title: name, confirmer: payload.confirmer }));
   var proto = ss.getSheetByName(TPL.PROTO);
   if (proto) ss.deleteSheet(proto);
   ss.setActiveSheet(ss.getSheetByName(TPL.SUMMARY));

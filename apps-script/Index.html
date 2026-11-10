@@ -111,7 +111,7 @@ button { font: inherit; cursor: pointer; border-radius: 6px }
 label.inline { display: inline-flex; align-items: center; gap: 8px; font-size: .9rem; color: var(--muted) }
 
 /* 소요제기 입력 표 */
-.req-head, .req-row { display: grid; grid-template-columns: 22px 150px 84px 148px minmax(0, 1fr) 124px 64px 34px; gap: 6px; align-items: start }
+.req-head, .req-row { display: grid; grid-template-columns: 22px 140px 80px 144px minmax(0, 1fr) 112px 118px 60px 34px; gap: 6px; align-items: start }
 .req-head { font-size: .72rem; font-weight: 600; letter-spacing: .06em; color: var(--muted); padding-bottom: 4px }
 .req-row input, .req-row select { width: 100%; padding: 7px 8px }
 .req-row .f-item { font-family: var(--font-data); text-transform: uppercase }
@@ -130,14 +130,16 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-size: .
   .req-row .f-qty { grid-row: 1; grid-column: 3 / 5 }
   .req-row .f-need { grid-row: 2; grid-column: 2 }
   .req-row .f-prog { grid-row: 2; grid-column: 3 / 5 }
-  .req-row .f-ship { grid-row: 3; grid-column: 2 }
-  .req-row .f-tax { grid-row: 3; grid-column: 3 }
-  .req-row .btn-x { grid-row: 3; grid-column: 4 }
-  .req-row .req-desc { grid-row: 4 }
+  .req-row .f-shelf { grid-row: 3; grid-column: 2 }
+  .req-row .f-ship { grid-row: 3; grid-column: 3 / 5 }
+  .req-row .f-tax { grid-row: 4; grid-column: 2 }
+  .req-row .btn-x { grid-row: 4; grid-column: 4 }
+  .req-row .req-desc { grid-row: 5 }
 }
 
 .name-row { flex-wrap: nowrap }
 .name-input { flex: 1 1 auto; min-width: 0; font-weight: 500 }
+.field .person-input { text-align: left; font-family: var(--font-body) }
 @media (max-width: 520px) { .name-row { flex-wrap: wrap } .name-input { flex-basis: 100% } }
 
 /* 신규 자재 등록 */
@@ -235,9 +237,9 @@ table.list td.nw { white-space: nowrap }
       <span class="muted">계약 여부는 Need-by(출고일) 기준으로 판정합니다</span>
     </div>
     <p class="muted lead">Item · 수량 · Need-by는 필수입니다. 엑셀에서 여러 줄을 복사해 아무 칸에나 붙여넣으면 그 칸부터 채워집니다.
-      Ship을 <b>기본</b>으로 두면 자재정보 값을 쓰고, 비운 Program은 시트에 노란 칸으로 남습니다.</p>
+      Shelf Life·Ship을 비우거나 <b>기본</b>으로 두면 자재정보 값을 쓰고, 비운 Program은 시트에 노란 칸으로 남습니다.</p>
     <div>
-      <div class="req-head"><span></span><span>ITEM</span><span>수량</span><span>NEED-BY</span><span>PROGRAM</span><span>SHIP</span><span>TAX</span><span></span></div>
+      <div class="req-head"><span></span><span>ITEM</span><span>수량</span><span>NEED-BY</span><span>PROGRAM</span><span>SHELF LIFE</span><span>SHIP</span><span>TAX</span><span></span></div>
       <div id="reqRows"></div>
     </div>
     <div class="row spread">
@@ -305,12 +307,22 @@ table.list td.nw { white-space: nowrap }
     </div>
 
     <div class="sub">
-      <h3>파일 이름</h3>
+      <h3>구매내역서 제목</h3>
       <div class="row name-row">
         <input id="fileName" class="name-input" type="text" maxlength="150" autocomplete="off" spellcheck="false" aria-label="구매내역서 파일 이름">
         <button class="btn-ghost" id="btnNameAuto" type="button">자동 이름</button>
       </div>
-      <span class="muted">구글 드라이브에 이 이름으로 저장됩니다. 비우면 자동 이름을 씁니다.</span>
+      <span class="muted">드라이브 파일 이름과 사업부 담당 확인의 제목으로 쓰입니다. 비우면 자동 이름을 씁니다.</span>
+    </div>
+
+    <div class="sub">
+      <h3>사업부 담당 확인</h3>
+      <div class="fields">
+        <label class="field" for="confirmer">담당자 (이름 직급)
+          <input id="confirmer" class="person-input" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="홍길동 과장">
+        </label>
+      </div>
+      <span class="muted" id="confirmerHint">확인 날짜와 날인은 담당자가 시트에서 직접 넣습니다 (노란 칸).</span>
     </div>
 
     <div class="row"><button class="btn" id="btnCreate" type="button">구매내역서 만들기</button><span id="msg2"></span></div>
@@ -369,6 +381,7 @@ function addRow(v) {
     '<input class="f-qty" id="qty-' + id + '" type="number" min="0" step="any" inputmode="decimal" placeholder="수량" aria-label="수량">' +
     '<input class="f-need data" id="need-' + id + '" type="date" aria-label="Need-by">' +
     '<input class="f-prog" id="prog-' + id + '" placeholder="Program (선택)" aria-label="Program">' +
+    '<input class="f-shelf" id="shelf-' + id + '" placeholder="선택" aria-label="Shelf Life">' +
     '<select class="f-ship" id="ship-' + id + '" aria-label="Ship"><option value="">기본</option><option>Air</option><option>Ocean</option></select>' +
     '<input class="f-tax data" id="tax-' + id + '" placeholder="Tax" inputmode="numeric" aria-label="Tax Code">' +
     '<button class="btn-x" type="button" title="행 삭제" aria-label="행 삭제">✕</button>' +
@@ -376,7 +389,7 @@ function addRow(v) {
   $('reqRows').appendChild(row);
   var q = function (c) { return row.querySelector('.' + c); };
   q('f-item').value = v.item || ''; q('f-qty').value = v.qty || ''; q('f-need').value = v.need || '';
-  q('f-prog').value = v.program || ''; q('f-ship').value = v.ship || ''; q('f-tax').value = v.tax || '';
+  q('f-prog').value = v.program || ''; q('f-shelf').value = v.shelf || ''; q('f-ship').value = v.ship || ''; q('f-tax').value = v.tax || '';
   q('btn-x').onclick = function () { row.remove(); if (!rows().length) addRow(); renumber(); };
   q('f-item').oninput = function () { showDesc(row); };
   row.querySelectorAll('input,select').forEach(function (inp) { inp.addEventListener('paste', onPaste); });
@@ -388,7 +401,8 @@ function renumber() { rows().forEach(function (r, i) { r.querySelector('.req-no'
 function showDesc(row) {
   var k = row.querySelector('.f-item').value.trim().replace(/\s+/g, ' ').toUpperCase(), el = row.querySelector('.req-desc');
   var opt = row.querySelector('.f-ship option[value=""]');
-  if (!k) { el.textContent = ''; opt.textContent = '기본'; return; }
+  var shelf = row.querySelector('.f-shelf');
+  if (!k) { el.textContent = ''; opt.textContent = '기본'; shelf.placeholder = '선택'; return; }
   var d = itemDesc[k];
   if (!d) {
     el.className = 'req-desc bad';
@@ -399,6 +413,7 @@ function showDesc(row) {
     el.textContent = (d[2] === 'SPOT' ? 'SPOT 자재 · ' : '') + (d[0] || '(Description 없음)');
   }
   opt.textContent = d && d[1] ? '기본(' + d[1] + ')' : '기본';
+  shelf.placeholder = d && d[3] ? '기본 ' + d[3] : '선택';
 }
 function onPaste(e) {
   var t = (e.clipboardData || window.clipboardData).getData('text');
@@ -409,7 +424,7 @@ function onPaste(e) {
   e.preventDefault();
   var lines = t.replace(/\r/g, '').replace(/\n+$/, '').split('\n');
   var all = rows(), start = all.indexOf(e.target.closest('.req-row'));
-  var fields = ['f-item', 'f-qty', 'f-need', 'f-prog', 'f-ship', 'f-tax'];
+  var fields = ['f-item', 'f-qty', 'f-need', 'f-prog', 'f-shelf', 'f-ship', 'f-tax'];
   var col = fields.findIndex(function (f) { return e.target.classList.contains(f); });
   lines.forEach(function (line, i) {
     var row = all[start + i] || addRow();
@@ -429,7 +444,7 @@ function onPaste(e) {
 function requestRows() {
   var q = function (r, c) { return r.querySelector('.' + c).value.trim(); };
   return rows().map(function (r) {
-    return { item: q(r, 'f-item'), qty: q(r, 'f-qty'), needBy: q(r, 'f-need'), program: q(r, 'f-prog'), shipFrom: q(r, 'f-ship'), taxCode: q(r, 'f-tax') };
+    return { item: q(r, 'f-item'), qty: q(r, 'f-qty'), needBy: q(r, 'f-need'), program: q(r, 'f-prog'), shelfLife: q(r, 'f-shelf'), shipFrom: q(r, 'f-ship'), taxCode: q(r, 'f-tax') };
   });
 }
 $('btnAdd').onclick = function () { addRow().querySelector('.f-item').focus(); };
@@ -438,7 +453,7 @@ for (var i = 0; i < 3; i++) addRow();
 
 call('apiInit').then(function (d) {
   $('base').value = d.today; state.rates = d.rates || {};
-  (d.items || []).forEach(function (x) { itemDesc[x[0]] = [x[1], x[2] || '', x[3] || '']; });
+  (d.items || []).forEach(function (x) { itemDesc[x[0]] = [x[1], x[2] || '', x[3] || '', x[4] || '']; });
   state.fields = d.fields || [];
   rows().forEach(showDesc);
   if (d.schedule) {
@@ -518,6 +533,7 @@ var REG_TYPES = {
   uom: { type: 'text', cls: 'data', ph: 'EA, KT, GAL…' },
   leadtime: { type: 'text', cls: 'data', ph: '10-12wks' },
   shipFrom: { type: 'select', options: ['', 'Air', 'Ocean'] },
+  shelfLife: { type: 'text', cls: 'data', ph: '12MM, 6+3(DOP)…' },
   desc: { type: 'textarea', full: true, ph: 'BMS10-11,TY-1,CL-A,,,GREEN,,,MEP10-059,,GL,PRIMER' }
 };
 var DEAL_REQUIRED = ['supplier', 'price', 'cur', 'start', 'end'];
@@ -556,7 +572,7 @@ $('btnRegSave').onclick = function () {
   $('regForm').querySelectorAll('[data-key]').forEach(function (el) { rec[el.dataset.key] = el.value; });
   b.disabled = true; $('regMsg').className = 'err'; $('regMsg').textContent = '';
   call('apiRegisterItem', rec).then(function (d) {
-    itemDesc[d.item] = [d.desc, d.ship, d.mode];
+    itemDesc[d.item] = [d.desc, d.ship, d.mode, d.shelf || ''];
     rows().forEach(showDesc);
     $('regPanel').hidden = true;
     $('msg1').innerHTML = '<span class="ok-msg">' + esc(d.item) + ' (' + esc(d.mode) + ')를 자재정보 ' + d.row + '행에 등록했습니다.' +
@@ -596,6 +612,11 @@ function autoFileName(sups) {
   return d + ' 구매내역서_' + sups.join('_');
 }
 $('fileName').addEventListener('input', function () { state.nameEdited = this.value.trim() !== '' && this.value !== state.autoName; });
+$('confirmer').addEventListener('input', function () {
+  var v = this.value.replace(/\s+/g, ' ').trim(), ok = !v || /^[가-힣]{2,5} [가-힣A-Za-z]{1,10}$/.test(v);
+  $('confirmerHint').textContent = ok ? '확인 날짜와 날인은 담당자가 시트에서 직접 넣습니다 (노란 칸).' : '"이름 직급" 형식으로 적어 주세요. 예: 김정환 차장';
+  $('confirmerHint').className = ok ? 'muted' : 'err';
+});
 $('btnNameAuto').onclick = function () { state.nameEdited = false; $('fileName').value = state.autoName || ''; $('fileName').focus(); };
 
 /* 구매일정 간트: 한 칸 = 반 달, 작성일 달부터 24칸(12개월) */
@@ -732,9 +753,9 @@ $('btnCreate').onclick = function () {
   document.querySelectorAll('[data-rate]').forEach(function (el) { rates[el.dataset.rate] = el.value; });
   document.querySelectorAll('[data-remark]').forEach(function (el) { remarks[el.dataset.remark] = el.value; });
   var lines = state.results.filter(function (r) { return r.status === '계약'; }).map(function (r) {
-    return { item: r.item, qty: r.qty, needBy: r.needBy, program: r.program, shipFrom: r.shipFrom, taxCode: r.taxCode, contractRow: chosen(r).row };
+    return { item: r.item, qty: r.qty, needBy: r.needBy, program: r.program, shelfLife: r.shelfLife, shipFrom: r.shipFrom, taxCode: r.taxCode, contractRow: chosen(r).row };
   });
-  call('apiCreatePurchase', { baseDate: $('base').value, rates: rates, remarks: remarks, lines: lines, schedule: state.sched, name: $('fileName').value }).then(function (d) {
+  call('apiCreatePurchase', { baseDate: $('base').value, rates: rates, remarks: remarks, lines: lines, schedule: state.sched, name: $('fileName').value, confirmer: $('confirmer').value }).then(function (d) {
     state.rates = Object.assign(state.rates, rates);
     $('purchaseCard').classList.add('done');
     $('doneNote').innerHTML = '구매내역서를 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.name) + ' 열기 ↗</a>';
