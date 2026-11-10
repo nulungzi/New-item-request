@@ -7,7 +7,7 @@ const vm = require('vm');
 test('apiCreatePurchase: 템플릿 복사 후 계획 적용', () => {
   const calls = [];
   const range = new Proxy({}, { get: (t, k) => (...a) => { calls.push(k); return range; } });
-  const sheet = name => ({ getRange: () => range, setRowHeight: () => {}, setFrozenRows: () => {}, setFrozenColumns: () => {},
+  const sheet = name => ({ getRange: () => range, setRowHeight: () => {}, setColumnWidth: () => calls.push('setColumnWidth'), setFrozenRows: () => {}, setFrozenColumns: () => {},
     getDataRange: () => ({ getValues: () => name === '자재정보'
       ? [['Item', '계약 구분', '업체명', '단가', 'CUR', '계약시작', '계약종료'], ['A1', 'LTA', 'AKZO', 2, 'USD', new Date(2026, 0, 1), new Date(2028, 11, 31)]]
       : [['CUR', 'KRW 환율', '수정일']] }), appendRow: () => {} });
