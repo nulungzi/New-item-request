@@ -132,3 +132,16 @@ test('화면 표 입력: Program·Ship·Tax 전달, 빈 행 무시', () => {
   const r = L.classify_(p.requests, contracts, L.toDate_('2026-11-10'))[0];
   assert.deepStrictEqual([r.item, r.qty, L.fmtDate_(r.needBy), r.program, r.shipFrom, r.taxCode], ['KERC00053', 50, '2027-06-10', '787AB', 'Ocean', '1']);
 });
+
+test('구매일정 막대: 기본값·사용자 값·범위 보정', () => {
+  assert.deepStrictEqual(L.normSchedule_(null), L.SCHEDULE_DEFAULT);
+  assert.deepStrictEqual(L.normSchedule_([{ start: 2, len: 5 }, { start: 20, len: 9 }, { start: -3, len: 0 }]).slice(0, 3),
+    [{ start: 2, len: 5 }, { start: 20, len: 4 }, { start: 0, len: 1 }]);
+  const lines = [{ item: 'A', qty: 1, supplier: 'S', cur: 'USD', price: 1, priceMode: 'LTA', shipFrom: 'Air', leadtime: '1wks' }];
+  const ops = L.buildPurchasePlan_(lines, ['USD'], { USD: 1 }, L.toDate_('2026-11-10'), [{ start: 2, len: 3 }]);
+  const row6 = ops.filter(o => o.op === 'bg' && o.s === '구매일정' && o.r === 6);
+  assert.strictEqual(row6.length, 24);
+  assert.deepStrictEqual(row6.filter(o => o.color !== '#ffffff').map(o => o.c), [7, 8, 9]);
+  const lt = ops.filter(o => o.op === 'set' && o.s === '구매일정' && o.c === 4).map(o => o.v);
+  assert.deepStrictEqual(lt, ['1.5M', '5.0M', '0.5M', '3.0M', '0.5M']);
+});
