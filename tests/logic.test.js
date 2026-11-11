@@ -358,7 +358,7 @@ test('Spot 견적 구매내역서 계획: 업체 수만큼 줄·비교 칸, 선�
   assert.strictEqual(get('구매내역서', 11, 25), "=IFERROR(INDEX('견적종합'!$AU:$AU, MATCH(TRUE&$B11, '견적종합'!$D:$D, 0))&\"\", \"\")");
   assert.deepStrictEqual([get('구매내역서', 8, 26), get('구매내역서', 8, 30), get('구매내역서', 8, 34)], ['Airtech', 'Hexcel', '3M']);
   assert.deepStrictEqual(ops.filter(o => o.op === 'deleteCols').map(o => [o.c, o.n]), [[38, 68]]);
-  assert.deepStrictEqual(ops.filter(o => o.op === 'width' && o.s === '구매내역서').map(o => [o.c, o.px]), [[23, 150], [24, 220], [25, 160]]);
+  assert.ok(!ops.some(o => o.op === 'width' && o.s === '구매내역서'));     // 열 너비는 템플릿이 정함
   assert.strictEqual(get('구매내역서', 11, 2), "=OFFSET('견적종합'!$F$5, (A11-1)*3, 0)");
   assert.strictEqual(get('구매내역서', 11, 16), "=IFERROR(INDEX('견적종합'!$AD:$AD, MATCH(TRUE&$B11, '견적종합'!$D:$D, 0))&\"\", \"미정\")");
   assert.strictEqual(get('구매내역서', 11, 26), "=IFERROR(INDEX('견적종합'!$AH:$AH, MATCH($B11&Z$8, '견적종합'!$C:$C, 0)), \"\")");
@@ -537,5 +537,7 @@ test('계약 구매내역서: 같은 자재·같은 계약은 한 줄, Need-by �
   assert.ok(ops.some(o => o.op === 'wrap' && o.r === 8 && o.c === 20));
   assert.ok(ops.some(o => o.op === 'height' && o.s === '구매세부내역' && o.r === 8 && o.pt === 30));
   assert.ok(ops.filter(o => o.op === 'fmt' && o.s === '구매세부내역').every(o => o.c2 === 22));
-  assert.deepStrictEqual(ops.filter(o => o.op === 'width' && o.s === '구매세부내역').map(o => [o.c, o.px]), [[20, 150], [21, 220], [22, 160]]);
+  // 템플릿 예시 모양은 맨 먼저 지우고 다시 그림
+  assert.deepStrictEqual(ops.find(o => o.s === '구매세부내역'), { op: 'clear', s: '구매세부내역', r1: 1, c1: 1, r2: 30, c2: 22 });
+  assert.ok(!ops.some(o => o.op === 'width' && o.s === '구매세부내역'));   // 열 너비는 템플릿이 정함
 });

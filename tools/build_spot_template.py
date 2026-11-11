@@ -164,9 +164,9 @@ for r in (8, 9, 10):
         cp(D.cell(r, 22), D.cell(r, c))
 for c, h in zip(range(AT, AT + NEW), ['Need-by', 'SUPPLIER', 'SITE']):
     D.cell(9, c).value = h
-D.column_dimensions['W'].width = 20
-D.column_dimensions['X'].width = 32
-D.column_dimensions['Y'].width = 14
+D.column_dimensions['W'].width = 20.7   # Need-by ≈150px
+D.column_dimensions['X'].width = 30.7   # SUPPLIER ≈220px
+D.column_dimensions['Y'].width = 22.1   # SITE ≈160px
 # _proto 11행(구매내역서 품목 행): 23열부터 오른쪽으로 3칸 밀고, W·X·Y 는 V 서식 (X·Y 는 줄바꿈 없음)
 for c in range(102, AT - 1, -1):
     cp(P.cell(11, c), P.cell(11, c + NEW))

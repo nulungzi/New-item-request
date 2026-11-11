@@ -496,7 +496,6 @@ var TPL = {
   P_S_VENDOR: 1, P_S_CUR: 2, P_S_TOTAL: 3, P_S_NOTE: 4,
   P_D_DATE: 11, P_D_RATE: 12, P_D_TTL: 13, P_D_TTLKRW: 14, P_D_TOTAL: 15, P_D_SPACER: 16, P_D_HEAD: 17, P_D_DATA: 18,
   D_LAST: 22,   // 구매세부내역 마지막 열: T Need-by Date · U SUPPLIER · V SITE
-  NEED_PX: 150, SUP_PX: 220, SITE_PX: 160,   // T·U·V 열 너비(픽셀). Spot 구매내역서 W·X·Y 도 같은 너비
   FILL: '#fff2cc'
 };
 
@@ -595,6 +594,8 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule, extra) {
   var hasKRW = lines.some(function (l) { return l.cur === 'KRW'; });
 
   /* ---------- 구매세부내역 ---------- */
+  // 템플릿의 예시 모양(머리글·합계 칸)을 먼저 지우고 통화 수·품목 수에 맞게 다시 그림 (열 너비는 템플릿 그대로)
+  add({ op: 'clear', s: D, r1: 1, c1: 1, r2: 30, c2: TPL.D_LAST });
   // 1~2행: 작성일, 통화별 환율 (O1 날짜, P1.. 통화, P2.. 환율)
   add({ op: 'fmt', s: D, r: 1, from: TPL.P_D_DATE, c1: 2, c2: TPL.D_LAST });
   add({ op: 'fmt', s: D, r: 2, from: TPL.P_D_RATE, c1: 2, c2: TPL.D_LAST });
@@ -660,9 +661,6 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule, extra) {
     if (!l.leadtime) add({ op: 'bg', s: D, r: n, c: 13, color: TPL.FILL });
   });
   add({ op: 'bottom', s: D, r: last, c1: 2, c2: TPL.D_LAST });
-  add({ op: 'width', s: D, c: 20, px: TPL.NEED_PX });
-  add({ op: 'width', s: D, c: 21, px: TPL.SUP_PX });
-  add({ op: 'width', s: D, c: 22, px: TPL.SITE_PX });
   add({ op: 'list', s: D, r1: first, r2: last, c: 12, items: ['Air', 'Ocean'] });
   add({ op: 'freeze', s: D, rows: head, cols: 4 });
 
@@ -1138,9 +1136,6 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
       });
     });
   });
-  add({ op: 'width', s: D, c: SPOT.D_NEED, px: TPL.NEED_PX });
-  add({ op: 'width', s: D, c: SPOT.D_SUP, px: TPL.SUP_PX });
-  add({ op: 'width', s: D, c: SPOT.D_SITE, px: TPL.SITE_PX });
   var used = SPOT.D_V0 + N * 4;   // 고른 업체 수만큼만 남기고 오른쪽 비교 칸은 지움
   if (n) add({ op: 'border', s: D, r1: SPOT.D_FIRST, c1: 1, r2: dLast, c2: used - 1 });   // 표 전체 테두리 (업체 비교 칸 포함)
   if (used <= SPOT.D_LAST) add({ op: 'deleteCols', s: D, c: used, n: SPOT.D_LAST - used + 1 });

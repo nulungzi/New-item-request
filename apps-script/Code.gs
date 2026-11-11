@@ -461,6 +461,7 @@ function applyPlan_(ss, ops) {
       }
       case 'width': sh(o.s).setColumnWidth(o.c, o.px); break;
       case 'wrap': sh(o.s).getRange(o.r, o.c).setWrap(true); break;
+      case 'clear': area(o).clear(); break;   // 값·서식 지움 (열 너비는 그대로)
       case 'border': {   // 표 테두리 (edge 'left' 면 왼쪽만). 검정 실선, style 'medium' 이면 굵게
         var bs = o.style === 'medium' ? SpreadsheetApp.BorderStyle.SOLID_MEDIUM : SpreadsheetApp.BorderStyle.SOLID;
         if (o.edge === 'left') area(o).setBorder(null, true, null, null, null, null, '#000000', bs);

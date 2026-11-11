@@ -90,6 +90,13 @@ for o in ops:
                     cell.border = Border(left=side, right=b.right, top=b.top, bottom=b.bottom)
                 else:
                     cell.border = Border(left=side, right=side, top=side, bottom=side)
+    elif op == 'clear':
+        ws = wb[o['s']]
+        blank = ws.cell(ws.max_row + 100, 1)._style
+        for r in range(o['r1'], o['r2'] + 1):
+            for c in range(o['c1'], o['c2'] + 1):
+                ws.cell(r, c).value = None
+                ws.cell(r, c)._style = copy(blank)
     elif op == 'wrap':
         cell = wb[o['s']].cell(o['r'], o['c'])
         al = copy(cell.alignment); al.wrap_text = True; cell.alignment = al
