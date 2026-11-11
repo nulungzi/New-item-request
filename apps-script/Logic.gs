@@ -496,6 +496,7 @@ var TPL = {
   P_S_VENDOR: 1, P_S_CUR: 2, P_S_TOTAL: 3, P_S_NOTE: 4,
   P_D_DATE: 11, P_D_RATE: 12, P_D_TTL: 13, P_D_TTLKRW: 14, P_D_TOTAL: 15, P_D_SPACER: 16, P_D_HEAD: 17, P_D_DATA: 18,
   D_LAST: 22,   // 구매세부내역 마지막 열: T Need-by Date · U SUPPLIER · V SITE
+  NEED_PX: 150, SUP_PX: 220, SITE_PX: 160,   // T·U·V 열 너비(픽셀). Spot 구매내역서 W·X·Y 도 같은 너비
   FILL: '#fff2cc'
 };
 
@@ -659,6 +660,9 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule, extra) {
     if (!l.leadtime) add({ op: 'bg', s: D, r: n, c: 13, color: TPL.FILL });
   });
   add({ op: 'bottom', s: D, r: last, c1: 2, c2: TPL.D_LAST });
+  add({ op: 'width', s: D, c: 20, px: TPL.NEED_PX });
+  add({ op: 'width', s: D, c: 21, px: TPL.SUP_PX });
+  add({ op: 'width', s: D, c: 22, px: TPL.SITE_PX });
   add({ op: 'list', s: D, r1: first, r2: last, c: 12, items: ['Air', 'Ocean'] });
   add({ op: 'freeze', s: D, rows: head, cols: 4 });
 
@@ -1134,6 +1138,9 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
       });
     });
   });
+  add({ op: 'width', s: D, c: SPOT.D_NEED, px: TPL.NEED_PX });
+  add({ op: 'width', s: D, c: SPOT.D_SUP, px: TPL.SUP_PX });
+  add({ op: 'width', s: D, c: SPOT.D_SITE, px: TPL.SITE_PX });
   var used = SPOT.D_V0 + N * 4;   // 고른 업체 수만큼만 남기고 오른쪽 비교 칸은 지움
   if (n) add({ op: 'border', s: D, r1: SPOT.D_FIRST, c1: 1, r2: dLast, c2: used - 1 });   // 표 전체 테두리 (업체 비교 칸 포함)
   if (used <= SPOT.D_LAST) add({ op: 'deleteCols', s: D, c: used, n: SPOT.D_LAST - used + 1 });
