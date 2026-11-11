@@ -586,6 +586,7 @@ table.list td.nw { white-space: nowrap }
       <div class="sub first">
         <h3>환율</h3>
         <div class="fields" id="qRates"></div>
+        <p class="muted">비우거나 0으로 둔 통화는 전체구매요약 CUR 별 합계·적용환율에 나오지 않습니다 (KRW는 항상 표시).</p>
       </div>
       <div class="sub">
         <h3>품목별 종합</h3>
@@ -967,11 +968,12 @@ function rfqGroups(list) {   // 같은 자재는 Need-by 가 달라도 한 줄 (
   });
   return out;
 }
-function rfqMonthNote(needBy) {
-  var b = ($('base').value || '').split('-'), n = String(needBy || '').split('-');
+function rfqMonthNote(needBy) {   // 월 칸은 가장 이른 Need-by 달부터 12개월 (견적요청서와 같게)
+  var first = (state.rfqList || []).map(function (r) { return r.needBy || ''; }).filter(Boolean).sort()[0];
+  var b = (first || $('base').value || '').split('-'), n = String(needBy || '').split('-');
   if (n.length < 3) return 'Need-by 없음 → 첫 달 칸';
   var k = (+n[0] - +b[0]) * 12 + (+n[1] - +b[1]);
-  return k < 0 ? 'Need-by가 작성일 달보다 이전 → 첫 달 칸' : k > 11 ? 'Need-by가 12개월 뒤 → 마지막 달 칸' : '';
+  return k > 11 ? '가장 이른 Need-by보다 12개월 넘게 뒤 → 마지막 달 칸' : '';
 }
 function renderRfq(list) {
   state.rfqList = list;

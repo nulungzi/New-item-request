@@ -79,6 +79,17 @@ for o in ops:
         if o.get('font'):
             kw['font'] = Font(color=o['font'].lstrip('#').upper())
         ws.conditional_formatting.add(ref, FormulaRule(**kw))
+    elif op == 'border':
+        ws = wb[o['s']]
+        side = Side(style=o.get('style', 'thin'), color='FF000000')
+        for r in range(o['r1'], o['r2'] + 1):
+            for c in range(o['c1'], o['c2'] + 1):
+                cell = ws.cell(r, c)
+                b = copy(cell.border)
+                if o.get('edge') == 'left':
+                    cell.border = Border(left=side, right=b.right, top=b.top, bottom=b.bottom)
+                else:
+                    cell.border = Border(left=side, right=side, top=side, bottom=side)
     elif op == 'checkbox':
         pass   # 엑셀 미리보기에서는 TRUE/FALSE 값 그대로
     elif op == 'deleteCols':

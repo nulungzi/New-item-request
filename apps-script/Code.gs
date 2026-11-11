@@ -342,7 +342,7 @@ function apiCreateInputSheet(folderInput, title) {
  * 시트 쓰기: buildPurchasePlan_ 의 작업 목록 적용
  * ================================================================ */
 function applyPlan_(ss, ops) {
-  var cache = {};
+  var cache = {}, tz = ss.getSpreadsheetTimeZone ? ss.getSpreadsheetTimeZone() : '';
   var sh = function (n) {
     if (!cache[n]) {
       cache[n] = ss.getSheetByName(n);
@@ -357,7 +357,7 @@ function applyPlan_(ss, ops) {
       case 'fmt': sh(TPL.PROTO).getRange(o.from, o.c1, 1, o.c2 - o.c1 + 1).copyTo(sh(o.s).getRange(o.r, o.c1), FORMAT, false); break;
       case 'cellFmt': sh(o.fs).getRange(o.fr, o.fc).copyTo(sh(o.s).getRange(o.r, o.c), FORMAT, false); break;
       case 'rowFmt': sh(o.fs).getRange(o.fr, o.c1, 1, o.c2 - o.c1 + 1).copyTo(sh(o.s).getRange(o.r, o.c1), FORMAT, false); break;
-      case 'set': setCell_(sh(o.s).getRange(o.r, o.c), o.v); break;
+      case 'set': setCell_(sh(o.s).getRange(o.r, o.c), o.v, tz); break;
       case 'nf': sh(o.s).getRange(o.r, o.c).setNumberFormat(o.f); break;
       case 'bg': sh(o.s).getRange(o.r, o.c).setBackground(o.color); break;
       case 'merge': area(o).merge(); break;
@@ -383,14 +383,28 @@ function applyPlan_(ss, ops) {
         break;
       }
       case 'width': sh(o.s).setColumnWidth(o.c, o.px); break;
+      case 'border': {   // 표 테두리 (edge 'left' 면 왼쪽만). 검정 실선, style 'medium' 이면 굵게
+        var bs = o.style === 'medium' ? SpreadsheetApp.BorderStyle.SOLID_MEDIUM : SpreadsheetApp.BorderStyle.SOLID;
+        if (o.edge === 'left') area(o).setBorder(null, true, null, null, null, null, '#000000', bs);
+        else area(o).setBorder(true, true, true, true, true, true, '#000000', bs);
+        break;
+      }
       default: throw new Error('알 수 없는 작업: ' + o.op);
     }
   });
 }
 
 /** 값 넣기: {date:'yyyy-mm-dd'} 는 날짜, '='로 시작하면 수식 */
-function setCell_(cell, v) {
-  if (v && typeof v === 'object' && v.date) cell.setValue(toDate_(v.date));
+/**
+ * 날짜는 시트의 시간대로 만든다. 스크립트 시간대(예: 서울)와 시트 시간대(예: 미국)가 다르면
+ * new Date(2026, 10, 1) 이 시트에서 2026-10-31 로 보여 월 칸이 한 달씩 당겨지는 문제가 있었음
+ */
+function setCell_(cell, v, tz) {
+  if (v && typeof v === 'object' && v.date) {
+    var d = toDate_(v.date);
+    if (d && tz && typeof Utilities !== 'undefined' && Utilities.parseDate) d = Utilities.parseDate(fmtDate_(d), tz, 'yyyy-MM-dd');
+    cell.setValue(d);
+  }
   else if (typeof v === 'string' && v.charAt(0) === '=') cell.setFormula(v);
   else cell.setValue(v);
 }

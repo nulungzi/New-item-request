@@ -654,6 +654,15 @@ function scheduleConfirmOps_(base, schedule, extra) {
   var G = TPL.SCHEDULE;
   // 일정 칸 24개(E~AB) 너비를 모두 같게 (템플릿에 따라 Y·AA·AB가 넓게 남는 경우가 있음)
   for (var wc = 5; wc <= 28; wc++) add({ op: 'width', s: G, c: wc, px: SCHEDULE_COL_PX });
+  // 11·12번째 달(Y~AB) 칸 서식이 템플릿에 없을 수 있어 W·X 서식을 복사
+  for (var fr = 4; fr <= 10; fr++) {
+    [25, 27].forEach(function (fc) {
+      add({ op: 'cellFmt', s: G, r: fr, c: fc, fs: G, fr: fr, fc: 23 });
+      add({ op: 'cellFmt', s: G, r: fr, c: fc + 1, fs: G, fr: fr, fc: 24 });
+    });
+  }
+  add({ op: 'merge', s: G, r1: 5, c1: 25, r2: 5, c2: 26 });
+  add({ op: 'merge', s: G, r1: 5, c1: 27, r2: 5, c2: 28 });
   add({ op: 'unmerge', s: G, r1: 4, c1: 5, r2: 4, c2: 28 });
   for (var c = 5; c <= 28; c++) set(G, 4, c, '');
   var y = base.getFullYear(), m = base.getMonth() + 1, segStart = 5;
@@ -707,11 +716,11 @@ var RFQ = {
 };
 
 /** Need-by 가 작성일 달부터 몇 번째 달 칸인지 (0~11). 범위를 벗어나면 맨 앞/뒤 칸과 함께 표시 */
-function rfqMonth_(base, needBy) {
+function rfqMonth_(base, needBy) {   // base: 첫 달 (rfqStart_)
   if (!needBy) return { k: 0, note: 'Need-by 없음 → 첫 달 칸' };
   var k = (needBy.getFullYear() - base.getFullYear()) * 12 + needBy.getMonth() - base.getMonth();
-  if (k < 0) return { k: 0, note: 'Need-by가 작성일 달보다 이전 → 첫 달 칸' };
-  if (k >= RFQ.MONTHS) return { k: RFQ.MONTHS - 1, note: 'Need-by가 12개월 뒤 → 마지막 달 칸' };
+  if (k < 0) return { k: 0, note: 'Need-by가 첫 달보다 이전 → 첫 달 칸' };
+  if (k >= RFQ.MONTHS) return { k: RFQ.MONTHS - 1, note: 'Need-by가 가장 이른 Need-by 보다 12개월 넘게 뒤 → 마지막 달 칸' };
   return { k: k, note: '' };
 }
 
@@ -719,6 +728,17 @@ function rfqMonth_(base, needBy) {
 function rfqParts_(it) {
   var ps = it.parts && it.parts.length ? it.parts : [{ qty: it.qty, needBy: it.needBy }];
   return ps.map(function (p) { return { qty: Number(toNumber_(p.qty)) || 0, needBy: toDate_(p.needBy) }; });
+}
+
+/**
+ * 견적요청서·견적종합 월 칸의 첫 달: 가장 이른 Need-by 의 달 (12개월).
+ * Need-by 가 하나도 없으면 작성일 달
+ */
+function rfqStart_(items, base) {
+  var first = null;
+  items.forEach(function (it) { rfqParts_(it).forEach(function (p) { if (p.needBy && (!first || p.needBy < first)) first = p.needBy; }); });
+  var d = first || base;
+  return new Date(d.getFullYear(), d.getMonth(), 1);
 }
 
 /** 월 칸(0~11) → 그 달 수량 합계. 같은 달 Need-by 가 여러 건이면 더함 */
@@ -779,6 +799,7 @@ function rfqTitle_(base, biz, kind, suffix, due) {
  */
 function buildRfqPlan_(items, base) {
   var ops = [], S = RFQ.SHEET, C = RFQ.C;
+  base = rfqStart_(items, base);   // 월 칸은 가장 이른 Need-by 달부터
   var set = function (r, c, v) { ops.push({ op: 'set', s: S, r: r, c: c, v: v }); };
   for (var w = 0; w < RFQ.MONTHS; w++) ops.push({ op: 'width', s: S, c: C.M0 + w, px: RFQ.MONTH_PX });
   ops.push({ op: 'width', s: S, c: C.TOTAL, px: RFQ.TOTAL_PX });
@@ -869,10 +890,11 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
   var num = function (v) { var x = toNumber_(v); return x === null ? (v === undefined || v === null ? '' : String(v).trim()) : x; };
 
   /* ---------- 견적종합 ---------- */
-  for (var k = 0; k < 12; k++) set(Q, 3, SPOT.Q_M0 + k, { date: fmtDate_(new Date(base.getFullYear(), base.getMonth() + k, 1)) });
+  var m0 = rfqStart_(items, base);   // 견적요청서와 같은 월 칸 (가장 이른 Need-by 달부터 12개월)
+  for (var k = 0; k < 12; k++) set(Q, 3, SPOT.Q_M0 + k, { date: fmtDate_(new Date(m0.getFullYear(), m0.getMonth() + k, 1)) });
   var qLast = SPOT.Q_FIRST + n * N - 1;
   items.forEach(function (it, i) {
-    var mq = rfqMonthQty_(base, it);
+    var mq = rfqMonthQty_(m0, it);
     vendors.forEach(function (v, j) {
       var r = SPOT.Q_FIRST + i * N + j, q = (it.quotes || {})[v] || {};
       add({ op: 'fmt', s: Q, r: r, from: SPOT.P_Q_ROW, c1: 1, c2: SPOT.Q_LAST, fs: SPOT.PROTO });
@@ -911,6 +933,11 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
     // 조건부 서식: 선정(A=TRUE) 노란 줄, NO BID·회신 없음 회색 줄 (회색이 먼저)
     add({ op: 'cf', s: Q, r1: SPOT.Q_FIRST, c1: 1, r2: qLast, c2: SPOT.Q_LAST, formula: '=$A' + SPOT.Q_FIRST + '=TRUE', bg: '#ffff00' });
     add({ op: 'cf', s: Q, r1: SPOT.Q_FIRST, c1: 1, r2: qLast, c2: SPOT.Q_LAST, formula: '=$AH' + SPOT.Q_FIRST + '="NO BID"', bg: '#d9d9d9', font: '#7f7f7f' });
+  }
+  // 테두리: X~AN (업체 견적 칸) 은 서식 복사만으로 테두리가 빠지는 경우가 있어 직접 그림. X 왼쪽은 굵게
+  if (qLast >= SPOT.Q_FIRST) {
+    add({ op: 'border', s: Q, r1: SPOT.Q_FIRST, c1: 24, r2: qLast, c2: 40 });
+    add({ op: 'border', s: Q, r1: SPOT.Q_FIRST, c1: 24, r2: qLast, c2: 24, edge: 'left', style: 'medium' });
   }
   add({ op: 'freeze', s: Q, rows: 4, cols: 7 });
 
@@ -951,6 +978,7 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
     });
   });
   var used = SPOT.D_V0 + N * 4;   // 고른 업체 수만큼만 남기고 오른쪽 비교 칸은 지움
+  if (n) add({ op: 'border', s: D, r1: SPOT.D_FIRST, c1: 1, r2: dLast, c2: used - 1 });   // 표 전체 테두리 (업체 비교 칸 포함)
   if (used <= SPOT.D_LAST) add({ op: 'deleteCols', s: D, c: used, n: SPOT.D_LAST - used + 1 });
   add({ op: 'freeze', s: D, rows: 0, cols: 5 });
 
@@ -972,7 +1000,11 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
     set(S, r, 16, '=INDIRECT("' + DR.replace(/"/g, '""') + 'B" & L' + r + ')');
   });
   var r0 = sLast + 1, rng = function (c) { return '$' + c + '$5:$' + c + '$' + sLast; };
-  SPOT.CURS.forEach(function (c, k4) {
+  // CUR 별 합계: 환율을 넣은(0 보다 큰) 외화 + KRW 만 표시
+  var curs = SPOT.CURS.filter(function (c) { return c === 'KRW' || Number(rates[c]) > 0; });
+  var curRow = {};
+  curs.forEach(function (c, k4) {
+    curRow[c] = r0 + k4;
     var r = r0 + k4;
     add({ op: 'fmt', s: S, r: r, from: k4 ? SPOT.P_SUM_CUR : SPOT.P_SUM_CUR1, c1: 1, c2: 16, fs: SPOT.PROTO });
     add({ op: 'height', s: S, r: r, pt: 22.5 });
@@ -981,7 +1013,7 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
     add({ op: 'nf', s: S, r: r, c: 9, f: curFmt_(c) });
     add({ op: 'merge', s: S, r1: r, c1: 9, r2: r, c2: 10 });
   });
-  var rEnd = r0 + SPOT.CURS.length - 1;
+  var rEnd = r0 + curs.length - 1;
   set(S, r0, 3, 'CUR 별 합계');
   add({ op: 'merge', s: S, r1: r0, c1: 3, r2: rEnd, c2: 5 });
   set(S, r0, 6, n); add({ op: 'merge', s: S, r1: r0, c1: 6, r2: rEnd, c2: 6 });
@@ -991,10 +1023,11 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
   add({ op: 'height', s: S, r: rT, pt: 22.5 });
   set(S, rT, 3, '총 합계 (KRW 표기)');
   add({ op: 'merge', s: S, r1: rT, c1: 3, r2: rT, c2: 8 });
-  set(S, rT, 9, '=I' + (r0 + 4) + '+I' + r0 + '*' + rc('USD') + '+I' + (r0 + 1) + '*' + rc('EUR') + '+I' + (r0 + 2) + '*' + rc('JPY') + '+I' + (r0 + 3) + '*' + rc('SGD'));
+  set(S, rT, 9, '=' + curs.map(function (c) { return 'I' + curRow[c] + (c === 'KRW' ? '' : '*' + rc(c)); }).join('+'));
   add({ op: 'merge', s: S, r1: rT, c1: 9, r2: rT, c2: 10 });
   add({ op: 'fmt', s: S, r: rT + 1, from: SPOT.P_SUM_NOTE, c1: 1, c2: 16, fs: SPOT.PROTO });
-  set(S, rT + 1, 3, '="*적용환율 (KRW)  USD "&TEXT(' + rc('USD') + ',"#,##0.00")&" · EUR "&TEXT(' + rc('EUR') + ',"#,##0.00")&" · JPY "&TEXT(' + rc('JPY') + ',"#,##0.00")&" · SGD "&TEXT(' + rc('SGD') + ',"#,##0.00")');
+  var fx = curs.filter(function (c) { return c !== 'KRW'; });
+  if (fx.length) set(S, rT + 1, 3, '="*적용환율 (KRW)  ' + fx.map(function (c) { return c + ' "&TEXT(' + rc(c) + ',"#,##0.00")'; }).join('&" · '));
 
   /* ---------- 구매일정 · 사업부 담당 확인 (계약 구매내역서와 같음) ---------- */
   return ops.concat(scheduleConfirmOps_(base, schedule, extra));

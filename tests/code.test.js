@@ -13,7 +13,7 @@ test('apiCreatePurchase: 템플릿 복사 후 계획 적용', () => {
       : [['CUR', 'KRW 환율', '수정일']] }), appendRow: () => {} });
   const ss = { getSheetByName: n => sheet(n), deleteSheet: () => calls.push('deleteSheet'), setActiveSheet: () => {}, getUrl: () => 'URL', getId: () => 'new' };
   const ctx = {
-    SpreadsheetApp: { getActive: () => ss, openById: () => ss, CopyPasteType: { PASTE_FORMAT: 'F' }, BorderStyle: { SOLID: 'S' },
+    SpreadsheetApp: { getActive: () => ss, openById: () => ss, CopyPasteType: { PASTE_FORMAT: 'F' }, BorderStyle: { SOLID: 'S', SOLID_MEDIUM: 'M' },
       newDataValidation: () => range },
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => (k === 'TEMPLATE_ID' ? 'tpl' : null) }) },
     DriveApp: { getFileById: () => ({ makeCopy: () => ({ getId: () => 'new' }) }) },
@@ -98,7 +98,7 @@ test('apiCreateInputSheet · apiCheckFolder: 고른 폴더로 저장', () => {
   const sheet = new Proxy({}, { get: (t, k) => (k === 'getMaxColumns' ? () => 26 : (...a) => { calls.push(k); return k === 'setName' ? sheet : any; }) });
   const ctx = inContext({
     SpreadsheetApp: { create: n => ({ getSheets: () => [sheet], insertSheet: () => sheet, setActiveSheet: () => {}, getId: () => 'NEW', getUrl: () => 'URL', getName: () => n }),
-      newDataValidation: () => any, BorderStyle: { SOLID: 'S' } },
+      newDataValidation: () => any, BorderStyle: { SOLID: 'S', SOLID_MEDIUM: 'M' } },
     DriveApp: { getFolderById: id => { if (id !== '1AbCdEfGhIjKlMnOp') throw new Error('x'); return any; }, getFileById: () => ({ moveTo: f => calls.push('moveTo') }) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }) },
   });
@@ -166,7 +166,7 @@ test('견적요청서 → 메일 초안 → 내 기록 → 완료 보관', () =>
   const props = { RFQ_TEMPLATE_ID: 'tpl', ARCHIVE_SHEET_ID: 'arc' };
   const ctx = inContext({
     console: { warn: () => {}, log: () => {} },
-    SpreadsheetApp: { getActive: () => db, openById: id => (id === 'arc' ? archive : rfqBook), CopyPasteType: { PASTE_FORMAT: 'F' }, BorderStyle: { SOLID: 'S' } },
+    SpreadsheetApp: { getActive: () => db, openById: id => (id === 'arc' ? archive : rfqBook), CopyPasteType: { PASTE_FORMAT: 'F' }, BorderStyle: { SOLID: 'S', SOLID_MEDIUM: 'M' } },
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k] || null }), getUserProperties: () => ({ getProperty: () => '<b>김민형 사원</b>', setProperty: () => {} }) },
     DriveApp: { getFileById: () => ({ makeCopy: () => ({ getId: () => 'RFQID' }) }) },
     LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
@@ -213,7 +213,7 @@ test('견적 저장 → Spot 견적 구매내역서, 계약+Spot 단가는 두 �
   const made = [];
   const ctx = inContext({
     console: { warn: () => {}, log: () => {} },
-    SpreadsheetApp: { getActive: () => db, openById: id => book(id), CopyPasteType: { PASTE_FORMAT: 'F' }, BorderStyle: { SOLID: 'S' },
+    SpreadsheetApp: { getActive: () => db, openById: id => book(id), CopyPasteType: { PASTE_FORMAT: 'F' }, BorderStyle: { SOLID: 'S', SOLID_MEDIUM: 'M' },
       newDataValidation: () => { const b = new Proxy({}, { get: (t, k) => () => (k === 'build' ? {} : b) }); return b; },
       newConditionalFormatRule: () => { const b = new Proxy({}, { get: (t, k) => () => (k === 'build' ? {} : b) }); return b; } },
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => ({ TEMPLATE_ID: 'tpl', SPOT_TEMPLATE_ID: 'spot', RFQ_TEMPLATE_ID: 'rfq' })[k] || null }) },

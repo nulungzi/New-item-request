@@ -129,9 +129,13 @@ for c in range(12, 24):
 clear(Q, 5, 1, 45)
 
 # ---------- 구매일정: 12개월 (계약 구매내역서 템플릿과 같게) ----------
+# 샘플은 10개월(E~X)까지만 서식이 있어 Y~AB(11·12번째 달)에 W·X 서식을 복사
 for r in range(4, 11):
-    cp(G.cell(r, 25), G.cell(r, 27))
-    cp(G.cell(r, 26), G.cell(r, 28))
+    for c in (25, 27):
+        cp(G.cell(r, 23), G.cell(r, c))
+        cp(G.cell(r, 24), G.cell(r, c + 1))
+if 'Y5:Z5' not in [str(m) for m in G.merged_cells.ranges]:
+    G.merge_cells('Y5:Z5')
 if 'AA5:AB5' not in [str(m) for m in G.merged_cells.ranges]:
     G.merge_cells('AA5:AB5')
 slot_w = G.column_dimensions['E'].width

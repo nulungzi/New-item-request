@@ -119,7 +119,7 @@ test('구매내역서 계획: 통화 2개, 업체 2개', () => {
   assert.strictEqual(get('구매일정', 5, 5), 11);
   assert.strictEqual(get('구매일정', 5, 27), 10);
   const merges = ops.filter(o => o.op === 'merge' && o.s === '구매일정').map(o => [o.c1, o.c2]);
-  assert.deepStrictEqual(merges, [[5, 8], [9, 28]]);
+  assert.deepStrictEqual(merges, [[25, 26], [27, 28], [5, 8], [9, 28]]);   // 11·12번째 달 칸 병합 + 연도
 });
 
 test('화면 표 입력: Program·Ship·Tax 전달, 빈 행 무시', () => {
@@ -287,12 +287,12 @@ test('견적요청서 제목', () => {
   assert.strictEqual(L.rfqTitle_(base, '', '', '', ''), '[KE] RFQ // 261110');
 });
 
-test('견적요청서 월 칸: 작성일 달부터 12개월', () => {
+test('견적요청서 월 칸: 첫 달부터 12개월', () => {
   const base = L.toDate_('2026-11-10');
   assert.deepStrictEqual(L.rfqMonth_(base, L.toDate_('2026-11-30')), { k: 0, note: '' });
   assert.deepStrictEqual(L.rfqMonth_(base, L.toDate_('2027-06-10')), { k: 7, note: '' });
   assert.strictEqual(L.rfqMonth_(base, L.toDate_('2027-10-31')).k, 11);
-  assert.match(L.rfqMonth_(base, L.toDate_('2027-11-01')).note, /12개월 뒤/);
+  assert.match(L.rfqMonth_(base, L.toDate_('2027-11-01')).note, /12개월 넘게 뒤/);
   assert.match(L.rfqMonth_(base, L.toDate_('2026-10-01')).note, /이전/);
 });
 
@@ -303,10 +303,11 @@ test('견적요청서 작성 계획', () => {
     { item: 'KERC00016', registered: true, name: 'PR-1776', desc: 'PRIMER', qpl: 'PPG', uom: 'KT', remark: '', qty: 5, needBy: L.toDate_('2027-03-01') },
   ], base);
   const get = (r, c) => (ops.filter(o => o.op === 'set' && o.r === r && o.c === c).pop() || {}).v;
-  assert.deepStrictEqual(get(2, 9), { date: '2026-11-01' });
-  assert.deepStrictEqual(get(2, 20), { date: '2027-10-01' });
-  assert.deepStrictEqual([get(3, 3), get(3, 4), get(3, 8), get(3, 11), get(3, 21)], ['TBD', 'MS20995C20', 'MFG COC/TR', 3, '=SUM(I3:T3)']);
-  assert.deepStrictEqual([get(4, 2), get(4, 3), get(4, 8), get(4, 13), get(4, 11)], [2, 'KERC00016', '', 5, '']);
+  // 월 칸은 가장 이른 Need-by(2027-01-15) 달부터 12개월
+  assert.deepStrictEqual(get(2, 9), { date: '2027-01-01' });
+  assert.deepStrictEqual(get(2, 20), { date: '2027-12-01' });
+  assert.deepStrictEqual([get(3, 3), get(3, 4), get(3, 8), get(3, 9), get(3, 21)], ['TBD', 'MS20995C20', 'MFG COC/TR', 3, '=SUM(I3:T3)']);
+  assert.deepStrictEqual([get(4, 2), get(4, 3), get(4, 8), get(4, 11), get(4, 9)], [2, 'KERC00016', '', 5, '']);
   assert.deepStrictEqual(ops.filter(o => o.op === 'rowFmt').map(o => [o.fr, o.r]), [[3, 4]]);
   assert.deepStrictEqual(ops.filter(o => o.op === 'width').map(o => [o.c, o.px]), Array.from({ length: 12 }, (_, i) => [9 + i, 64]).concat([[21, 80], [8, 110]]));
 });
@@ -337,8 +338,10 @@ test('Spot 견적 구매내역서 계획: 업체 수만큼 줄·비교 칸, 선�
   assert.deepStrictEqual([5, 6, 7, 8, 9, 10].map(r => get('견적종합', r, 30)), ['Airtech', 'Hexcel', '3M', 'Airtech', 'Hexcel', '3M']);
   assert.deepStrictEqual([get('견적종합', 5, 1), get('견적종합', 5, 2), get('견적종합', 6, 1)], [true, 'Sole source', false]);
   assert.deepStrictEqual([get('견적종합', 5, 34), get('견적종합', 5, 35), get('견적종합', 6, 34)], [1, 'USD', 'NO BID']);
-  assert.strictEqual(get('견적종합', 5, 18), 64);                 // 2027-05 → 7번째 달(R열)
-  assert.strictEqual(get('견적종합', 8, 14), 3);                  // 2027-01 → 3번째 달(N열)
+  // 월 칸은 가장 이른 Need-by(2027-01) 달부터: 2027-01 → L열, 2027-05 → P열
+  assert.deepStrictEqual(get('견적종합', 3, 12), { date: '2027-01-01' });
+  assert.strictEqual(get('견적종합', 5, 16), 64);
+  assert.strictEqual(get('견적종합', 8, 12), 3);
   assert.match(get('견적종합', 5, 29), /INT\(\(ROW\(\)-5\)\/3\)\*3, 0, 3, 1\)/);
   assert.match(get('견적종합', 5, 28), /IF\(AI5="SGD", AE5\*AH5\*\$AS\$2/);
   assert.deepStrictEqual(ops.filter(o => o.op === 'checkbox').map(o => [o.r1, o.r2]), [[5, 10]]);
@@ -356,7 +359,15 @@ test('Spot 견적 구매내역서 계획: 업체 수만큼 줄·비교 칸, 선�
   // 전체구매요약: K열 L/I → L=K+10 → 구매내역서 행
   assert.deepStrictEqual([get('전체구매요약', 5, 11), get('전체구매요약', 5, 12), get('전체구매요약', 6, 12)], [1, '=K5+10', '=K6+10']);
   assert.strictEqual(get('전체구매요약', 7, 3), 'CUR 별 합계');
-  assert.strictEqual(get('전체구매요약', 12, 3), '총 합계 (KRW 표기)');
+  // CUR 별 합계: 환율 넣은 USD·EUR + KRW 만 (JPY·SGD 줄 없음), 총 합계도 그 통화만
+  assert.deepStrictEqual([7, 8, 9].map(r => get('전체구매요약', r, 8)), ['USD', 'EUR', 'KRW']);
+  assert.strictEqual(get('전체구매요약', 10, 3), '총 합계 (KRW 표기)');
+  assert.strictEqual(get('전체구매요약', 10, 9), "=I7*'구매내역서'!$P$3+I8*'구매내역서'!$R$3+I9");
+  assert.match(get('전체구매요약', 11, 3), /USD "&TEXT\('구매내역서'!\$P\$3,"#,##0\.00"\)&" · EUR "&TEXT\('구매내역서'!\$R\$3,"#,##0\.00"\)$/);
+  assert.ok(!/JPY|SGD/.test(get('전체구매요약', 11, 3)));
+  // 테두리: 견적종합 X~AN, 구매내역서 표 전체 (업체 3곳 → V+12 = AH 까지)
+  assert.deepStrictEqual(ops.filter(o => o.op === 'border').map(o => [o.s, o.r1, o.c1, o.r2, o.c2, o.edge || '']),
+    [['견적종합', 5, 24, 10, 40, ''], ['견적종합', 5, 24, 10, 24, 'left'], ['구매내역서', 11, 1, 12, 34, '']]);
   // 사업부 담당 확인 · 구매일정도 들어감
   assert.strictEqual(get('사업부 담당 확인', 2, 1), '안성미 과장');
   assert.ok(ops.some(o => o.s === '구매일정' && o.op === 'width'));
@@ -398,10 +409,12 @@ test('같은 자재는 Need-by 가 달라도 견적요청서 한 줄, 해당 월
   const ops = L.buildRfqPlan_(m, base);
   const cell = (r, c) => ops.filter(o => o.op === 'set' && o.r === r && o.c === c).pop();
   const M0 = L.RFQ.C.M0;
-  assert.strictEqual(cell(3, M0 + 4).v, 254);                   // 2027-03: 244 + 10
-  assert.strictEqual(cell(3, M0 + 10).v, 244);                  // 2027-09
-  assert.strictEqual(cell(3, M0 + 5).v, '');
-  assert.strictEqual(cell(4, M0 + 6).v, 360);
+  // 첫 달 = 가장 이른 Need-by 2027-03
+  assert.deepStrictEqual(cell(2, M0).v, { date: '2027-03-01' });
+  assert.strictEqual(cell(3, M0).v, 254);                       // 2027-03: 244 + 10
+  assert.strictEqual(cell(3, M0 + 6).v, 244);                   // 2027-09
+  assert.strictEqual(cell(3, M0 + 1).v, '');
+  assert.strictEqual(cell(4, M0 + 2).v, 360);                   // 2027-05
   assert.strictEqual(cell(4, L.RFQ.C.LI).v, 2);                 // L/I 1, 2 …
 
   const mail = L.rfqEmail_(m, '11/18', '');
@@ -411,8 +424,8 @@ test('같은 자재는 Need-by 가 달라도 견적요청서 한 줄, 해당 월
 
   const sp = L.buildSpotPlan_([Object.assign({ quotes: {} }, m[0])], ['A'], {}, base);
   const q = (c) => sp.filter(o => o.op === 'set' && o.s === L.SPOT.QUOTE && o.r === 5 && o.c === c).pop();
-  assert.strictEqual(q(L.SPOT.Q_M0 + 4).v, 254);
-  assert.strictEqual(q(L.SPOT.Q_M0 + 10).v, 244);
+  assert.strictEqual(q(L.SPOT.Q_M0).v, 254);
+  assert.strictEqual(q(L.SPOT.Q_M0 + 6).v, 244);
 });
 
 test('예전 기록(parts 없음)은 Need-by 한 건으로', () => {
