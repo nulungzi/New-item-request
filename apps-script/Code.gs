@@ -227,7 +227,13 @@ function apiRegisterItem(rec) {
  */
 function apiCreatePurchase(payload) {
   auth_();
-  var lines = purchaseLines_(payload);
+  var info = vendorInfoMap_();
+  // 같은 자재·같은 계약 단가는 한 줄 (Need-by 여러 건은 Need-by 칸에 날짜(수량)으로)
+  var lines = mergePurchaseLines_(purchaseLines_(payload)).map(function (l) {
+    var v = vendorOf_(info, l.supplier);
+    l.supplierName = v.supplier; l.site = v.site;
+    return l;
+  });
   var rates = checkedRates_(payload.rates, uniq_(lines.map(function (l) { return l.cur; })).filter(function (c) { return c !== 'KRW'; }));
   saveRates_(rates);
   var base = toDate_(payload.baseDate) || toDate_(new Date());
@@ -248,7 +254,7 @@ function apiCreatePurchase(payload) {
     if (proto) ss.deleteSheet(proto);
     ss.setActiveSheet(ss.getSheetByName(TPL.SUMMARY));
     var rec = addRecord_({ kind: g.spot ? 'Spot 구매내역서' : '계약 구매내역서', title: name, url: ss.getUrl(), fileId: ss.getId(), status: '작성',
-      items: g.lines.map(function (l) { return { item: l.item, qty: l.qty, needBy: fmtDate_(l.needBy), supplier: l.supplier, price: l.price, cur: l.cur }; }) });
+      items: g.lines.map(function (l) { return { item: l.item, qty: l.qty, needBy: fmtDate_(toDate_(l.needBy)), supplier: l.supplier, price: l.price, cur: l.cur }; }) });
     return { url: ss.getUrl(), name: name, id: ss.getId(), recordId: rec.id, spot: g.spot };
   });
   return { files: files, url: files[0].url, name: files[0].name, id: files[0].id, recordId: files[0].recordId };
@@ -454,6 +460,7 @@ function applyPlan_(ss, ops) {
         break;
       }
       case 'width': sh(o.s).setColumnWidth(o.c, o.px); break;
+      case 'wrap': sh(o.s).getRange(o.r, o.c).setWrap(true); break;
       case 'border': {   // 표 테두리 (edge 'left' 면 왼쪽만). 검정 실선, style 'medium' 이면 굵게
         var bs = o.style === 'medium' ? SpreadsheetApp.BorderStyle.SOLID_MEDIUM : SpreadsheetApp.BorderStyle.SOLID;
         if (o.edge === 'left') area(o).setBorder(null, true, null, null, null, null, '#000000', bs);
@@ -586,7 +593,9 @@ function checkSetup() {
   var sid = prop_('SPOT_TEMPLATE_ID');
   if (!sid) bad('스크립트 속성 SPOT_TEMPLATE_ID 가 없습니다 (Spot 견적 구매내역서 템플릿)');
   else { try { var st = SpreadsheetApp.openById(sid), miss = [SPOT.SUMMARY, SPOT.DETAIL, SPOT.QUOTE, SPOT.PROTO].filter(function (n) { return !st.getSheetByName(n); });
-    if (miss.length) bad('Spot 템플릿에 없는 탭: ' + miss.join(', ')); else ok('Spot 견적 구매내역서 템플릿: ' + st.getName()); } catch (e) { bad('Spot 템플릿을 열 수 없습니다: ' + e.message); } }
+    if (miss.length) bad('Spot 템플릿에 없는 탭: ' + miss.join(', '));
+    else if (!spotTemplateCurrent_(st)) bad('Spot 템플릿이 예전 버전입니다 (구매내역서 W열 Need-by 없음) — 새 템플릿을 올려 주세요');
+    else ok('Spot 견적 구매내역서 템플릿: ' + st.getName()); } catch (e) { bad('Spot 템플릿을 열 수 없습니다: ' + e.message); } }
   var aid = prop_('ARCHIVE_SHEET_ID');
   if (!aid) bad('스크립트 속성 ARCHIVE_SHEET_ID 가 없습니다 (완료 보관 파일)');
   else { try { ok('완료 보관 파일: ' + SpreadsheetApp.openById(aid).getName()); } catch (e) { bad('완료 보관 파일을 열 수 없습니다: ' + e.message); } }
@@ -638,6 +647,16 @@ function vendorSheet_() {
   var ss = db_();
   for (var i = 0; i < SHEET_VENDORS.length; i++) { var sh = ss.getSheetByName(SHEET_VENDORS[i]); if (sh) return sh; }
   return null;
+}
+/** Spot 템플릿이 W Need-by · X SUPPLIER · Y SITE 가 있는 새 버전인지 */
+function spotTemplateCurrent_(ss) {
+  var d = ss.getSheetByName(SPOT.DETAIL);
+  return !!d && String(d.getRange(9, SPOT.D_NEED).getValue()).trim() === 'Need-by';
+}
+/** 업체정보 탭 SUPPLIER·SITE (업체명 기준). 탭이 없으면 빈 값 */
+function vendorInfoMap_() {
+  var sh = vendorSheet_();
+  return sh ? vendorInfo_(sh.getDataRange().getValues()) : {};
 }
 function apiVendors() {
   auth_();
@@ -824,7 +843,12 @@ function apiCreateSpotPurchase(payload) {
   var folder = targetFolder_(payload.folder), tpl = DriveApp.getFileById(tid);
   var file = folder ? tpl.makeCopy(name, folder) : tpl.makeCopy(name);
   var ss = SpreadsheetApp.openById(file.getId());
-  applyPlan_(ss, buildSpotPlan_(items, vendors, rates, base, payload.schedule, { title: name, confirmer: payload.confirmer }));
+  if (!spotTemplateCurrent_(ss)) {
+    DriveApp.getFileById(ss.getId()).setTrashed(true);
+    throw new Error('Spot 구매내역서 템플릿이 예전 버전입니다 (구매내역서 W열 Need-by 가 없음). ' +
+      'templates/Spot_구매내역서_템플릿.xlsx 를 새로 올려 구글 시트로 저장하고 SPOT_TEMPLATE_ID 를 바꿔 주세요.');
+  }
+  applyPlan_(ss, buildSpotPlan_(items, vendors, rates, base, payload.schedule, { title: name, confirmer: payload.confirmer, vendorInfo: vendorInfoMap_() }));
   var proto = ss.getSheetByName(SPOT.PROTO);
   if (proto) ss.deleteSheet(proto);
   ss.setActiveSheet(ss.getSheetByName(SPOT.SUMMARY));

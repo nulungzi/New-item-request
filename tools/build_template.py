@@ -41,12 +41,13 @@ proto_row(S, 4, 1, same(2, 12))   # 업체 행 (L열: 회색 도우미 글자)
 proto_row(S, 5, 2, same(2, 12))   # CUR 별 합계
 proto_row(S, 6, 3, same(2, 12))   # 총 합계
 proto_row(S, 7, 4, same(2, 12))   # 환율 메모
-# 구매세부내역 (B..T). 원본의 S(구분) 열은 빼고, 비고는 S, Need-by Date는 T.
+# 구매세부내역 (B..V). 원본의 S(구분) 열은 빼고, 비고는 S, Need-by Date는 T,
+# U SUPPLIER(업체정보 정식 이름) · V SITE 는 T 서식으로 추가
 detail_map = {**same(2, 18), 19: 20, 20: 18}
 for i, r in enumerate([1, 2, 3, 4, 5, 6]):
-    proto_row(D, r, 11 + i, same(2, 20))
-proto_row(D, 7, 17, {**same(2, 18), 19: 18, 20: 20})   # 머리글: S=비고(테두리 있음), T=원본 비고 서식
-proto_row(D, 8, 18, {**same(2, 18), 19: 18, 20: 20})   # 데이터 행
+    proto_row(D, r, 11 + i, {**same(2, 20), 21: 20, 22: 20})
+proto_row(D, 7, 17, {**same(2, 18), 19: 18, 20: 20, 21: 20, 22: 20})   # 머리글: S=비고(테두리 있음), T=원본 비고 서식
+proto_row(D, 8, 18, {**same(2, 18), 19: 18, 20: 20, 21: 20, 22: 20})   # 데이터 행
 
 # 구매요약: 4행 이하 비우기
 for rng in list(S.merged_cells.ranges):
@@ -67,7 +68,14 @@ for row in D.iter_rows(min_row=1, max_row=D.max_row):
 for r in range(1, D.max_row + 1):
     D.row_dimensions[r].height = None
 D.column_dimensions['S'].width = D.column_dimensions['T'].width   # 비고
-D.column_dimensions['T'].width = 12                                 # Need-by Date
+D.column_dimensions['T'].width = 17                                 # Need-by Date (여러 건이면 날짜(수량) 줄마다)
+D.column_dimensions['U'].width = 40                                 # SUPPLIER
+D.column_dimensions['V'].width = 14                                 # SITE
+# Need-by 는 줄바꿈되게 (여러 건)
+from openpyxl.styles import Alignment
+for c in (20,):
+    a = copy(P.cell(18, c).alignment); a.wrap_text = True; a.vertical = 'center'
+    P.cell(18, c).alignment = a
 D.freeze_panes = None
 
 # 구매일정: 12개월이 되도록 AA·AB열(13번째 달) 서식 추가

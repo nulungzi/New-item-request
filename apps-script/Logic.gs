@@ -317,27 +317,51 @@ function purchaseFileName_(custom, base, suppliers) {
  * 업체정보 탭 읽기: 머리글(업체명·이메일)을 상위 10행에서 찾는다. 한 업체가 여러 줄이어도 되고, 한 칸에 ; , 로 여러 주소도 됨
  * 반환: [{name, emails:[...]}] (처음 나온 순서)
  */
-function parseVendors_(values) {
-  var hr = -1, cn = -1, ce = -1;
-  for (var r = 0; r < Math.min(values.length, 10) && hr < 0; r++) {
+/** 업체정보 탭 머리글 위치: 업체명·이메일 (+ SUPPLIER 정식 이름 · SITE). 10행 안에서 찾음 */
+function vendorCols_(values) {
+  for (var r = 0; r < Math.min(values.length, 10); r++) {
+    var cn = -1, ce = -1, cs = -1, ct = -1, alt = -1;
     values[r].forEach(function (h, c) {
       var k = headerKey_(h);
-      if (k === '업체명' || k === '업체' || k === 'vendor' || k === 'supplier') cn = c;
-      if (k === '이메일' || k === 'email' || k === 'e메일' || k === 'mail') ce = c;
+      if (cn < 0 && (k === '업체명' || k === '업체' || k === 'vendor')) cn = c;
+      if (ce < 0 && (k === '이메일' || k === 'email' || k === 'e메일' || k === 'mail')) ce = c;
+      if (k === 'supplier' || k === '공급사' || k === '정식명') { if (cs < 0) cs = c; if (alt < 0) alt = c; }
+      if (ct < 0 && (k === 'site' || k === '사이트')) ct = c;
     });
-    if (cn >= 0 && ce >= 0) hr = r; else { cn = -1; ce = -1; }
+    if (cn < 0 && alt >= 0) { cn = alt; cs = -1; }   // 업체명 열이 없고 SUPPLIER 만 있으면 그것이 업체명
+    if (cn >= 0 && ce >= 0) return { hr: r, cn: cn, ce: ce, cs: cs === cn ? -1 : cs, ct: ct };
   }
-  if (hr < 0) { hr = 0; cn = 0; ce = 1; }   // 머리글이 없으면 A 업체명 · B 이메일
+  return { hr: -1, cn: 0, ce: 1, cs: -1, ct: -1 };   // 머리글이 없으면 A 업체명 · B 이메일
+}
+
+function parseVendors_(values) {
+  var k = vendorCols_(values);
   var map = {}, order = [];
-  values.slice(hr + 1).forEach(function (row) {
-    var name = String(row[cn] || '').trim();
-    var mails = String(row[ce] || '').split(/[;,\s]+/).filter(function (m) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m); });
+  values.slice(k.hr + 1).forEach(function (row) {
+    var name = String(row[k.cn] || '').trim();
+    var mails = String(row[k.ce] || '').split(/[;,\s]+/).filter(function (m) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m); });
     if (!name || !mails.length) return;
     if (!map[name]) { map[name] = []; order.push(name); }
     mails.forEach(function (m) { if (map[name].indexOf(m) < 0) map[name].push(m); });
   });
   return order.map(function (n) { return { name: n, emails: map[n] }; });
 }
+
+/** 업체명 → {supplier: SUPPLIER(정식 이름), site: SITE}. 한 업체 여러 줄이면 처음 채워진 값 */
+function vendorInfo_(values) {
+  var k = vendorCols_(values), out = {};
+  values.slice(k.hr + 1).forEach(function (row) {
+    var name = String(row[k.cn] || '').trim();
+    if (!name) return;
+    var key = vendorKey_(name), o = out[key] = out[key] || { supplier: '', site: '' };
+    if (!o.supplier && k.cs >= 0) o.supplier = String(row[k.cs] == null ? '' : row[k.cs]).trim();
+    if (!o.site && k.ct >= 0) o.site = String(row[k.ct] == null ? '' : row[k.ct]).trim();
+  });
+  return out;
+}
+/** 업체 이름 비교용 (대소문자·띄어쓰기 무시) */
+function vendorKey_(name) { return String(name || '').replace(/\s+/g, '').toLowerCase(); }
+function vendorOf_(info, name) { return (info || {})[vendorKey_(name)] || { supplier: '', site: '' }; }
 
 /* ------------------------------------------------------------------
  * 신규 자재 등록
@@ -471,6 +495,7 @@ var TPL = {
   // _proto 탭 행 번호
   P_S_VENDOR: 1, P_S_CUR: 2, P_S_TOTAL: 3, P_S_NOTE: 4,
   P_D_DATE: 11, P_D_RATE: 12, P_D_TTL: 13, P_D_TTLKRW: 14, P_D_TOTAL: 15, P_D_SPACER: 16, P_D_HEAD: 17, P_D_DATA: 18,
+  D_LAST: 22,   // 구매세부내역 마지막 열: T Need-by Date · U SUPPLIER · V SITE
   FILL: '#fff2cc'
 };
 
@@ -509,9 +534,52 @@ function rateNote_(curs, rates, base) {
   }).join(', ') + ' (' + fmtDate_(base).replace(/-/g, '/') + ' 기준)';
 }
 
+/** 1234.5 → '1,234.5' */
+function qtyText_(n) {
+  var x = Number(n);
+  if (!isFinite(x)) return String(n == null ? '' : n);
+  var p = String(Math.round(x * 10000) / 10000).split('.');
+  return p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (p[1] ? '.' + p[1] : '');
+}
+/** Need-by 여러 건 → '2027-05-14(500)\n2027-06-20(600)' (한 건이면 날짜만) */
+function needsText_(needs) {
+  needs = needs || [];
+  if (needs.length < 2) return needs[0] && needs[0].needBy ? fmtDate_(toDate_(needs[0].needBy)) : '';
+  return needs.map(function (x) { var d = toDate_(x.needBy); return (d ? fmtDate_(d) : 'ASAP') + '(' + qtyText_(x.qty) + ')'; }).join('\n');
+}
+
+/**
+ * 계약 구매내역서: 같은 자재·같은 계약 단가(자재정보 같은 행)는 Need-by 가 달라도 한 줄로.
+ * qty 합계, needBy 가장 이른 날, needs [{needBy, qty}] 날짜순, Program 은 겹치지 않게 이어 붙임.
+ * (Need-by 연도에 따라 단가가 다른 계약이면 행이 달라 따로 남음)
+ */
+function mergePurchaseLines_(lines) {
+  var out = [], at = {};
+  lines.forEach(function (l) {
+    var key = [l.item, l.row, l.supplier, l.cur, l.price].join('|'), g = out[at[key]];
+    if (!g) {
+      g = {};
+      Object.keys(l).forEach(function (k) { g[k] = l[k]; });
+      g.needs = []; g.qty = 0; g.programs = [];
+      at[key] = out.length; out.push(g);
+    }
+    g.qty += Number(l.qty) || 0;
+    g.needs.push({ needBy: l.needBy, qty: Number(l.qty) || 0 });
+    if (l.program && g.programs.indexOf(l.program) < 0) g.programs.push(l.program);
+    ['shipFrom', 'shelfLife', 'taxCode'].forEach(function (k) { if ((g[k] === '' || g[k] == null) && l[k] !== '' && l[k] != null) g[k] = l[k]; });
+  });
+  out.forEach(function (g) {
+    g.needs.sort(function (a, b) { var x = toDate_(a.needBy), y = toDate_(b.needBy); return (x ? +x : Infinity) - (y ? +y : Infinity); });
+    g.needBy = g.needs[0].needBy;
+    g.program = g.programs.join(', ');
+    delete g.programs;
+  });
+  return out;
+}
+
 /**
  * lines: [{item, qty, needBy(Date), supplier, cur, price, priceMode, material, desc, product, shipFrom, leadtime,
- *          uom, shelfLife, taxCode, remark}]
+ *          uom, shelfLife, taxCode, remark, needs?: [{needBy, qty}], supplierName, site}]
  * curs: KRW 제외 통화 목록(등장 순), rates: {USD: 1339.3}, base: 작성일(Date)
  * schedule: 구매일정 막대 [{start, len}] × 5 (반 달 단위, len 0 = 빈 줄, 없으면 예시)
  * extra: {title: 구매내역서 제목(사업부 담당 확인 B2), confirmer: '홍길동 과장'(A2)}
@@ -527,8 +595,8 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule, extra) {
 
   /* ---------- 구매세부내역 ---------- */
   // 1~2행: 작성일, 통화별 환율 (O1 날짜, P1.. 통화, P2.. 환율)
-  add({ op: 'fmt', s: D, r: 1, from: TPL.P_D_DATE, c1: 2, c2: 20 });
-  add({ op: 'fmt', s: D, r: 2, from: TPL.P_D_RATE, c1: 2, c2: 20 });
+  add({ op: 'fmt', s: D, r: 1, from: TPL.P_D_DATE, c1: 2, c2: TPL.D_LAST });
+  add({ op: 'fmt', s: D, r: 2, from: TPL.P_D_RATE, c1: 2, c2: TPL.D_LAST });
   set(D, 1, 15, { date: fmtDate_(base) });
   var rateCell = {};
   curs.forEach(function (c, i) {
@@ -543,51 +611,54 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule, extra) {
   var I = '$I$' + first + ':$I$' + last, K = '$K$' + first + ':$K$' + last;
   var r = 3, parts = [];
   curs.forEach(function (c) {
-    add({ op: 'fmt', s: D, r: r, from: TPL.P_D_TTL, c1: 2, c2: 20 });
+    add({ op: 'fmt', s: D, r: r, from: TPL.P_D_TTL, c1: 2, c2: TPL.D_LAST });
     set(D, r, 10, 'TTL(' + c + ')');
     set(D, r, 11, '=SUMIF(' + I + ',"' + c + '",' + K + ')');
     nf(D, r, 11, curFmt_(c));
     parts.push('K' + r + '*' + rateCell[c]);
     r++;
   });
-  add({ op: 'fmt', s: D, r: r, from: TPL.P_D_TTLKRW, c1: 2, c2: 20 });
+  add({ op: 'fmt', s: D, r: r, from: TPL.P_D_TTLKRW, c1: 2, c2: TPL.D_LAST });
   set(D, r, 10, 'TTL(KRW)');
   set(D, r, 11, '=SUMIF(' + I + ',"KRW",' + K + ')');
   parts.push('K' + r);
   r++;
   var note = rateNote_(curs, rates, base);
-  add({ op: 'fmt', s: D, r: r, from: TPL.P_D_TOTAL, c1: 2, c2: 20 });
+  add({ op: 'fmt', s: D, r: r, from: TPL.P_D_TOTAL, c1: 2, c2: TPL.D_LAST });
   set(D, r, 10, 'Total');
   set(D, r, 11, '=' + parts.join('+'));
   set(D, r, 12, note);
   var detailTotalRow = r;
   r++;
-  add({ op: 'fmt', s: D, r: r, from: TPL.P_D_SPACER, c1: 2, c2: 20 });
+  add({ op: 'fmt', s: D, r: r, from: TPL.P_D_SPACER, c1: 2, c2: TPL.D_LAST });
   add({ op: 'height', s: D, r: r, pt: 8.25 });
 
-  add({ op: 'fmt', s: D, r: head, from: TPL.P_D_HEAD, c1: 2, c2: 20 });
+  add({ op: 'fmt', s: D, r: head, from: TPL.P_D_HEAD, c1: 2, c2: TPL.D_LAST });
   add({ op: 'height', s: D, r: head, pt: 39.75 });
   ['L/I', 'Program', 'Item No.', 'Material', 'Description', 'Product\n Name', 'Qty', 'CUR', 'Unit Price', 'Amount',
-    'Ship From', 'Leadtime', 'UoM', 'Shelf Life', 'Supplier', 'Tax\nCode', 'Price \n Mode', '비고', 'Need-by\nDate']
+    'Ship From', 'Leadtime', 'UoM', 'Shelf Life', 'Supplier', 'Tax\nCode', 'Price \n Mode', '비고', 'Need-by\nDate', 'SUPPLIER', 'SITE']
     .forEach(function (h, i) { set(D, head, 2 + i, h); });
 
   lines.forEach(function (l, i) {
     var n = first + i;
-    add({ op: 'fmt', s: D, r: n, from: TPL.P_D_DATA, c1: 2, c2: 20 });
-    add({ op: 'height', s: D, r: n, pt: 15 });
+    add({ op: 'fmt', s: D, r: n, from: TPL.P_D_DATA, c1: 2, c2: TPL.D_LAST });
+    var needs = l.needs || [{ needBy: l.needBy, qty: l.qty }], multi = needs.length > 1;
+    add({ op: 'height', s: D, r: n, pt: 15 * (multi ? needs.length : 1) });
+    // Need-by 가 여러 건이면 '날짜(수량)' 을 줄마다 (언제 발주할지 한눈에)
     var row = [i + 1, l.program || '', l.item, l.material, l.desc, l.product, l.qty, l.cur, l.price, '=J' + n + '*H' + n,
       l.shipFrom, l.leadtime, l.uom, l.shelfLife, l.supplier, l.taxCode, l.priceMode, l.remark || '',
-      l.needBy ? { date: fmtDate_(l.needBy) } : ''];
+      multi ? needsText_(needs) : (l.needBy ? { date: fmtDate_(toDate_(l.needBy)) } : ''), l.supplierName || '', l.site || ''];
     row.forEach(function (v, j) { if (v !== '' && v !== null && v !== undefined) set(D, n, 2 + j, v); });
     nf(D, n, 10, curFmt_(l.cur));
     nf(D, n, 11, curFmt_(l.cur));
     nf(D, n, 20, 'yyyy-mm-dd');
+    if (multi) add({ op: 'wrap', s: D, r: n, c: 20 });
     // 담당자 입력 칸
     if (!l.program) add({ op: 'bg', s: D, r: n, c: 3, color: TPL.FILL });
     if (!l.shipFrom) add({ op: 'bg', s: D, r: n, c: 12, color: TPL.FILL });
     if (!l.leadtime) add({ op: 'bg', s: D, r: n, c: 13, color: TPL.FILL });
   });
-  add({ op: 'bottom', s: D, r: last, c1: 2, c2: 20 });
+  add({ op: 'bottom', s: D, r: last, c1: 2, c2: TPL.D_LAST });
   add({ op: 'list', s: D, r1: first, r2: last, c: 12, items: ['Air', 'Ocean'] });
   add({ op: 'freeze', s: D, rows: head, cols: 4 });
 
@@ -938,8 +1009,10 @@ function rfq2FileName_(base, kind, initials, program) {
 var SPOT = {
   SUMMARY: '전체구매요약', DETAIL: '구매내역서', QUOTE: '견적종합', PROTO: '_proto',
   P_SUM_ROW: 1, P_SUM_CUR1: 2, P_SUM_CUR: 3, P_SUM_TOTAL: 4, P_SUM_NOTE: 5, P_DET_ROW: 11, P_Q_ROW: 21,
-  Q_FIRST: 5, Q_M0: 12, Q_LAST: 45,           // 견적종합: 5행부터, 월 L~W, 마지막 열 AS
-  D_FIRST: 11, D_V0: 23, D_LAST: 102, MAX_VENDORS: 20,
+  Q_FIRST: 5, Q_M0: 12, Q_LAST: 47,           // 견적종합: 5행부터, 월 L~W, AT SUPPLIER · AU SITE 까지
+  Q_SUP: 46, Q_SITE: 47,
+  D_FIRST: 11, D_NEED: 23, D_SUP: 24, D_SITE: 25,   // 구매내역서: W Need-by · X SUPPLIER · Y SITE (선정 업체)
+  D_V0: 26, D_LAST: 105, MAX_VENDORS: 20,           // 업체별 비교 칸은 Z 부터 (업체마다 4칸)
   CURS: ['USD', 'EUR', 'JPY', 'SGD', 'KRW'],
   RATE_COL: { USD: 'P', JPY: 'Q', EUR: 'R', SGD: 'S' }   // 구매내역서 3행 환율
 };
@@ -997,18 +1070,25 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
       put(34, /^no\s*bid$/i.test(String(q.price || '').trim()) ? 'NO BID' : num(q.price));
       put(35, q.cur ? String(q.cur).toUpperCase() : ''); put(37, q.moq); put(38, q.lt); put(39, q.shelf); put(40, q.remark);
       set(Q, r, 36, '=IF(AND(ISNUMBER(AE' + r + '), ISNUMBER(AH' + r + ')), AE' + r + ' * AH' + r + ', "")');
+      var vi = vendorOf_(extra && extra.vendorInfo, v);   // 업체정보 탭 SUPPLIER · SITE
+      if (vi.supplier) set(Q, r, SPOT.Q_SUP, vi.supplier);
+      if (vi.site) set(Q, r, SPOT.Q_SITE, vi.site);
     });
   });
   if (qLast >= SPOT.Q_FIRST) {
     add({ op: 'checkbox', s: Q, r1: SPOT.Q_FIRST, r2: qLast, c: 1 });
     // 조건부 서식: 선정(A=TRUE) 노란 줄, NO BID·회신 없음 회색 줄 (회색이 먼저)
-    add({ op: 'cf', s: Q, r1: SPOT.Q_FIRST, c1: 1, r2: qLast, c2: SPOT.Q_LAST, formula: '=$A' + SPOT.Q_FIRST + '=TRUE', bg: '#ffff00' });
-    add({ op: 'cf', s: Q, r1: SPOT.Q_FIRST, c1: 1, r2: qLast, c2: SPOT.Q_LAST, formula: '=$AH' + SPOT.Q_FIRST + '="NO BID"', bg: '#d9d9d9', font: '#7f7f7f' });
+    // A~AN 과 AT·AU (사이 AO~AS 는 환율 칸 아래 빈 칸이라 색칠하지 않음)
+    [[1, 40], [SPOT.Q_SUP, SPOT.Q_SITE]].forEach(function (cc) {
+      add({ op: 'cf', s: Q, r1: SPOT.Q_FIRST, c1: cc[0], r2: qLast, c2: cc[1], formula: '=$A' + SPOT.Q_FIRST + '=TRUE', bg: '#ffff00' });
+      add({ op: 'cf', s: Q, r1: SPOT.Q_FIRST, c1: cc[0], r2: qLast, c2: cc[1], formula: '=$AH' + SPOT.Q_FIRST + '="NO BID"', bg: '#d9d9d9', font: '#7f7f7f' });
+    });
   }
   // 테두리: X~AN (업체 견적 칸) 은 서식 복사만으로 테두리가 빠지는 경우가 있어 직접 그림. X 왼쪽은 굵게
   if (qLast >= SPOT.Q_FIRST) {
     add({ op: 'border', s: Q, r1: SPOT.Q_FIRST, c1: 24, r2: qLast, c2: 40 });
     add({ op: 'border', s: Q, r1: SPOT.Q_FIRST, c1: 24, r2: qLast, c2: 24, edge: 'left', style: 'medium' });
+    add({ op: 'border', s: Q, r1: SPOT.Q_FIRST, c1: SPOT.Q_SUP, r2: qLast, c2: SPOT.Q_SITE });
   }
   add({ op: 'freeze', s: Q, rows: 4, cols: 7 });
 
@@ -1026,7 +1106,8 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
       return '=IFERROR(INDEX(' + QR + '$' + v + ':$' + v + ', MATCH(' + key + ', ' + QR + '$' + k + ':$' + k + ', 0))' + (text ? '&""' : '') + ', "' + (dflt || '') + '")';
     };
     add({ op: 'fmt', s: D, r: r, from: SPOT.P_DET_ROW, c1: 1, c2: SPOT.D_V0 + N * 4 - 1, fs: SPOT.PROTO });
-    add({ op: 'height', s: D, r: r, pt: 57 });
+    var needs = rfqParts_(it).map(function (p2) { return { needBy: p2.needBy, qty: p2.qty }; });
+    add({ op: 'height', s: D, r: r, pt: Math.max(57, 15 * needs.length) });
     set(D, r, 1, i + 1);
     set(D, r, 2, '=OFFSET(' + QR + '$F$' + SPOT.Q_FIRST + ', (A' + r + '-1)*' + N + ', 0)');
     set(D, r, 3, '=OFFSET(' + QR + '$G$' + SPOT.Q_FIRST + ', (A' + r + '-1)*' + N + ', 0)');
@@ -1041,6 +1122,11 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
     set(D, r, 16, xl(key, 'D:AD', '미정', true));
     set(D, r, 17, xl(key, 'D:X')); set(D, r, 18, xl(key, 'D:AH')); set(D, r, 19, xl(key, 'D:AJ'));
     set(D, r, 20, xl(key, 'D:AI', '', true)); set(D, r, 21, xl(key, 'D:AL', '', true)); set(D, r, 22, xl(key, 'D:AN', '', true));
+    // W Need-by (여러 건이면 날짜(수량) 줄마다) · X SUPPLIER · Y SITE (견적종합에서 선정한 업체)
+    set(D, r, SPOT.D_NEED, needsText_(needs) || 'ASAP');
+    add({ op: 'wrap', s: D, r: r, c: SPOT.D_NEED });
+    set(D, r, SPOT.D_SUP, xl(key, 'D:AT', '', true));
+    set(D, r, SPOT.D_SITE, xl(key, 'D:AU', '', true));
     vendors.forEach(function (v, j) {
       var c = SPOT.D_V0 + j * 4, vk = '$B' + r + '&' + A(c) + '$8';
       ['AH', 'AI', 'AL', 'AN'].forEach(function (src, k3) {

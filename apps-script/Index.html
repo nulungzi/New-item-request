@@ -82,7 +82,17 @@ main { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px }
 .rfq-title { display: grid; gap: 10px }
 .rfq-fields { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)) }
 .rfq-fields .field input, .rfq-title .field > input { text-align: left; font-family: var(--font-body); width: 100% }
-.split-box { padding: 8px 12px; border-radius: 6px; background: var(--fill-priced); color: var(--priced); font-weight: 500 }
+.doc-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px; border-radius: 10px; background: var(--surface-2) }
+.doc-tab { flex: 1 1 220px; display: grid; gap: 2px; text-align: left; padding: 10px 14px; border: 1px solid transparent; border-radius: 8px;
+  background: transparent; color: var(--muted); font: inherit; cursor: pointer; transition: background .15s, color .15s, box-shadow .15s }
+.doc-tab b { color: var(--ink); font-size: .95rem; display: flex; align-items: center; gap: 8px }
+.doc-tab .small { font-size: .8rem }
+.doc-tab:hover { background: var(--surface) }
+.doc-tab[aria-selected="true"] { background: var(--surface); border-color: var(--line); box-shadow: 0 2px 8px rgba(0, 0, 0, .08); color: var(--ink) }
+.doc-tab .ok-dot { margin-left: auto; font-size: .78rem; font-weight: 600; color: var(--ok) }
+.doc-panel { animation: doc-in .2s ease }
+@keyframes doc-in { from { opacity: .3; transform: translateY(4px) } }
+@media (prefers-reduced-motion: reduce) { .doc-panel { animation: none } }
 .rfq-done { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center }
 /* 메일 초안 */
 .modal-box.draft-box { grid-template-rows: auto auto minmax(0, 1fr) auto auto auto; width: min(980px, 100%) }
@@ -529,7 +539,9 @@ table.list td.nw { white-space: nowrap }
   <div class="step-no">3</div>
   <div class="panel">
     <div class="panel-head"><h2>구매내역서 작성</h2><span class="muted">계약(LTA·3PP)과 Spot 단가(DB) 품목이 들어갑니다</span></div>
-    <label class="inline split-box" id="splitBox" hidden><input type="checkbox" id="splitSpot" checked> <span id="splitText">Spot 단가 품목은 별도 구매내역서로 만들기</span></label>
+    <div class="doc-tabs" id="docTabs" role="tablist" aria-label="만들 구매내역서" hidden></div>
+    <p class="muted" id="docNote" hidden>계약(LTA·3PP)과 Spot 단가 품목은 <b>구매내역서 2개</b>로 따로 만듭니다. 탭을 바꿔 가며 각각 구매일정·제목·담당자를 정하고 만드세요.</p>
+    <div class="doc-panel stack" id="docPanel">
 
     <div class="sub first">
       <h3>환율</h3>
@@ -573,6 +585,7 @@ table.list td.nw { white-space: nowrap }
     </div>
 
     <div class="row"><button class="btn" id="btnCreate" type="button">구매내역서 만들기</button><span id="msg2"></span></div>
+    </div>
   </div>
 </section>
 
@@ -1538,6 +1551,9 @@ function openSummary(rec) {
   if (!state.schedHome) state.schedHome = { parent: $('schedSub').parentNode, next: $('schedSub').nextElementSibling };
   $('qSchedSlot').appendChild($('schedSub'));    // 구매일정 편집기를 이 화면으로 옮겨 씀
   $('schedSub').classList.add('first');
+  state.schedBack = { owner: state.schedOwner, sched: state.sched };   // 구매내역서 탭 일정과 따로
+  if (!c.sched) c.sched = emptySched();
+  state.schedOwner = c; state.sched = c.sched;
   if (state.sched) renderGantt();
   renderQSum();
   $('quoteView').scrollIntoView();
@@ -1548,6 +1564,7 @@ function closeSummary() {
   $('quoteView').hidden = true; $('recPanel').hidden = false;
   if (state.schedHome) state.schedHome.parent.insertBefore($('schedSub'), state.schedHome.next);
   $('schedSub').classList.remove('first');
+  if (state.schedBack) { state.schedOwner = state.schedBack.owner; state.sched = state.schedBack.sched; state.schedBack = null; if (state.sched) renderGantt(); }
   if (qs) refreshVendorList(qs.rec);
 }
 $('qBack').onclick = closeSummary;
@@ -1779,45 +1796,82 @@ $('btnRegSave').onclick = function () {
 };
 
 /* ---------- 3. 구매내역서 ---------- */
+/* 구매내역서: 계약(LTA·3PP) 과 Spot 단가(DB) 는 따로 (탭으로 각각 구매일정·제목·담당자·비고) */
+var DOC_KINDS = {
+  contract: { route: 'contract', title: '계약 구매내역서', chip: '<span class="chip chip-ok">LTA</span><span class="chip chip-ok">3PP</span>', word: ' 구매내역서_' },
+  spot: { route: 'spotPriced', title: 'Spot 구매내역서', chip: '<span class="chip chip-priced">SPOT 단가</span>', word: ' Spot 구매내역서_' }
+};
+state.docs = {}; state.rateEdit = {};
+function emptySched() { return (state.tasks || []).map(function () { return { start: 0, len: 0 }; }); }
+function docLines(key) { return state.results.filter(function (r) { return r.route === DOC_KINDS[key].route; }); }
+function curDoc() { return state.docs[state.docKey]; }
+function setSched(a) { state.sched = a; if (state.schedOwner) state.schedOwner.sched = a; }
+function saveDocInputs() {
+  var d = curDoc();
+  if (!d) return;
+  d.name = $('fileName').value; d.confirmer = $('confirmer').value;
+  document.querySelectorAll('[data-remark]').forEach(function (el) { d.remarks[el.dataset.remark] = el.value; });
+}
+function switchDoc(key) {
+  if (key === state.docKey) return;
+  saveDocInputs();
+  state.docKey = key;
+  $('msg2').innerHTML = '';
+  renderPurchase();
+  var p = $('docPanel'); p.classList.remove('doc-panel'); void p.offsetWidth; p.classList.add('doc-panel');   // 바뀌는 느낌
+}
 function renderPurchase() {
   var ok = state.results.filter(function (r) { return r.route === 'contract' || r.route === 'spotPriced'; });
   $('purchaseCard').hidden = !ok.length;
   if (!ok.length) return;
-  var nSpot = ok.filter(function (r) { return r.route === 'spotPriced'; }).length;
-  $('splitBox').hidden = !(nSpot && nSpot < ok.length);
-  $('splitText').textContent = 'Spot 단가 품목 ' + nSpot + '개는 별도 구매내역서로 만들기 (계약 ' + (ok.length - nSpot) + '개와 나눠서 2개 파일)';
-  var keep = {};
-  document.querySelectorAll('[data-rate],[data-remark]').forEach(function (el) { keep[el.id] = el.value; });
+  var keys = Object.keys(DOC_KINDS).filter(function (k) { return docLines(k).length; });
+  keys.forEach(function (k) {
+    var lines = docLines(k), sig = JSON.stringify(lines.map(function (r) { return [r.item, r.qty, r.needBy, chosen(r).row]; }));
+    var d = state.docs[k] = state.docs[k] || { key: k, sched: emptySched(), name: '', nameEdited: false, confirmer: '', remarks: {}, done: null, sig: sig };
+    if (d.sig !== sig) { d.sig = sig; d.done = null; }   // 다시 판정해 품목이 바뀌면 새로 만듦
+  });
+  if (keys.indexOf(state.docKey) < 0) state.docKey = keys[0];
+  var doc = curDoc(), K = DOC_KINDS[state.docKey], lines = docLines(state.docKey);
+  state.schedOwner = doc; state.sched = doc.sched;
+  $('docTabs').hidden = $('docNote').hidden = keys.length < 2;
+  $('docTabs').innerHTML = keys.map(function (k) {
+    var n = docLines(k).length, d = state.docs[k];
+    return '<button type="button" role="tab" class="doc-tab" data-doc="' + k + '" aria-selected="' + (k === state.docKey) + '">' +
+      '<b>' + DOC_KINDS[k].title + (d.done ? '<span class="ok-dot">✓ 만듦</span>' : '') + '</b><span class="small">' + DOC_KINDS[k].chip + ' ' + n + '줄</span></button>';
+  }).join('');
+  $('docTabs').querySelectorAll('[data-doc]').forEach(function (b) { b.onclick = function () { switchDoc(b.dataset.doc); }; });
   var curs = [], sups = [];
-  ok.forEach(function (r) {
+  lines.forEach(function (r) {
     var c = chosen(r);
     if (c.cur !== 'KRW' && curs.indexOf(c.cur) < 0) curs.push(c.cur);
     if (sups.indexOf(c.supplier) < 0) sups.push(c.supplier);
   });
   $('rates').innerHTML = curs.map(function (c) {
-    var id = 'rate-' + c, v = keep[id] != null ? keep[id] : (state.rates[c] || '');
+    var id = 'rate-' + c, v = state.rateEdit[c] != null ? state.rateEdit[c] : (state.rates[c] || '');
     return '<label class="field" for="' + id + '">1 ' + esc(c) + ' = KRW<input type="number" step="0.01" inputmode="decimal" data-rate="' + esc(c) + '" id="' + id + '" value="' + esc(v) + '" placeholder="1350.00"></label>';
   }).join('') || '<span class="muted">원화 품목만 있어 환율이 필요 없습니다.</span>';
-  $('remarks').innerHTML = sups.map(function (s, i) {
+  $('rates').querySelectorAll('[data-rate]').forEach(function (el) { el.oninput = function () { state.rateEdit[el.dataset.rate] = el.value; }; });
+  $('remarks').innerHTML = sups.map(function (sp, i) {
     var id = 'remark-' + i;
-    return '<label class="field" for="' + id + '">' + esc(s) + '<textarea data-remark="' + esc(s) + '" id="' + id + '" placeholder="구매세부내역 비고 열에 들어갑니다">' + esc(keep[id] || '') + '</textarea></label>';
+    return '<label class="field" for="' + id + '">' + esc(sp) + '<textarea data-remark="' + esc(sp) + '" id="' + id + '" placeholder="구매세부내역 비고 열에 들어갑니다">' + esc(doc.remarks[sp] || '') + '</textarea></label>';
   }).join('');
-  state.autoName = autoFileName(sups);
-  if (!state.nameEdited) $('fileName').value = state.autoName;
+  state.autoName = autoFileName(sups, K.word);
+  $('fileName').value = doc.nameEdited ? doc.name : state.autoName;
   $('fileName').placeholder = state.autoName;
+  $('confirmer').value = doc.confirmer;
+  $('btnCreate').textContent = K.title + ' 만들기';
   renderGantt();
-}
-function autoFileName(sups) {
+}function autoFileName(sups, word) {
   var d = ($('base').value || '').replace(/-/g, '').slice(2);
-  return d + ' 구매내역서_' + sups.join('_');
+  return d + (word || ' 구매내역서_') + sups.join('_');
 }
-$('fileName').addEventListener('input', function () { state.nameEdited = this.value.trim() !== '' && this.value !== state.autoName; });
+$('fileName').addEventListener('input', function () { var d = curDoc(); if (d) { d.name = this.value; d.nameEdited = this.value.trim() !== '' && this.value !== state.autoName; } });
 $('confirmer').addEventListener('input', function () {
   var v = this.value.replace(/\s+/g, ' ').trim(), ok = !v || /^[가-힣]{2,5} [가-힣A-Za-z]{1,10}$/.test(v);
   $('confirmerHint').textContent = ok ? '확인 날짜와 날인은 담당자가 시트에서 직접 넣습니다 (노란 칸).' : '"이름 직급" 형식으로 적어 주세요. 예: 김정환 차장';
   $('confirmerHint').className = ok ? 'muted' : 'err';
 });
-$('btnNameAuto').onclick = function () { state.nameEdited = false; $('fileName').value = state.autoName || ''; $('fileName').focus(); };
+$('btnNameAuto').onclick = function () { var d = curDoc(); if (d) d.nameEdited = false; $('fileName').value = state.autoName || ''; $('fileName').focus(); };
 
 /* 구매일정 간트: 한 칸 = 반 달, 작성일 달부터 24칸(12개월) */
 var SLOTS = 24;
@@ -1931,11 +1985,11 @@ function bindBar(i) {
   });
 }
 $('btnSchedExample').onclick = function () {
-  state.sched = state.schedExample.map(function (b) { return { start: b.start, len: b.len }; });
+  setSched(state.schedExample.map(function (b) { return { start: b.start, len: b.len }; }));
   renderGantt();
 };
 $('btnSchedClear').onclick = function () {
-  state.sched = state.tasks.map(function () { return { start: 0, len: 0 }; });
+  setSched(emptySched());
   renderGantt();
 };
 $('base').addEventListener('change', function () { if (!$('purchaseCard').hidden) renderPurchase(); });
@@ -1951,24 +2005,30 @@ $('btnCreate').onclick = function () {
   pickFolder('구매내역서').then(function (folder) { if (folder) createPurchase(b, folder); });
 };
 function createPurchase(b, folder) {
+  saveDocInputs();
+  var doc = curDoc(), key = state.docKey, K = DOC_KINDS[key];
   b.disabled = true; b.textContent = '만드는 중…';
-  var rates = {}, remarks = {};
+  var rates = {};
   document.querySelectorAll('[data-rate]').forEach(function (el) { rates[el.dataset.rate] = el.value; });
-  document.querySelectorAll('[data-remark]').forEach(function (el) { remarks[el.dataset.remark] = el.value; });
-  var lines = state.results.filter(function (r) { return r.route === 'contract' || r.route === 'spotPriced'; }).map(function (r) {
+  var lines = docLines(key).map(function (r) {
     return { item: r.item, qty: r.qty, needBy: r.needBy, program: r.program, shelfLife: r.shelfLife, shipFrom: r.shipFrom, taxCode: r.taxCode, contractRow: chosen(r).row };
   });
-  call('apiCreatePurchase', { baseDate: $('base').value, rates: rates, remarks: remarks, lines: lines, schedule: state.sched, name: $('fileName').value, confirmer: $('confirmer').value, folder: folder.id, split: $('splitSpot').checked }).then(function (d) {
+  call('apiCreatePurchase', { baseDate: $('base').value, rates: rates, remarks: doc.remarks, lines: lines, schedule: doc.sched, name: $('fileName').value, confirmer: doc.confirmer, folder: folder.id }).then(function (d) {
     state.rates = Object.assign(state.rates, rates);
-    $('purchaseCard').classList.add('done');
-    var files = d.files || [d];
-    $('doneNote').innerHTML = '구매내역서 ' + files.length + '개를 ' + esc(folder.name) + '에 만들었습니다 · ' + files.map(function (f) {
-      return '<a href="' + esc(f.url) + '" target="_blank" rel="noopener">' + esc(f.name) + ' 열기 ↗</a>';
-    }).join(' · ');
-    loadPreview(files[0]);
+    doc.done = (d.files || [d]).map(function (f) { f.folder = folder.name; return f; });
+    var keys = Object.keys(state.docs).filter(function (k) { return docLines(k).length; });
+    var left = keys.filter(function (k) { return !state.docs[k].done; });
+    $('purchaseCard').classList.toggle('done', !left.length);
+    $('doneNote').innerHTML = keys.filter(function (k) { return state.docs[k].done; }).map(function (k) {
+      return state.docs[k].done.map(function (f) { return esc(DOC_KINDS[k].title) + ' · ' + esc(f.folder) + ' · <a href="' + esc(f.url) + '" target="_blank" rel="noopener">' + esc(f.name) + ' 열기 ↗</a>'; }).join('<br>');
+    }).join('<br>') + (left.length ? '<br><b>' + esc(DOC_KINDS[left[0]].title) + '</b> 탭에서도 만들어 주세요.' : '');
+    renderPurchase();
+    if (left.length) $('msg2').innerHTML = '<span class="ok-msg">' + esc(K.title) + '를 만들었습니다 · 다음: <button type="button" class="link-btn" id="goNextDoc">' + esc(DOC_KINDS[left[0]].title) + ' 탭으로 →</button></span>';
+    if ($('goNextDoc')) $('goNextDoc').onclick = function () { switchDoc(left[0]); $('purchaseCard').scrollIntoView({ block: 'start' }); };
+    loadPreview(doc.done[0]);
     loadRecords();
   }).catch(function (e) { $('msg2').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; })
-    .finally(function () { b.disabled = false; b.textContent = '구매내역서 만들기'; });
+    .finally(function () { b.disabled = false; b.textContent = K.title + ' 만들기'; });
 }
 
 /* ---------- 5. 미리보기 ---------- */

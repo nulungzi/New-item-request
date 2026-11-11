@@ -4,8 +4,8 @@ Spot 견적 구매내역서 샘플에서 템플릿을 만든다.
 - 행 서식 원본은 숨김 탭 `_proto` 에 모은다 (Apps Script가 복사한 뒤 지운다).
     1  전체구매요약 품목 행      2  CUR 별 합계 첫 행   3  CUR 별 합계 다음 행
     4  총 합계(KRW) 행           5  적용환율 메모 행
-    11 구매내역서 품목 행 (A~CX)
-    21 견적종합 업체 행 (A~AS)
+    11 구매내역서 품목 행 (A~DA): W Need-by · X SUPPLIER · Y SITE, 업체 비교 칸은 Z 부터
+    21 견적종합 업체 행 (A~AU): AT SUPPLIER · AU SITE
 - 구매내역서 통화 합계를 USD·EUR·JPY·SGD·KRW 로, 환율 칸을 USD·JPY·EUR·SGD 로 바꾼다.
 
 사용: python3 -I tools/build_spot_template.py <Spot구매내역서샘플.xlsx> templates/Spot_구매내역서_템플릿.xlsx
@@ -117,6 +117,64 @@ clear(D, 11, 1, 102)
 for c in range(23, 103, 4):   # 업체 이름은 만들 때 채움
     D.cell(8, c).value = None
 
+# ---------- 구매내역서: 선정 결과 뒤에 W Need-by · X SUPPLIER · Y SITE (업체 비교 칸은 Z 부터) ----------
+from openpyxl.formatting.formatting import ConditionalFormattingList
+from openpyxl.utils import column_index_from_string as CI
+NEW, AT = 3, 23
+old_merges = [m for m in D.merged_cells.ranges]
+moved = []
+for m in list(old_merges):
+    if m.max_col >= AT:
+        moved.append((m.min_row, m.min_col, m.max_row, m.max_col))
+        D.unmerge_cells(str(m))
+old_cf = [(str(rng.sqref), list(rules)) for rng, rules in D.conditional_formatting._cf_rules.items()]
+old_w = {k: d.width for k, d in D.column_dimensions.items() if d.width}
+D.insert_cols(AT, NEW)
+for r1, c1, r2, c2 in moved:
+    nc1 = c1 + NEW if c1 >= AT else c1
+    D.merge_cells(start_row=r1, start_column=nc1, end_row=r2, end_column=c2 + NEW)
+for k in list(D.column_dimensions.keys()):
+    del D.column_dimensions[k]
+for k, w in old_w.items():
+    i = CI(k)
+    D.column_dimensions[L(i + NEW if i >= AT else i)].width = w
+D.conditional_formatting = ConditionalFormattingList()
+def shift_ref(ref):
+    out = []
+    for part in ref.split():
+        a, b = part.split(':')
+        def sh(x):
+            col = ''.join(ch for ch in x if ch.isalpha()); row = x[len(col):]
+            i = CI(col)
+            return L(i + NEW if i >= AT else i) + row
+        out.append(sh(a) + ':' + sh(b))
+    return ' '.join(out)
+for ref, rules in old_cf:
+    for rule in rules:
+        f = [x.replace('W11', 'Z11') for x in (rule.formula or [])]
+        rule.formula = f
+        D.conditional_formatting.add(shift_ref(ref), rule)
+# 머리글: '선정 결과'(P8)를 Y 까지, 9행 Need-by · SUPPLIER · SITE (V 서식)
+for m in list(D.merged_cells.ranges):
+    if m.min_row == 8 and m.max_col == AT - 1:
+        D.unmerge_cells(str(m))
+        D.merge_cells(start_row=8, start_column=m.min_col, end_row=m.max_row, end_column=AT + NEW - 1)
+for r in (8, 9, 10):
+    for c in range(AT, AT + NEW):
+        cp(D.cell(r, 22), D.cell(r, c))
+for c, h in zip(range(AT, AT + NEW), ['Need-by', 'SUPPLIER', 'SITE']):
+    D.cell(9, c).value = h
+D.column_dimensions['W'].width = 20
+D.column_dimensions['X'].width = 32
+D.column_dimensions['Y'].width = 14
+# _proto 11행(구매내역서 품목 행): 23열부터 오른쪽으로 3칸 밀고, W·X·Y 는 V 서식 (X·Y 는 줄바꿈 없음)
+for c in range(102, AT - 1, -1):
+    cp(P.cell(11, c), P.cell(11, c + NEW))
+for c in range(AT, AT + NEW):
+    cp(P.cell(11, 22), P.cell(11, c))
+for c in (AT + 1, AT + 2):
+    al = copy(P.cell(11, c).alignment); al.wrap_text = False; P.cell(11, c).alignment = al
+
 # ---------- 견적종합 ----------
 Q['G1'].value = None
 for c, cur, ref in zip(range(42, 46), ['USD', 'JPY', 'EUR', 'SGD'], ['P3', 'Q3', 'R3', 'S3']):
@@ -124,6 +182,14 @@ for c, cur, ref in zip(range(42, 46), ['USD', 'JPY', 'EUR', 'SGD'], ['P3', 'Q3',
     Q.cell(1, c).value = cur
     Q.cell(2, c).value = "='구매내역서'!" + ref
 Q.column_dimensions['AS'].width = Q.column_dimensions['AR'].width or 9
+# 견적종합 AT SUPPLIER · AU SITE (업체정보 탭 값, 만들 때 채움). 머리글은 AN 서식
+for c, h in ((46, 'SUPPLIER'), (47, 'SITE')):
+    for r in (3, 4):
+        cp(Q.cell(r, 40), Q.cell(r, c))
+    Q.cell(3, c).value = h
+    cp(P.cell(21, 40), P.cell(21, c))
+Q.column_dimensions['AT'].width = 32
+Q.column_dimensions['AU'].width = 18
 for c in range(12, 24):
     Q.cell(3, c).value = None
 clear(Q, 5, 1, 45)

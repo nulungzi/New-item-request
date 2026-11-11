@@ -90,6 +90,9 @@ for o in ops:
                     cell.border = Border(left=side, right=b.right, top=b.top, bottom=b.bottom)
                 else:
                     cell.border = Border(left=side, right=side, top=side, bottom=side)
+    elif op == 'wrap':
+        cell = wb[o['s']].cell(o['r'], o['c'])
+        al = copy(cell.alignment); al.wrap_text = True; cell.alignment = al
     elif op == 'checkbox':
         pass   # 엑셀 미리보기에서는 TRUE/FALSE 값 그대로
     elif op == 'deleteCols':

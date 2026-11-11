@@ -333,7 +333,8 @@ test('Spot 견적 구매내역서 계획: 업체 수만큼 줄·비교 칸, 선�
       quotes: { Airtech: { sel: true, review: 'Sole source', qty: 64, mfg: 'A4000V', uom: 'RL', price: 1, cur: 'usd', lt: '4~6' }, Hexcel: { price: 'no bid' } } },
     { item: 'MS20995C20', desc: 'Safety Wire', uom: 'RL', qty: 3, needBy: L.toDate_('2027-01-15'), program: '', quotes: {} },
   ];
-  const ops = L.buildSpotPlan_(items, ['Airtech', 'Hexcel', '3M'], { USD: 1355.6, EUR: 1740.98 }, base, null, { title: 'T', confirmer: '안성미 과장' });
+  const vendorInfo = L.vendorInfo_([['', '업체명', '이메일', 'SUPPLIER', 'SITE'], ['', 'Airtech', 'a@x.com', 'AIRTECH INTERNATIONAL INC', 'HUNTINGTON BEACH'], ['', 'Hexcel', 'h@x.com', 'HEXCEL CORP', '']]);
+  const ops = L.buildSpotPlan_(items, ['Airtech', 'Hexcel', '3M'], { USD: 1355.6, EUR: 1740.98 }, base, null, { title: 'T', confirmer: '안성미 과장', vendorInfo });
   const get = (s, r, c) => (ops.filter(o => o.op === 'set' && o.s === s && o.r === r && o.c === c).pop() || {}).v;
   // 견적종합: 품목 2 × 업체 3 = 6줄 (5~10행)
   assert.deepStrictEqual([5, 6, 7, 8, 9, 10].map(r => get('견적종합', r, 30)), ['Airtech', 'Hexcel', '3M', 'Airtech', 'Hexcel', '3M']);
@@ -346,13 +347,20 @@ test('Spot 견적 구매내역서 계획: 업체 수만큼 줄·비교 칸, 선�
   assert.match(get('견적종합', 5, 29), /INT\(\(ROW\(\)-5\)\/3\)\*3, 0, 3, 1\)/);
   assert.match(get('견적종합', 5, 28), /IF\(AI5="SGD", AE5\*AH5\*\$AS\$2/);
   assert.deepStrictEqual(ops.filter(o => o.op === 'checkbox').map(o => [o.r1, o.r2]), [[5, 10]]);
-  assert.deepStrictEqual(ops.filter(o => o.op === 'cf').map(o => [o.formula, o.bg, o.r2, o.c2]), [['=$A5=TRUE', '#ffff00', 10, 45], ['=$AH5="NO BID"', '#d9d9d9', 10, 45]]);
-  // 구매내역서: 비교 칸은 3개 업체(W~AH)만 남기고 AI부터 지움
-  assert.deepStrictEqual([get('구매내역서', 8, 23), get('구매내역서', 8, 27), get('구매내역서', 8, 31)], ['Airtech', 'Hexcel', '3M']);
-  assert.deepStrictEqual(ops.filter(o => o.op === 'deleteCols').map(o => [o.c, o.n]), [[35, 68]]);
+  assert.deepStrictEqual(ops.filter(o => o.op === 'cf').map(o => [o.formula, o.bg, o.r2, o.c1, o.c2]),
+    [['=$A5=TRUE', '#ffff00', 10, 1, 40], ['=$AH5="NO BID"', '#d9d9d9', 10, 1, 40], ['=$A5=TRUE', '#ffff00', 10, 46, 47], ['=$AH5="NO BID"', '#d9d9d9', 10, 46, 47]]);
+  // 견적종합 AT·AU: 업체정보 탭 SUPPLIER·SITE (업체마다)
+  assert.deepStrictEqual([get('견적종합', 5, 46), get('견적종합', 5, 47), get('견적종합', 6, 46), get('견적종합', 6, 47), get('견적종합', 7, 46)],
+    ['AIRTECH INTERNATIONAL INC', 'HUNTINGTON BEACH', 'HEXCEL CORP', undefined, undefined]);
+  // 구매내역서: W Need-by · X SUPPLIER · Y SITE (선정 업체), 비교 칸은 Z 부터 3개 업체(Z~AK)만 남기고 AL부터 지움
+  assert.strictEqual(get('구매내역서', 11, 23), '2027-05-10');
+  assert.strictEqual(get('구매내역서', 11, 24), "=IFERROR(INDEX('견적종합'!$AT:$AT, MATCH(TRUE&$B11, '견적종합'!$D:$D, 0))&\"\", \"\")");
+  assert.strictEqual(get('구매내역서', 11, 25), "=IFERROR(INDEX('견적종합'!$AU:$AU, MATCH(TRUE&$B11, '견적종합'!$D:$D, 0))&\"\", \"\")");
+  assert.deepStrictEqual([get('구매내역서', 8, 26), get('구매내역서', 8, 30), get('구매내역서', 8, 34)], ['Airtech', 'Hexcel', '3M']);
+  assert.deepStrictEqual(ops.filter(o => o.op === 'deleteCols').map(o => [o.c, o.n]), [[38, 68]]);
   assert.strictEqual(get('구매내역서', 11, 2), "=OFFSET('견적종합'!$F$5, (A11-1)*3, 0)");
   assert.strictEqual(get('구매내역서', 11, 16), "=IFERROR(INDEX('견적종합'!$AD:$AD, MATCH(TRUE&$B11, '견적종합'!$D:$D, 0))&\"\", \"미정\")");
-  assert.strictEqual(get('구매내역서', 11, 23), "=IFERROR(INDEX('견적종합'!$AH:$AH, MATCH($B11&W$8, '견적종합'!$C:$C, 0)), \"\")");
+  assert.strictEqual(get('구매내역서', 11, 26), "=IFERROR(INDEX('견적종합'!$AH:$AH, MATCH($B11&Z$8, '견적종합'!$C:$C, 0)), \"\")");
   assert.deepStrictEqual([6, 7, 8, 9].map(c => get('구매내역서', 11, c)), [2026, 24, 'USD', 964.19]);
   assert.strictEqual(get('구매내역서', 12, 14), undefined);       // Program 비면 노란 칸
   assert.ok(ops.some(o => o.op === 'bg' && o.s === '구매내역서' && o.r === 12 && o.c === 14));
@@ -368,7 +376,7 @@ test('Spot 견적 구매내역서 계획: 업체 수만큼 줄·비교 칸, 선�
   assert.ok(!/JPY|SGD/.test(get('전체구매요약', 11, 3)));
   // 테두리: 견적종합 X~AN, 구매내역서 표 전체 (업체 3곳 → V+12 = AH 까지)
   assert.deepStrictEqual(ops.filter(o => o.op === 'border').map(o => [o.s, o.r1, o.c1, o.r2, o.c2, o.edge || '']),
-    [['견적종합', 5, 24, 10, 40, ''], ['견적종합', 5, 24, 10, 24, 'left'], ['구매내역서', 11, 1, 12, 34, '']]);
+    [['견적종합', 5, 24, 10, 40, ''], ['견적종합', 5, 24, 10, 24, 'left'], ['견적종합', 5, 46, 10, 47, ''], ['구매내역서', 11, 1, 12, 37, '']]);
   // 사업부 담당 확인 · 구매일정도 들어감
   assert.strictEqual(get('사업부 담당 확인', 2, 1), '안성미 과장');
   assert.ok(ops.some(o => o.s === '구매일정' && o.op === 'width'));
@@ -497,4 +505,35 @@ test('구매일정: 서식 복사가 템플릿 병합 칸과 겹치지 않는다
   simulateMerges(ops, spot);
   const line = { item: 'A', qty: 1, needBy: L.toDate_('2027-06-10'), supplier: 'AKZO', cur: 'USD', price: 2, priceMode: 'LTA' };
   simulateMerges(L.buildPurchasePlan_([line], ['USD'], { USD: 1350 }, base), contract);
+});
+
+test('업체정보 SUPPLIER·SITE 열 (업체명 열이 SUPPLIER 보다 앞)', () => {
+  const v = [['', '업체명', '이메일', 'SUPPLIER', 'SITE', 'CONTACT'], ['', 'OMI', 'a@omi.com', 'OMI SPECIALTY PRODUCTS, LLC', 'LA', 'x'], ['', 'OMI', 'b@omi.com', '', '', ''],
+    ['', 'GV엔지니어링', 'g@gv.com', 'GV 엔지니어링', 6138159311, '']];
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(L.parseVendors_(v))), [{ name: 'OMI', emails: ['a@omi.com', 'b@omi.com'] }, { name: 'GV엔지니어링', emails: ['g@gv.com'] }]);
+  const info = L.vendorInfo_(v);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(L.vendorOf_(info, 'omi'))), { supplier: 'OMI SPECIALTY PRODUCTS, LLC', site: 'LA' });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(L.vendorOf_(info, 'GV 엔지니어링'))), { supplier: 'GV 엔지니어링', site: '6138159311' });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(L.vendorOf_(info, '없는업체'))), { supplier: '', site: '' });
+});
+
+test('계약 구매내역서: 같은 자재·같은 계약은 한 줄, Need-by 칸에 날짜(수량)', () => {
+  const base = L.toDate_('2026-11-11');
+  const c = { item: 'KERC00064', row: 7, supplier: 'AKZO', cur: 'USD', price: 78.49, priceMode: 'LTA', uom: 'KT' };
+  const lines = L.mergePurchaseLines_([
+    Object.assign({}, c, { qty: 600, needBy: L.toDate_('2027-06-20'), program: '787' }),
+    Object.assign({}, c, { item: 'KERC00149', row: 9, supplier: 'Syensqo', price: 39.23, qty: 200, needBy: L.toDate_('2027-03-01') }),
+    Object.assign({}, c, { qty: 500, needBy: L.toDate_('2027-05-14'), program: '737' }),
+    Object.assign({}, c, { row: 8, price: 80, qty: 10, needBy: L.toDate_('2028-02-01') })]);   // 다른 해 단가 → 따로
+  assert.deepStrictEqual(lines.map(l => [l.item, l.qty, l.needs.length, l.program]), [['KERC00064', 1100, 2, '787, 737'], ['KERC00149', 200, 1, ''], ['KERC00064', 10, 1, '']]);
+  assert.strictEqual(L.fmtDate_(lines[0].needBy), '2027-05-14');
+  lines[0].supplierName = 'AKZO NOBEL'; lines[0].site = 'US';
+  const ops = L.buildPurchasePlan_(lines, ['USD'], { USD: 1350 }, base);
+  const get = (r, c2) => (ops.filter(o => o.op === 'set' && o.s === '구매세부내역' && o.r === r && o.c === c2).pop() || {}).v;
+  assert.deepStrictEqual([get(7, 20), get(7, 21), get(7, 22)], ['Need-by\nDate', 'SUPPLIER', 'SITE']);
+  assert.deepStrictEqual([get(8, 8), get(8, 20), get(8, 21), get(8, 22)], [1100, '2027-05-14(500)\n2027-06-20(600)', 'AKZO NOBEL', 'US']);
+  assert.deepStrictEqual(get(9, 20), { date: '2027-03-01' });
+  assert.ok(ops.some(o => o.op === 'wrap' && o.r === 8 && o.c === 20));
+  assert.ok(ops.some(o => o.op === 'height' && o.s === '구매세부내역' && o.r === 8 && o.pt === 30));
+  assert.ok(ops.filter(o => o.op === 'fmt' && o.s === '구매세부내역').every(o => o.c2 === 22));
 });
