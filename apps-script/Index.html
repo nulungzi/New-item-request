@@ -217,6 +217,27 @@ a { color: var(--accent) }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
 [hidden] { display: none !important }
 
+/* 견적요청서 양식 고르기 */
+.modal-box.rp-box { grid-template-rows: none; width: min(1100px, 100%); overflow: auto; align-content: start }
+.rp-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 12px }
+.rp-opt { display: grid; gap: 10px; align-content: start; text-align: left; padding: 14px; border: 2px solid var(--line); border-radius: 12px;
+  background: var(--bg); color: var(--ink); font: inherit; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s }
+.rp-opt:hover { border-color: var(--accent); transform: translateY(-1px) }
+.rp-opt[aria-checked="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft) }
+.rp-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; justify-content: space-between }
+.rp-head b { font-size: .98rem }
+.rp-head .rp-check { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--line); display: inline-grid; place-items: center; flex: none }
+.rp-opt[aria-checked="true"] .rp-check { border-color: var(--accent); background: var(--accent); color: var(--accent-ink) }
+.rp-opt[aria-checked="true"] .rp-check::after { content: "✓"; font-size: .75rem; font-weight: 700 }
+.rp-paper { overflow: hidden; border-radius: 6px; background: #fff; border: 1px solid #cfd5df; padding: 6px }
+.rp-paper table { border-collapse: collapse; width: 100%; font: 10px/1.3 Calibri, Arial, sans-serif; color: #000; table-layout: fixed }
+.rp-paper th, .rp-paper td { border: 1px solid #000; padding: 2px 3px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: center }
+.rp-paper.p1 th { background: #deeaf6 } .rp-paper.p2 th { background: #cccccc }
+.rp-paper td.l { text-align: left } .rp-paper td.q { background: #fff8d6; font-weight: 700 }
+.rp-name .fields { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) }
+.rp-name .field input { width: 100%; text-align: left }
+.rp-paper .mth th { font-size: 8.5px; padding: 2px 1px }
+
 /* 로그인 */
 body.locked { overflow: hidden }
 .login-gate { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; overflow: auto; background: var(--bg);
@@ -573,7 +594,7 @@ table.list td.nw { white-space: nowrap }
           <label class="field" for="rfqSuffix">고정 문구<input id="rfqSuffix" type="text" value="Material Spot" autocomplete="off"></label>
           <label class="field" for="rfqDue">회신 기한 (due)<input id="rfqDue" type="date" class="data"></label>
         </div>
-        <label class="field" for="rfqTitle">견적요청서 제목 (메일 제목·파일 이름)
+        <label class="field" for="rfqTitle">견적요청서 제목 (양식 1 · 메일 제목·파일 이름)
           <input id="rfqTitle" class="name-input" type="text" maxlength="150" autocomplete="off" spellcheck="false">
         </label>
       </div>
@@ -689,6 +710,38 @@ table.list td.nw { white-space: nowrap }
   </div>
 </div>
 
+<div class="modal" id="rfqPick" hidden role="dialog" aria-modal="true" aria-labelledby="rpTitle">
+  <div class="modal-box rp-box">
+    <div class="panel-head"><h2 id="rpTitle">견적요청서 양식 고르기</h2><span class="muted">아래 예시는 지금 품목으로 만든 모습입니다</span></div>
+    <div class="rp-opts" role="radiogroup" aria-label="견적요청서 양식">
+      <button type="button" class="rp-opt" data-tpl="month" role="radio" aria-checked="false">
+        <div class="rp-head"><span><b>양식 1 · 월별 수량</b> <span class="muted">같은 자재는 한 줄, Need-by 달 칸에 수량</span></span><span class="rp-check"></span></div>
+        <div class="rp-paper p1" id="rpPrev1"></div>
+      </button>
+      <button type="button" class="rp-opt" data-tpl="list" role="radio" aria-checked="false">
+        <div class="rp-head"><span><b>양식 2 · 목록형</b> <span class="muted">Need-by 마다 한 줄 (같은 자재도 다음 줄)</span></span><span class="rp-check"></span></div>
+        <div class="rp-paper p2" id="rpPrev2"></div>
+      </button>
+    </div>
+    <div class="rp-name" id="rpName1" hidden>
+      <label class="field" for="rpTitle1">파일 이름 · 메일 제목<input id="rpTitle1" class="name-input" type="text" maxlength="150" autocomplete="off" spellcheck="false"></label>
+    </div>
+    <div class="rp-name stack" id="rpName2" hidden>
+      <div class="fields">
+        <label class="field" for="rp2Kind">물종<input id="rp2Kind" type="text" placeholder="HW" maxlength="20" autocomplete="off"></label>
+        <label class="field" for="rp2Init">이름 이니셜<input id="rp2Init" type="text" placeholder="YWK" maxlength="10" autocomplete="off" spellcheck="false"></label>
+        <label class="field" for="rp2Prog">Program<input id="rp2Prog" type="text" placeholder="AH-64E EFAB" maxlength="60" autocomplete="off"></label>
+      </div>
+      <label class="field" for="rpTitle2">파일 이름 · 메일 제목 (RFQ_날짜_KE_물종_이니셜_Program)<input id="rpTitle2" class="name-input" type="text" maxlength="150" autocomplete="off" spellcheck="false"></label>
+    </div>
+    <div class="pk-foot">
+      <span class="muted" id="rpNote">양식을 하나 고르세요</span>
+      <div class="row"><button class="btn-ghost" id="rpCancel" type="button">취소</button><button class="btn" id="rpOk" type="button" disabled>이 양식으로 만들기</button></div>
+    </div>
+    <div class="err" id="rpMsg"></div>
+  </div>
+</div>
+
 <div class="modal" id="picker" hidden role="dialog" aria-modal="true" aria-labelledby="pkTitle">
   <div class="modal-box">
     <div class="panel-head"><h2 id="pkTitle">저장할 폴더 선택</h2><span class="muted" id="pkFor"></span></div>
@@ -732,7 +785,7 @@ function showLogin(msg, st) {
   st = st || auth.st;
   clearTimeout(auth.timer);
   document.body.classList.add('locked');
-  ['vDrawer', 'draftModal', 'picker'].forEach(function (id) { if ($(id)) $(id).hidden = true; });
+  ['vDrawer', 'draftModal', 'picker', 'rfqPick'].forEach(function (id) { if ($(id)) $(id).hidden = true; });
   $('loginGate').hidden = false;
   $('loginMsg').textContent = msg || '';
   if (st) {
@@ -1113,29 +1166,105 @@ $('base').addEventListener('change', updateRfqTitle);
 $('rfqTitle').addEventListener('input', function () { state.rfqTitleEdited = this.value !== autoRfqTitle(); });
 
 $('btnRfq').onclick = function () {
-  var b = this, groups = state.rfqGroups || [];
+  var groups = state.rfqGroups || [];
   $('rfqMsg').innerHTML = '';
   var missing = groups.filter(function (g) { return !String(state.rfqEdit[g.key].name).trim(); });
   if (missing.length) { $('rfqMsg').innerHTML = '<span class="err">Item name을 적어 주세요: ' + esc(missing.map(function (g) { return g.first.item; }).join(', ')) + '</span>'; return; }
   if (!$('rfqDue').value) { $('rfqMsg').innerHTML = '<span class="err">회신 기한(due)을 골라 주세요.</span>'; $('rfqDue').focus(); return; }
-  var items = groups.map(function (g) {
+  openRfqPick();
+};
+function rfqItems() {
+  return (state.rfqGroups || []).map(function (g) {
     var r = g.first, e = state.rfqEdit[g.key];
     return { item: r.item, registered: !!(r.registered || itemDesc[r.item]), name: e.name.trim(), desc: e.desc.trim(), qpl: e.qpl.trim(), uom: e.uom.trim(), remark: e.remark.trim(), material: r.material || '',
       qty: g.qty, needBy: g.rows[0].needBy, program: r.program, shelfLife: r.shelfLife, shipFrom: r.shipFrom, taxCode: r.taxCode,
       parts: g.rows.map(function (x) { return { qty: x.qty, needBy: x.needBy || '', program: x.program || '' }; }) };
   });
+}
+
+/* 양식 고르기 팝업: 양식 1 (월별, 같은 자재 한 줄) · 양식 2 (목록형, Need-by 마다 한 줄) */
+var rp = { tpl: '', nameEdited: false };
+function lsGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* 저장 안 되는 브라우저 */ } }
+function rpPreviews() {
+  var items = rfqItems(), cut = function (t, n) { t = String(t || ''); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+  // 양식 1: 가장 이른 Need-by 달부터 6칸만 보여 줌
+  var firstNb = items.map(function (x) { return x.parts.map(function (p) { return p.needBy; }); }).reduce(function (a, b) { return a.concat(b); }, []).filter(Boolean).sort()[0] || $('base').value;
+  var y0 = +firstNb.slice(0, 4), m0 = +firstNb.slice(5, 7) - 1, months = [];
+  for (var k = 0; k < 6; k++) { var d = new Date(y0, m0 + k, 1); months.push(d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2)); }
+  var mk = function (nb) { if (!nb) return 0; return (+nb.slice(0, 4) - y0) * 12 + (+nb.slice(5, 7) - 1 - m0); };
+  var g1 = items.slice(0, 4);
+  $('rpPrev1').innerHTML = '<table><colgroup><col style="width:4%"><col style="width:15%"><col style="width:13%"><col style="width:16%">' + months.map(function () { return '<col style="width:6.5%">'; }).join('') + '<col style="width:4%"><col style="width:9%"></colgroup>' +
+    '<tr class="mth"><th>L/I</th><th>KE Item No</th><th>Item name</th><th>Description</th>' + months.map(function (m) { return '<th>' + m.slice(2).replace('-', '.') + '</th>'; }).join('') + '<th>…</th><th>Qty</th></tr>' +
+    g1.map(function (x, i) {
+      var cells = months.map(function (m, j) { var q = 0; x.parts.forEach(function (p) { if (mk(p.needBy) === j) q += Number(p.qty) || 0; }); return '<td>' + (q ? fmt(q) : '') + '</td>'; }).join('');
+      return '<tr><td>' + (i + 1) + '</td><td class="l">' + esc(cut(x.registered ? x.item : 'TBD', 16)) + '</td><td>' + esc(cut(x.name, 14)) + '</td><td class="l">' + esc(cut(x.desc, 22)) + '</td>' + cells + '<td></td><td class="q">' + fmt(x.qty) + '</td></tr>';
+    }).join('') + '</table>';
+  // 양식 2: 줄 단위
+  var rows = [];
+  items.forEach(function (x) { x.parts.forEach(function (p) { rows.push({ name: x.name, desc: x.desc, uom: x.uom, qpl: x.qpl, qty: p.qty, nb: p.needBy, prog: p.program }); }); });
+  $('rpPrev2').innerHTML = '<table><colgroup><col style="width:5%"><col style="width:16%"><col style="width:24%"><col style="width:8%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:12%"><col style="width:9%"><col style="width:8%"></colgroup>' +
+    '<tr><th>L/I</th><th>Part Number</th><th>Part Name</th><th>PO Qty</th><th>UOM</th><th>U/P</th><th>T/P</th><th>MFG(QPL)</th><th>Need by</th><th>Program</th></tr>' +
+    rows.slice(0, 5).map(function (x, i) {
+      return '<tr><td>' + (i + 1) + '</td><td class="l">' + esc(cut(x.name, 16)) + '</td><td class="l">' + esc(cut(x.desc, 26)) + '</td><td>' + fmt(x.qty) + '</td><td>' + esc(x.uom) + '</td><td></td><td></td><td class="l">' + esc(cut(x.qpl, 12)) + '</td><td>' + esc((x.nb || 'ASAP').replace(/-/g, '.')) + '</td><td>' + esc(cut(x.prog, 10)) + '</td></tr>';
+    }).join('') + (rows.length > 5 ? '<tr><td colspan="10" style="text-align:left;border:0;color:#666">… 모두 ' + rows.length + '줄</td></tr>' : '') + '</table>';
+  return { items: items, rows: rows };
+}
+function rp2AutoName() {
+  var ymd = ($('base').value || '').replace(/-/g, '').slice(2);
+  var clean = function (x) { return String(x || '').trim().replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '_'); };
+  return ['RFQ', ymd, 'KE', clean($('rp2Kind').value), clean($('rp2Init').value).toUpperCase(), clean($('rp2Prog').value)].filter(String).join('_');
+}
+function rpChoose(tpl) {
+  rp.tpl = tpl;
+  document.querySelectorAll('.rp-opt').forEach(function (b) { b.setAttribute('aria-checked', String(b.dataset.tpl === tpl)); });
+  $('rpName1').hidden = tpl !== 'month'; $('rpName2').hidden = tpl !== 'list';
+  $('rpOk').disabled = !tpl;
+  $('rpNote').textContent = tpl === 'month' ? '양식 1 · 같은 자재는 한 줄로 합쳐 월별 칸에 수량' : tpl === 'list' ? '양식 2 · Need-by 마다 한 줄' : '양식을 하나 고르세요';
+  $('rpMsg').textContent = '';
+  if (tpl === 'list' && !$('rp2Kind').value) setTimeout(function () { $('rp2Kind').focus(); }, 30);
+}
+function openRfqPick() {
+  var pv = rpPreviews();
+  $('rpTitle1').value = $('rfqTitle').value;
+  var progs = [];
+  pv.rows.forEach(function (x) { String(x.prog || '').split(/[,\/]/).forEach(function (p) { p = p.trim(); if (p && progs.indexOf(p) < 0) progs.push(p); }); });
+  $('rp2Kind').value = lsGet('rp2Kind'); $('rp2Init').value = lsGet('rp2Init'); $('rp2Prog').value = progs.join(' ');
+  rp.nameEdited = false; $('rpTitle2').value = rp2AutoName();
+  $('rfqPick').hidden = false;
+  rpChoose(lsGet('rfqTpl'));
+  if (!rp.tpl) document.querySelector('.rp-opt').focus();
+}
+document.querySelectorAll('.rp-opt').forEach(function (b) { b.onclick = function () { rpChoose(b.dataset.tpl); }; });
+['rp2Kind', 'rp2Init', 'rp2Prog'].forEach(function (id) { $(id).addEventListener('input', function () { $('rpMsg').textContent = ''; if (!rp.nameEdited) $('rpTitle2').value = rp2AutoName(); }); });
+$('rpTitle2').addEventListener('input', function () { rp.nameEdited = this.value !== rp2AutoName(); });
+$('rpCancel').onclick = function () { $('rfqPick').hidden = true; };
+$('rfqPick').addEventListener('click', function (e) { if (e.target === this) this.hidden = true; });
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('rfqPick').hidden) $('rfqPick').hidden = true; });
+$('rpOk').onclick = function () {
+  var tpl = rp.tpl, title = (tpl === 'list' ? $('rpTitle2') : $('rpTitle1')).value.trim();
+  if (tpl === 'list' && (!$('rp2Kind').value.trim() || !$('rp2Init').value.trim())) { $('rpMsg').textContent = '물종과 이름 이니셜을 적어 주세요.'; (!$('rp2Kind').value.trim() ? $('rp2Kind') : $('rp2Init')).focus(); return; }
+  if (!title) { $('rpMsg').textContent = '파일 이름을 적어 주세요.'; return; }
+  lsSet('rfqTpl', tpl);
+  if (tpl === 'list') { lsSet('rp2Kind', $('rp2Kind').value.trim()); lsSet('rp2Init', $('rp2Init').value.trim()); }
+  if (tpl === 'month' && title !== $('rfqTitle').value) { $('rfqTitle').value = title; state.rfqTitleEdited = title !== autoRfqTitle(); }
+  $('rfqPick').hidden = true;
+  createRfq(tpl, title);
+};
+function createRfq(tpl, title) {
+  var b = $('btnRfq'), items = rfqItems();
   pickFolder('견적요청서').then(function (folder) {
     if (!folder) return;
     b.disabled = true; b.textContent = '만드는 중…';
-    return call('apiCreateRfq', { baseDate: $('base').value, title: $('rfqTitle').value, due: $('rfqDue').value, folder: folder.id, items: items }).then(function (d) {
-      $('rfqMsg').innerHTML = '<span class="rfq-done ok-msg">견적요청서를 ' + esc(folder.name) + '에 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">열어서 검토 ↗</a>' +
+    return call('apiCreateRfq', { template: tpl, baseDate: $('base').value, title: title, due: $('rfqDue').value, folder: folder.id, items: items }).then(function (d) {
+      $('rfqMsg').innerHTML = '<span class="rfq-done ok-msg">견적요청서(' + (tpl === 'list' ? '양식 2' : '양식 1') + ')를 ' + esc(folder.name) + '에 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">열어서 검토 ↗</a>' +
         '<button class="btn" type="button" id="btnRfqDraft">검토했으면 메일 초안 만들기</button></span>';
       $('btnRfqDraft').onclick = function () { openDraft(d.recordId, d.name); };
       loadRecords();
     });
   }).catch(function (e) { $('rfqMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; })
     .finally(function () { b.disabled = false; b.textContent = '견적요청서 만들기'; });
-};
+}
 
 /* ---------- 메일 초안 (Gmail 임시보관함) ---------- */
 var draft = { recordId: null, vendors: null };

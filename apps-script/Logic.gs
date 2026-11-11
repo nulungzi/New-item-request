@@ -871,6 +871,64 @@ function rfqEmail_(items, due, signatureHtml) {
 }
 
 /* ------------------------------------------------------------------
+ * 견적요청서 템플릿 2 (목록형): Need-by 마다 한 줄 (같은 자재여도 다음 줄)
+ *   templates/견적요청서_템플릿2_목록형.xlsx · 1행 머리글, 2행부터 품목
+ *   A L/I · B Part Number(Item name) · C Description · D Qty · E UOM · F U/P · G T/P · H Lead Time · I MOQ
+ *   J MFG(QPL) · K Need by date · L Quality Doc(Remark) · M NOTE · N Program · O Supplier
+ * ------------------------------------------------------------------ */
+var RFQ2 = {
+  SHEET: 'RFQ', FIRST: 2,
+  C: { LI: 1, PN: 2, DESC: 3, QTY: 4, UOM: 5, UP: 6, TP: 7, LT: 8, MOQ: 9, QPL: 10, NEED: 11, DOC: 12, NOTE: 13, PROGRAM: 14, SUPPLIER: 15 },
+  LAST: 15
+};
+
+/** 합친 품목(parts)을 Need-by 한 건마다 한 줄로 다시 나눔. 줄마다 그 건의 수량·Need-by·Program */
+function splitRfqItems_(items) {
+  var out = [];
+  items.forEach(function (it) {
+    var ps = it.parts && it.parts.length ? it.parts : [{ qty: it.qty, needBy: it.needBy, program: it.program }];
+    ps.forEach(function (p) {
+      var o = {};
+      Object.keys(it).forEach(function (k) { if (k !== 'parts') o[k] = it[k]; });
+      o.qty = Number(toNumber_(p.qty)) || 0;
+      o.needBy = p.needBy || '';
+      o.program = p.program !== undefined ? String(p.program || '') : String(it.program || '');
+      out.push(o);
+    });
+  });
+  return out;
+}
+
+/** 목록형 견적요청서 작성 계획. items 는 줄 단위 (splitRfqItems_) */
+function buildRfq2Plan_(items) {
+  var ops = [], S = RFQ2.SHEET, C = RFQ2.C;
+  var set = function (r, c, v) { ops.push({ op: 'set', s: S, r: r, c: c, v: v }); };
+  var dot = function (d) { d = toDate_(d); return d ? fmtDate_(d).replace(/-/g, '.') : 'ASAP'; };
+  items.forEach(function (it, i) {
+    var r = RFQ2.FIRST + i;
+    if (i) ops.push({ op: 'rowFmt', s: S, fs: S, fr: RFQ2.FIRST, r: r, c1: 1, c2: RFQ2.LAST });
+    set(r, C.LI, i + 1);
+    set(r, C.PN, it.name || it.item || '');
+    set(r, C.DESC, it.desc || '');
+    set(r, C.QTY, Number(it.qty) || 0);
+    set(r, C.UOM, it.uom || '');
+    set(r, C.TP, '=IF(ISNUMBER(F' + r + '), D' + r + '*F' + r + ', "")');
+    set(r, C.QPL, it.qpl || '');
+    set(r, C.NEED, dot(it.needBy));                 // 샘플처럼 2027.02.01 글자
+    set(r, C.DOC, it.remark === undefined ? RFQ.REMARK : it.remark);
+    set(r, C.PROGRAM, it.program || '');
+  });
+  return ops;
+}
+
+/** 목록형 파일 이름: RFQ_261110_KE_HW_YWK_AH-64E_EFAB (빈 칸은 빠짐, 공백은 _) */
+function rfq2FileName_(base, kind, initials, program) {
+  var clean = function (x) { return String(x || '').trim().replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '_'); };
+  var ymd = fmtDate_(base).replace(/-/g, '').slice(2);
+  return ['RFQ', ymd, 'KE', clean(kind), clean(initials).toUpperCase(), clean(program)].filter(String).join('_');
+}
+
+/* ------------------------------------------------------------------
  * Spot 견적 구매내역서 (템플릿: templates/Spot_구매내역서_템플릿.xlsx)
  *   견적종합   품목마다 업체 수(N)만큼 줄. A 선정 체크 · B 검토 문구 · AD~AN 업체 견적
  *   구매내역서 견적종합에서 A=TRUE 인 줄을 찾아 선정 결과, 오른쪽은 업체별 비교(업체마다 4칸)

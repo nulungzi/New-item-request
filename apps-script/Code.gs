@@ -11,6 +11,7 @@
  *   OUTPUT_FOLDER_ID (권장) 생성한 구매내역서를 넣을 드라이브 폴더 ID
  *   SHEET_ID         (선택) 자재정보가 있는 스프레드시트 ID (없으면 이 스크립트가 붙은 시트)
  *   RFQ_TEMPLATE_ID  (견적요청서) 견적요청서 템플릿 구글 시트 ID — templates/견적요청서_템플릿.xlsx
+ *   RFQ2_TEMPLATE_ID (견적요청서 2, 목록형) — templates/견적요청서_템플릿2_목록형.xlsx
  *   ARCHIVE_SHEET_ID (완료 보관) 완료된 기록을 옮겨 둘 다른 스프레드시트 ID
  *   SPOT_TEMPLATE_ID (Spot 견적) Spot 견적 구매내역서 템플릿 구글 시트 ID — templates/Spot_구매내역서_템플릿.xlsx
  */
@@ -579,6 +580,9 @@ function checkSetup() {
   var rid = prop_('RFQ_TEMPLATE_ID');
   if (!rid) bad('스크립트 속성 RFQ_TEMPLATE_ID 가 없습니다 (견적요청서 템플릿)');
   else { try { var rt = SpreadsheetApp.openById(rid); if (rt.getSheetByName(RFQ.SHEET)) ok('견적요청서 템플릿: ' + rt.getName()); else bad('견적요청서 템플릿에 "' + RFQ.SHEET + '" 탭이 없습니다'); } catch (e) { bad('견적요청서 템플릿을 열 수 없습니다: ' + e.message); } }
+  var rid2 = prop_('RFQ2_TEMPLATE_ID');
+  if (!rid2) bad('스크립트 속성 RFQ2_TEMPLATE_ID 가 없습니다 (견적요청서 템플릿 2 · 목록형)');
+  else { try { var rt2 = SpreadsheetApp.openById(rid2); if (rt2.getSheetByName(RFQ2.SHEET)) ok('견적요청서 템플릿 2: ' + rt2.getName()); else bad('견적요청서 템플릿 2에 "' + RFQ2.SHEET + '" 탭이 없습니다'); } catch (e) { bad('견적요청서 템플릿 2를 열 수 없습니다: ' + e.message); } }
   var sid = prop_('SPOT_TEMPLATE_ID');
   if (!sid) bad('스크립트 속성 SPOT_TEMPLATE_ID 가 없습니다 (Spot 견적 구매내역서 템플릿)');
   else { try { var st = SpreadsheetApp.openById(sid), miss = [SPOT.SUMMARY, SPOT.DETAIL, SPOT.QUOTE, SPOT.PROTO].filter(function (n) { return !st.getSheetByName(n); });
@@ -601,10 +605,15 @@ function checkSetup() {
  * 견적요청서 (RFQ) · Gmail 임시보관함 초안
  * ================================================================ */
 /** 견적요청서 만들기. payload = {baseDate, title, due('yyyy-mm-dd'), folder, items:[{item, registered, name, desc, qpl, uom, remark, qty, needBy, program, shelfLife, shipFrom, taxCode}]} */
+/**
+ * payload.template: 'month' (기본, 템플릿 1 · 같은 자재 한 줄 · 월별 칸) | 'list' (템플릿 2 · Need-by 마다 한 줄)
+ */
 function apiCreateRfq(payload) {
   auth_();
-  var merged = mergeRfqItems_(payload.items || []);   // 같은 자재는 Need-by 가 달라도 한 줄
-  var items = merged.map(function (it) {
+  var list = payload.template === 'list';
+  // 템플릿 1: 같은 자재는 Need-by 가 달라도 한 줄 · 템플릿 2: 같은 자재여도 Need-by 마다 다음 줄
+  var rows = list ? splitRfqItems_(payload.items || []) : mergeRfqItems_(payload.items || []);
+  var items = rows.map(function (it) {
     var o = {};
     Object.keys(it).forEach(function (k) { o[k] = it[k]; });
     o.needBy = toDate_(it.needBy);
@@ -612,15 +621,15 @@ function apiCreateRfq(payload) {
   });
   if (!items.length) throw new Error('견적요청서에 넣을 품목이 없습니다.');
   var base = toDate_(payload.baseDate) || toDate_(new Date());
-  var title = String(payload.title || '').trim() || rfqTitle_(base, '', '', undefined, payload.due);
-  var tid = prop_('RFQ_TEMPLATE_ID');
-  if (!tid) throw new Error('스크립트 속성 RFQ_TEMPLATE_ID(견적요청서 템플릿 시트 ID)를 설정해 주세요. README 참고.');
+  var title = String(payload.title || '').trim() || (list ? rfq2FileName_(base, '', '', '') : rfqTitle_(base, '', '', undefined, payload.due));
+  var key = list ? 'RFQ2_TEMPLATE_ID' : 'RFQ_TEMPLATE_ID', tid = prop_(key);
+  if (!tid) throw new Error('스크립트 속성 ' + key + '(' + (list ? '견적요청서 템플릿 2 · 목록형' : '견적요청서 템플릿') + ' 시트 ID)를 설정해 주세요. README 참고.');
   var folder = targetFolder_(payload.folder), tpl = DriveApp.getFileById(tid);
   var file = folder ? tpl.makeCopy(title, folder) : tpl.makeCopy(title);
   var ss = SpreadsheetApp.openById(file.getId());
-  applyPlan_(ss, buildRfqPlan_(items, base));
+  applyPlan_(ss, list ? buildRfq2Plan_(items) : buildRfqPlan_(items, base));
   var rec = addRecord_({ kind: '견적요청서', title: title, url: ss.getUrl(), fileId: ss.getId(), status: '견적요청서 작성',
-    items: merged, due: payload.due || '' });
+    items: rows, due: payload.due || '' });
   return { url: ss.getUrl(), name: title, id: ss.getId(), recordId: rec.id };
 }
 

@@ -443,3 +443,22 @@ test('로그인 유지 시간 4시간', () => {
   assert.ok(!L.sessionValid_(0, t));
   assert.ok(L.isEmail_(' A.b@ke.co.kr ') && !L.isEmail_('ab@') && !L.isEmail_('a b@x.com'));
 });
+
+test('견적요청서 템플릿 2 (목록형): Need-by 마다 한 줄, 같은 자재도 다음 줄', () => {
+  const items = [
+    { item: 'KERN00534-001', registered: true, name: 'PC938', desc: 'MARKING PENCIL', qpl: 'Newell', uom: 'EA', remark: 'COC & TR', qty: 488, needBy: '2027-03-01',
+      parts: [{ qty: 244, needBy: '2027-03-01', program: 'AH-64E' }, { qty: 244, needBy: '2027-09-01', program: 'EFAB' }] },
+    { item: 'MS20995C20', name: 'MS20995C20', desc: 'Safety Wire', uom: 'RL', qty: 3, needBy: '', program: '787' }];
+  const rows = L.splitRfqItems_(items);
+  assert.deepStrictEqual(rows.map(r => [r.name, r.qty, r.needBy, r.program]), [['PC938', 244, '2027-03-01', 'AH-64E'], ['PC938', 244, '2027-09-01', 'EFAB'], ['MS20995C20', 3, '', '787']]);
+  assert.ok(rows.every(r => !r.parts));
+  const ops = L.buildRfq2Plan_(rows);
+  const get = (r, c) => (ops.filter(o => o.op === 'set' && o.r === r && o.c === c).pop() || {}).v;
+  assert.deepStrictEqual([1, 2, 3, 4, 5, 7, 10, 11, 12, 14].map(c => get(2, c)),
+    [1, 'PC938', 'MARKING PENCIL', 244, 'EA', '=IF(ISNUMBER(F2), D2*F2, "")', 'Newell', '2027.03.01', 'COC & TR', 'AH-64E']);
+  assert.deepStrictEqual([get(3, 1), get(3, 2), get(3, 11)], [2, 'PC938', '2027.09.01']);
+  assert.deepStrictEqual([get(4, 11), get(4, 12), get(4, 6), get(4, 15)], ['ASAP', 'MFG COC/TR', undefined, undefined]);   // U/P·Supplier 는 업체가 적음
+  assert.deepStrictEqual(ops.filter(o => o.op === 'rowFmt').map(o => [o.fr, o.r]), [[2, 3], [2, 4]]);
+  assert.strictEqual(L.rfq2FileName_(L.toDate_('2026-11-10'), 'HW', 'ywk', 'AH-64E EFAB'), 'RFQ_261110_KE_HW_YWK_AH-64E_EFAB');
+  assert.strictEqual(L.rfq2FileName_(L.toDate_('2026-11-10'), ' ', 'YWK', ''), 'RFQ_261110_KE_YWK');
+});

@@ -203,6 +203,15 @@ test('견적요청서 → 메일 초안 → 내 기록 → 완료 보관', () =>
   assert.strictEqual(ctx.apiMyRecords().records.length, 0);
   assert.strictEqual(archive.tabs['완료기록'].rows.length, 2);   // 머리글 + 1건
   assert.strictEqual(archive.tabs['완료기록'].rows[1][7], '완료');
+
+  // 템플릿 2 (목록형): RFQ2_TEMPLATE_ID, 같은 자재도 Need-by 마다 한 줄로 기록
+  assert.throws(() => ctx.apiCreateRfq({ template: 'list', baseDate: '2026-11-10', items: [{ item: 'A', name: 'A', qty: 1 }] }), /RFQ2_TEMPLATE_ID/);
+  props.RFQ2_TEMPLATE_ID = 'tpl2';
+  const r2 = ctx.apiCreateRfq({ template: 'list', baseDate: '2026-11-10', title: 'RFQ_261110_KE_HW_YWK_AH-64E', due: '2026-11-20', items: [
+    { item: 'KERN00534-001', name: 'PC938', uom: 'EA', qty: 488, needBy: '2027-03-01', parts: [{ qty: 244, needBy: '2027-03-01', program: 'AH-64E' }, { qty: 244, needBy: '2027-09-01', program: 'AH-64E' }] }] });
+  assert.strictEqual(r2.name, 'RFQ_261110_KE_HW_YWK_AH-64E');
+  const rec2 = ctx.apiMyRecords().records.find(x => x.id === r2.recordId);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(rec2.items.map(x => [x.qty, x.needBy]))), [[244, '2027-03-01'], [244, '2027-09-01']]);
 });
 
 test('견적 저장 → Spot 견적 구매내역서, 계약+Spot 단가는 두 파일로', () => {
