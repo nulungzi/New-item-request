@@ -654,6 +654,9 @@ function scheduleConfirmOps_(base, schedule, extra) {
   var G = TPL.SCHEDULE;
   // 일정 칸 24개(E~AB) 너비를 모두 같게 (템플릿에 따라 Y·AA·AB가 넓게 남는 경우가 있음)
   for (var wc = 5; wc <= 28; wc++) add({ op: 'width', s: G, c: wc, px: SCHEDULE_COL_PX });
+  // 연도(4행)·월(5행) 병합을 먼저 모두 풀어야 서식 복사가 병합 칸과 겹치지 않음
+  // (구글 시트: "부분적으로 병합과 교차되는 붙여넣기를 실행할 수 없습니다")
+  add({ op: 'unmerge', s: G, r1: 4, c1: 5, r2: 5, c2: 28 });
   // 11·12번째 달(Y~AB) 칸 서식이 템플릿에 없을 수 있어 W·X 서식을 복사
   for (var fr = 4; fr <= 10; fr++) {
     [25, 27].forEach(function (fc) {
@@ -661,9 +664,7 @@ function scheduleConfirmOps_(base, schedule, extra) {
       add({ op: 'cellFmt', s: G, r: fr, c: fc + 1, fs: G, fr: fr, fc: 24 });
     });
   }
-  add({ op: 'merge', s: G, r1: 5, c1: 25, r2: 5, c2: 26 });
-  add({ op: 'merge', s: G, r1: 5, c1: 27, r2: 5, c2: 28 });
-  add({ op: 'unmerge', s: G, r1: 4, c1: 5, r2: 4, c2: 28 });
+  for (var mc = 5; mc <= 28; mc += 2) add({ op: 'merge', s: G, r1: 5, c1: mc, r2: 5, c2: mc + 1 });   // 월 칸: 달마다 2칸
   for (var c = 5; c <= 28; c++) set(G, 4, c, '');
   var y = base.getFullYear(), m = base.getMonth() + 1, segStart = 5;
   for (var k = 0; k < 12; k++) {

@@ -118,8 +118,9 @@ test('구매내역서 계획: 통화 2개, 업체 2개', () => {
   // 구매일정: 11월부터 12개월, 2026년(2개월) / 2027년(10개월)
   assert.strictEqual(get('구매일정', 5, 5), 11);
   assert.strictEqual(get('구매일정', 5, 27), 10);
-  const merges = ops.filter(o => o.op === 'merge' && o.s === '구매일정').map(o => [o.c1, o.c2]);
-  assert.deepStrictEqual(merges, [[25, 26], [27, 28], [5, 8], [9, 28]]);   // 11·12번째 달 칸 병합 + 연도
+  const merges = ops.filter(o => o.op === 'merge' && o.s === '구매일정');
+  assert.deepStrictEqual(merges.filter(o => o.r1 === 4).map(o => [o.c1, o.c2]), [[5, 8], [9, 28]]);   // 연도
+  assert.strictEqual(merges.filter(o => o.r1 === 5).length, 12);                                        // 달마다 2칸
 });
 
 test('화면 표 입력: Program·Ship·Tax 전달, 빈 행 무시', () => {
@@ -461,4 +462,39 @@ test('견적요청서 템플릿 2 (목록형): Need-by 마다 한 줄, 같은 �
   assert.deepStrictEqual(ops.filter(o => o.op === 'rowFmt').map(o => [o.fr, o.r]), [[2, 3], [2, 4]]);
   assert.strictEqual(L.rfq2FileName_(L.toDate_('2026-11-10'), 'HW', 'ywk', 'AH-64E EFAB'), 'RFQ_261110_KE_HW_YWK_AH-64E_EFAB');
   assert.strictEqual(L.rfq2FileName_(L.toDate_('2026-11-10'), ' ', 'YWK', ''), 'RFQ_261110_KE_YWK');
+});
+
+// 구글 시트처럼: 서식 복사(fmt·cellFmt·rowFmt) 대상이 병합 칸과 일부만 겹치면 오류
+function simulateMerges(ops, initial) {
+  const merges = {};
+  Object.keys(initial).forEach(s => { merges[s] = initial[s].map(m => Object.assign({}, m)); });
+  const list = s => (merges[s] = merges[s] || []);
+  const partial = (m, r1, c1, r2, c2) => {
+    const inter = !(m.r2 < r1 || m.r1 > r2 || m.c2 < c1 || m.c1 > c2);
+    const inside = m.r1 >= r1 && m.r2 <= r2 && m.c1 >= c1 && m.c2 <= c2;
+    return inter && !inside;
+  };
+  ops.forEach((o, i) => {
+    if (o.op === 'unmerge') merges[o.s] = list(o.s).filter(m => m.r2 < o.r1 || m.r1 > o.r2 || m.c2 < o.c1 || m.c1 > o.c2);
+    else if (o.op === 'merge') list(o.s).push({ r1: o.r1, c1: o.c1, r2: o.r2, c2: o.c2 });
+    else if (o.op === 'cellFmt' || o.op === 'fmt' || o.op === 'rowFmt') {
+      const c1 = o.op === 'cellFmt' ? o.c : o.c1, c2 = o.op === 'cellFmt' ? o.c : o.c2;
+      const bad = list(o.s).find(m => partial(m, o.r, c1, o.r, c2));
+      if (bad) throw new Error('op ' + i + ' ' + JSON.stringify(o) + ' 가 병합 ' + JSON.stringify(bad) + ' 와 일부 겹침');
+    }
+  });
+}
+const pair = (r, c1, c2) => ({ r1: r, c1, r2: r, c2 });
+test('구매일정: 서식 복사가 템플릿 병합 칸과 겹치지 않는다 (계약·Spot 템플릿)', () => {
+  const months = []; for (let c = 5; c <= 27; c += 2) months.push(pair(5, c, c + 1));
+  // 계약 템플릿: 4행 E4:J4 · K4:Z4, 5행 달마다 2칸 (E5:F5 … AA5:AB5)
+  const contract = { 구매일정: [pair(4, 5, 10), pair(4, 11, 26)].concat(months) };
+  // Spot 템플릿: 4행 E4:H4 · I4:X4, 5행 E5:F5 … W5:X5 · AA5:AB5
+  const spot = { 구매일정: [pair(4, 5, 8), pair(4, 9, 24)].concat(months.filter(m => m.c1 !== 25)) };
+  const base = L.toDate_('2026-11-11');
+  const ops = L.scheduleConfirmOps_(base, null, {});
+  simulateMerges(ops, contract);
+  simulateMerges(ops, spot);
+  const line = { item: 'A', qty: 1, needBy: L.toDate_('2027-06-10'), supplier: 'AKZO', cur: 'USD', price: 2, priceMode: 'LTA' };
+  simulateMerges(L.buildPurchasePlan_([line], ['USD'], { USD: 1350 }, base), contract);
 });
