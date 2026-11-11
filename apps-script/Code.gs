@@ -91,6 +91,68 @@ function plainDates_(o) {
 }
 
 /* ================================================================
+ * 로그인
+ *   웹앱은 "웹 앱에 액세스하는 사용자" 권한으로 실행해야 각자 드라이브·Gmail 임시보관함을 씀.
+ *   로그인 = 담당자가 입력한 이메일이 지금 접속한 Google 계정과 같은지 확인 → 사용자 탭에 등록 →
+ *   4시간 동안 유지 (사용자별 UserProperties 에 로그인 시각)
+ * ================================================================ */
+var SHEET_USERS = '사용자';
+var USER_HEADERS = ['이메일', '처음 등록', '마지막 로그인'];
+var DEPLOY_MSG = '웹앱이 "나(배포한 사람)" 권한으로 배포되어 있어 모든 파일·메일 초안이 배포한 사람 계정으로 만들어집니다.\n' +
+  '배포한 사람이 Apps Script 편집기에서 배포 → 배포 관리 → 수정 → "다음 사용자 인증 정보로 실행: 웹 앱에 액세스하는 사용자" → 새 버전으로 배포해 주세요.';
+
+function authState_() {
+  var account = normEmail_(Session.getActiveUser().getEmail()), runAs = normEmail_(Session.getEffectiveUser().getEmail());
+  var p = PropertiesService.getUserProperties();
+  var at = Number(p.getProperty('LOGIN_AT')) || 0, who = normEmail_(p.getProperty('LOGIN_EMAIL'));
+  var deployOk = !!account && account === runAs;
+  var loggedIn = deployOk && who === account && sessionValid_(at, Date.now());
+  var url = '';
+  try { url = ScriptApp.getService().getUrl(); } catch (e) { /* 편집기에서 실행 */ }
+  return { account: account, deployOk: deployOk, deployMsg: deployOk ? '' : DEPLOY_MSG, loggedIn: loggedIn,
+    expiresAt: loggedIn ? at + SESSION_HOURS * 3600000 : 0, now: Date.now(), hours: SESSION_HOURS, url: url };
+}
+/** 로그인했는지 확인하고 이메일을 돌려줌. 안 했거나 4시간이 지났으면 오류 (화면이 로그인 창을 띄움) */
+function auth_() {
+  var st = authState_();
+  if (!st.deployOk) throw new Error('LOGIN_REQUIRED: ' + DEPLOY_MSG);
+  if (!st.loggedIn) throw new Error('LOGIN_REQUIRED: 로그인해 주세요. (로그인은 ' + SESSION_HOURS + '시간 동안 유지됩니다)');
+  return st.account;
+}
+function apiAuthState() { return authState_(); }
+
+/** 담당자 이메일로 로그인. 처음이면 사용자 탭에 등록 */
+function apiLogin(email) {
+  var st = authState_(), typed = normEmail_(email);
+  if (!st.deployOk) throw new Error(DEPLOY_MSG);
+  if (!isEmail_(typed)) throw new Error('이메일 주소를 정확히 입력해 주세요.');
+  if (typed !== st.account) {
+    throw new Error('입력한 이메일(' + typed + ')과 지금 접속한 Google 계정(' + st.account + ')이 다릅니다.\n' +
+      '본인 Google 계정으로 접속해야 본인 드라이브·Gmail 임시보관함에 만들어집니다. 아래 "다른 Google 계정으로 접속"을 눌러 계정을 바꿔 주세요.');
+  }
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  var isNew = false;
+  try {
+    var ss = db_(), sh = ss.getSheetByName(SHEET_USERS);
+    if (!sh) { sh = ss.insertSheet(SHEET_USERS); sh.appendRow(USER_HEADERS); sh.setFrozenRows(1); }
+    var now = new Date(), vals = sh.getDataRange().getValues(), row = 0;
+    for (var i = 1; i < vals.length; i++) if (normEmail_(vals[i][0]) === typed) { row = i + 1; break; }
+    if (row) sh.getRange(row, 3).setValue(now);
+    else { sh.appendRow([typed, now, now]); isNew = true; }
+  } finally { lock.releaseLock(); }
+  PropertiesService.getUserProperties().setProperties({ LOGIN_AT: String(Date.now()), LOGIN_EMAIL: typed });
+  var out = authState_();
+  out.isNew = isNew;
+  return out;
+}
+function apiLogout() {
+  var p = PropertiesService.getUserProperties();
+  p.deleteProperty('LOGIN_AT'); p.deleteProperty('LOGIN_EMAIL');
+  return { ok: true };
+}
+
+/* ================================================================
  * 웹앱
  * ================================================================ */
 function doGet() {
@@ -101,6 +163,7 @@ function doGet() {
 
 /** 화면이 처음 열릴 때: 작성일, 저장된 환율, 구매일정 설정, Item 안내, 신규 등록 양식 */
 function apiInit() {
+  auth_();
   var values = masterValues_();
   return {
     today: fmtDate_(new Date()),
@@ -113,6 +176,7 @@ function apiInit() {
 
 /** 소요제기 판정. input: 화면 표(행 배열) 또는 붙여넣기 글. baseDateStr: 작성일 (계약 판정은 품목별 Need-by 기준) */
 function apiClassify(input, baseDateStr) {
+  auth_();
   var parsed = Array.isArray(input) ? parseRows_(input) : parseRequest_(input);
   var base = toDate_(baseDateStr) || toDate_(new Date());
   var results = classify_(parsed.requests, loadContracts_(), base).map(function (r) {
@@ -125,6 +189,7 @@ function apiClassify(input, baseDateStr) {
 
 /** 신규 자재를 자재정보 시트 맨 아래에 추가. rec 키는 masterFields_ 의 key. 머리글 없는 맨 앞 번호 열은 윗줄 + 1 */
 function apiRegisterItem(rec) {
+  auth_();
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
@@ -160,6 +225,7 @@ function apiRegisterItem(rec) {
  * 단가는 contractRow 로 자재정보를 다시 읽어 서버에서 확정한다(화면 값은 믿지 않음).
  */
 function apiCreatePurchase(payload) {
+  auth_();
   var lines = purchaseLines_(payload);
   var rates = checkedRates_(payload.rates, uniq_(lines.map(function (l) { return l.cur; })).filter(function (c) { return c !== 'KRW'; }));
   saveRates_(rates);
@@ -246,6 +312,7 @@ function targetFolder_(folderInput) {
  * ================================================================ */
 /** parentId 안의 폴더 목록. parentId 가 없으면 내 드라이브 맨 위 */
 function apiListFolders(parentId) {
+  auth_();
   var root = DriveApp.getRootFolder(), rootId = root.getId();
   var here;
   try { here = parentId ? DriveApp.getFolderById(parentId) : root; here.getName(); }
@@ -271,6 +338,7 @@ function apiListFolders(parentId) {
 
 /** 폴더 선택 창의 "새 폴더" */
 function apiCreateFolder(parentId, name) {
+  auth_();
   name = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 100);
   if (!name) throw new Error('폴더 이름을 입력해 주세요.');
   var parent = parentId ? DriveApp.getFolderById(parentId) : DriveApp.getRootFolder();
@@ -280,6 +348,7 @@ function apiCreateFolder(parentId, name) {
 
 /** 화면 "확인" 버튼: 폴더 이름을 돌려준다 */
 function apiCheckFolder(folderInput) {
+  auth_();
   var f = targetFolder_(folderInput);
   return f ? { name: f.getName(), url: f.getUrl(), picked: !!parseFolderId_(folderInput) } : { name: '내 드라이브 (기본 위치)', url: '', picked: false };
 }
@@ -288,6 +357,7 @@ function apiCheckFolder(folderInput) {
  * 입력용 시트: 엑셀처럼 적어 두고 웹앱 표에 복사·붙여넣기
  * ================================================================ */
 function apiCreateInputSheet(folderInput, title) {
+  auth_();
   var folder = targetFolder_(folderInput);
   var name = String(title || '').trim() || '소요제기 입력 시트';
   var ss = SpreadsheetApp.create(name);
@@ -414,6 +484,7 @@ function setCell_(cell, v, tz) {
  * 1순위 구글 시트 "웹페이지(zip)" 내보내기, 실패하면 값·배경·병합만 그린 간단한 표
  * ================================================================ */
 function apiPreview(id) {
+  auth_();
   SpreadsheetApp.flush();
   var exported = {};
   try { exported = exportHtml_(id); } catch (e) { console.warn('zip 내보내기 실패: ' + e); }
@@ -531,6 +602,7 @@ function checkSetup() {
  * ================================================================ */
 /** 견적요청서 만들기. payload = {baseDate, title, due('yyyy-mm-dd'), folder, items:[{item, registered, name, desc, qpl, uom, remark, qty, needBy, program, shelfLife, shipFrom, taxCode}]} */
 function apiCreateRfq(payload) {
+  auth_();
   var merged = mergeRfqItems_(payload.items || []);   // 같은 자재는 Need-by 가 달라도 한 줄
   var items = merged.map(function (it) {
     var o = {};
@@ -559,6 +631,7 @@ function vendorSheet_() {
   return null;
 }
 function apiVendors() {
+  auth_();
   var sh = vendorSheet_();
   if (!sh) return { vendors: [], missing: true };
   return { vendors: parseVendors_(sh.getDataRange().getValues()), missing: false };
@@ -576,8 +649,9 @@ function signature_() {
   var saved = PropertiesService.getUserProperties().getProperty('SIGNATURE_HTML') || '';
   return { html: saved, source: saved ? 'saved' : 'none', gmailService: typeof Gmail !== 'undefined' };
 }
-function apiSignature() { return signature_(); }
+function apiSignature() { auth_(); return signature_(); }
 function apiSaveSignature(text) {
+  auth_();
   var html = String(text || '').trim();
   if (html && !/<[a-z][\s\S]*>/i.test(html)) html = esc_(html).replace(/\n/g, '<br>');   // 글자로 적으면 줄바꿈만 살림
   PropertiesService.getUserProperties().setProperty('SIGNATURE_HTML', html);
@@ -586,6 +660,7 @@ function apiSaveSignature(text) {
 
 /** Gmail 임시보관함에 초안 만들기. 받는 사람은 비우고 고른 업체만 숨은 참조. payload = {recordId, bcc:[...]} */
 function apiCreateRfqDraft(payload) {
+  auth_();
   var bcc = uniq_((payload.bcc || []).map(function (m) { return String(m).trim(); }).filter(function (m) { return /@/.test(m); }));
   if (!bcc.length) throw new Error('메일을 받을 업체를 한 곳 이상 골라 주세요.');
   var found = findRecord_(payload.recordId, true);
@@ -671,6 +746,7 @@ function updateRecord_(found, patch) {
 
 /** 내 진행 기록 (최근 순) */
 function apiMyRecords() {
+  auth_();
   var who = me_();
   var list = recordSheet_().getDataRange().getValues().slice(1).map(rowToRecord_)
     .filter(function (r) { return r.id && r.owner === who; });
@@ -680,6 +756,7 @@ function apiMyRecords() {
 
 /** 완료: 진행기록에서 보관 파일로 옮긴다 (본인 기록만) */
 function apiCompleteRecord(id) {
+  auth_();
   var aid = prop_('ARCHIVE_SHEET_ID');
   if (!aid) throw new Error('스크립트 속성 ARCHIVE_SHEET_ID(완료 보관 스프레드시트 ID)를 설정해 주세요.');
   var lock = LockService.getScriptLock();
@@ -705,6 +782,7 @@ function apiCompleteRecord(id) {
  * ================================================================ */
 /** 견적 입력 임시 저장. quote = {vendors, items:[{prev, program, quotes}], rates} */
 function apiSaveQuotes(recordId, quote) {
+  auth_();
   var found = findRecord_(recordId, true);
   if (found.rec.kind !== '견적요청서') throw new Error('견적요청서 기록이 아닙니다.');
   updateRecord_(found, { data: { quote: quote } });
@@ -716,6 +794,7 @@ function apiSaveQuotes(recordId, quote) {
  *            items:[{item, name, desc, material, qpl, uom, remark, qty, needBy, program, prev, quotes}]}
  */
 function apiCreateSpotPurchase(payload) {
+  auth_();
   var found = findRecord_(payload.recordId, true);
   if (found.rec.kind !== '견적요청서') throw new Error('견적요청서 기록이 아닙니다.');
   var tid = prop_('SPOT_TEMPLATE_ID');

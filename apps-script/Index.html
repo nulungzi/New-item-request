@@ -217,6 +217,23 @@ a { color: var(--accent) }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
 [hidden] { display: none !important }
 
+/* 로그인 */
+body.locked { overflow: hidden }
+.login-gate { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; overflow: auto; background: var(--bg);
+  padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px)) }
+.login-card { width: min(440px, 100%); display: grid; gap: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  padding: 28px 24px; box-shadow: 0 18px 50px rgba(0, 0, 0, .12); animation: login-in .25s cubic-bezier(.2, .8, .2, 1) }
+@keyframes login-in { from { opacity: 0; transform: translateY(10px) } }
+@media (prefers-reduced-motion: reduce) { .login-card { animation: none } }
+.login-card h1 { font-size: 1.5rem; font-weight: 700 }
+.login-card .field input { width: 100%; font-size: 1rem; padding: 10px 12px; text-align: left }
+.login-card .btn { width: 100%; padding: 11px; font-size: 1rem }
+.login-acct { padding: 10px 12px; border-radius: 8px; background: var(--surface-2); font-size: .88rem; word-break: break-all }
+.login-acct b { font-family: var(--font-data) }
+.login-foot { display: grid; gap: 6px; font-size: .82rem }
+.user-row { gap: 8px }
+.user-row .btn-ghost { padding: 5px 12px; font-size: .82rem }
+
 /* 머리 */
 .masthead { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 24px; padding-bottom: 4px }
 .eyebrow { font-size: .75rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent) }
@@ -398,7 +415,21 @@ table.list td.nw { white-space: nowrap }
 @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth } }
 </style>
 </head>
-<body>
+<body class="locked">
+<div class="login-gate" id="loginGate">
+  <form class="login-card" id="loginForm" novalidate>
+    <div><div class="eyebrow">LTA · 3PP 자재 구매</div><h1>소요제기 판정</h1></div>
+    <p class="muted">담당자 이메일로 로그인합니다. 파일은 <b>내 Google 드라이브</b>, 메일 초안은 <b>내 Gmail 임시보관함</b>에 만들어집니다.</p>
+    <div class="login-acct" id="loginAcct">Google 계정 확인 중…</div>
+    <label class="field" for="loginEmail">담당자 이메일<input id="loginEmail" type="email" autocomplete="email" inputmode="email" placeholder="name@company.com" spellcheck="false" disabled></label>
+    <button class="btn" id="loginBtn" type="submit" disabled>로그인</button>
+    <div class="err" id="loginMsg" role="alert"></div>
+    <div class="login-foot muted">
+      <span>처음 로그인하면 자동으로 등록됩니다 · 로그인하고 <span id="loginHours">4</span>시간이 지나면 자동 로그아웃</span>
+      <a id="loginSwitch" href="https://accounts.google.com/AccountChooser" target="_top" rel="noopener">다른 Google 계정으로 접속 ↗</a>
+    </div>
+  </form>
+</div>
 <main>
 
 <header class="masthead">
@@ -408,6 +439,7 @@ table.list td.nw { white-space: nowrap }
   </div>
   <div class="masthead-side">
     <div class="legend"><span class="chip chip-ok">LTA</span><span class="chip chip-ok">3PP</span> 계약 구매내역서 · <span class="chip chip-priced">SPOT 단가</span> Spot 구매내역서 · <span class="chip chip-spot">SPOT 견적</span> 견적요청서</div>
+    <div class="row user-row"><span class="muted" id="userWho"></span><button class="btn-ghost" id="btnLogout" type="button">로그아웃</button></div>
     <div class="row db-row"><span class="muted" id="dbStamp"></span><button class="btn-ghost" id="btnDbRefresh" type="button" title="자재정보 시트에서 고친 최신 값을 다시 불러옵니다">DB 새로고침</button></div>
   </div>
 </header>
@@ -685,8 +717,76 @@ function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function 
 function fmt(n) { return n == null ? '' : Number(n).toLocaleString('ko-KR', { maximumFractionDigits: 4 }); }
 function call(fn) {
   var args = [].slice.call(arguments, 1);
-  return new Promise(function (ok, fail) { google.script.run.withSuccessHandler(ok).withFailureHandler(fail)[fn].apply(null, args); });
+  return new Promise(function (ok, fail) {
+    google.script.run.withSuccessHandler(ok).withFailureHandler(function (e) {
+      var m = String((e && e.message) || e);
+      if (m.indexOf('LOGIN_REQUIRED') >= 0) { m = m.replace(/^[\s\S]*LOGIN_REQUIRED:\s*/, ''); showLogin(m); e = new Error(m); }
+      fail(e);
+    })[fn].apply(null, args);
+  });
 }
+
+/* ---------- 로그인 (담당자 이메일 = 지금 접속한 Google 계정, 4시간 유지) ---------- */
+var auth = { st: null, until: 0, timer: null, started: false };
+function showLogin(msg, st) {
+  st = st || auth.st;
+  clearTimeout(auth.timer);
+  document.body.classList.add('locked');
+  ['vDrawer', 'draftModal', 'picker'].forEach(function (id) { if ($(id)) $(id).hidden = true; });
+  $('loginGate').hidden = false;
+  $('loginMsg').textContent = msg || '';
+  if (st) {
+    $('loginAcct').innerHTML = st.account ? '지금 접속한 Google 계정 <b>' + esc(st.account) + '</b>' : 'Google 계정을 확인하지 못했습니다.';
+    $('loginHours').textContent = st.hours || 4;
+    if (st.url) $('loginSwitch').href = 'https://accounts.google.com/AccountChooser?continue=' + encodeURIComponent(st.url);
+    var off = !st.deployOk;
+    $('loginEmail').disabled = off; $('loginBtn').disabled = off;
+    if (!off) setTimeout(function () { $('loginEmail').focus(); }, 50);
+  }
+}
+function hideLogin(st) {
+  auth.st = st;
+  auth.until = Date.now() + Math.max(0, st.expiresAt - (st.now || Date.now()));   // 서버 시계 기준 남은 시간
+  $('loginGate').hidden = true;
+  document.body.classList.remove('locked');
+  var end = new Date(auth.until);
+  $('userWho').textContent = st.account + ' · ' + ('0' + end.getHours()).slice(-2) + ':' + ('0' + end.getMinutes()).slice(-2) + '까지 로그인';
+  clearTimeout(auth.timer);
+  auth.timer = setTimeout(expire, auth.until - Date.now());
+}
+function expire() { showLogin('로그인한 지 ' + ((auth.st && auth.st.hours) || 4) + '시간이 지나 로그아웃되었습니다. 다시 로그인해 주세요.'); }
+document.addEventListener('visibilitychange', function () {   // 잠자던 탭이 깨어났을 때
+  if (!document.hidden && auth.until && Date.now() >= auth.until && $('loginGate').hidden) expire();
+});
+function startApp() {
+  if (auth.started) return;
+  auth.started = true;
+  startDb();
+  loadRecords();
+}
+function checkAuth() {
+  call('apiAuthState').then(function (st) {
+    auth.st = st;
+    if (!st.deployOk) showLogin(st.deployMsg, st);
+    else if (st.loggedIn) { hideLogin(st); startApp(); }
+    else showLogin('', st);
+  }).catch(function (e) { showLogin('접속 정보를 확인하지 못했습니다: ' + (e.message || e)); });
+}
+$('loginForm').addEventListener('submit', function (ev) {
+  ev.preventDefault();
+  var b = $('loginBtn'), email = $('loginEmail').value.trim();
+  if (!email) { $('loginMsg').textContent = '담당자 이메일을 입력해 주세요.'; $('loginEmail').focus(); return; }
+  b.disabled = true; b.textContent = '확인 중…'; $('loginMsg').textContent = '';
+  call('apiLogin', email).then(function (st) {
+    hideLogin(st);
+    startApp();
+  }).catch(function (e) { $('loginMsg').textContent = e.message || e; })
+    .finally(function () { b.disabled = false; b.textContent = '로그인'; });
+});
+$('btnLogout').onclick = function () {
+  var b = this; b.disabled = true;
+  call('apiLogout').catch(function () {}).then(function () { b.disabled = false; $('loginEmail').value = ''; showLogin('로그아웃했습니다.'); });
+};
 
 /* ---------- 1. 소요제기 입력 표 ---------- */
 var itemDesc = {};
@@ -876,13 +976,15 @@ $('btnDbRefresh').onclick = function () {
   }).catch(function (e) { $('dbStamp').textContent = e.message || e; })
     .finally(function () { b.disabled = false; b.textContent = 'DB 새로고침'; });
 };
-loadDb(true).then(function (d) {
-  if (d.schedule) {
-    state.tasks = d.schedule.tasks;
-    state.schedExample = d.schedule.example;
-    state.sched = d.schedule.tasks.map(function () { return { start: 0, len: 0 }; });   // 빈 일정에서 시작
-  }
-});
+function startDb() {   // 로그인한 뒤 처음 한 번
+  return loadDb(true).then(function (d) {
+    if (d.schedule) {
+      state.tasks = d.schedule.tasks;
+      state.schedExample = d.schedule.example;
+      state.sched = d.schedule.tasks.map(function () { return { start: 0, len: 0 }; });   // 빈 일정에서 시작
+    }
+  }).catch(function (e) { $('dbStamp').textContent = e.message || e; });
+}
 
 $('btnClassify').onclick = function () {
   var b = this; $('msg1').textContent = '';
@@ -1486,7 +1588,6 @@ function loadRecords() {
     });
   }).catch(function (e) { $('recMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; });
 }
-loadRecords();
 
 /* ---------- 1-1. 신규 자재 등록 ---------- */
 var REG_TYPES = {
@@ -1761,6 +1862,7 @@ function loadPreview(d) {
     show(0);
   }).catch(function (e) { $('pvNote').textContent = '미리보기를 불러오지 못했습니다: ' + (e.message || e); });
 }
+checkAuth();   // 로그인 확인 → 화면 시작
 </script>
 </body>
 </html>

@@ -247,3 +247,47 @@ test('견적 저장 → Spot 견적 구매내역서, 계약+Spot 단가는 두 �
   mine = ctx.apiMyRecords().records;
   assert.deepStrictEqual(mine.map(r => [r.kind, r.status]).sort(), [['Spot 구매내역서', '작성'], ['견적 구매내역서', '작성'], ['견적요청서', '견적 구매내역서 작성'], ['계약 구매내역서', '작성']].sort());
 });
+
+test('로그인: 입력한 이메일 = 접속한 Google 계정이어야 하고, 처음이면 사용자 탭에 등록, 4시간 뒤 만료', () => {
+  const mkCtx = (active, effective) => {
+    const props = {}, rows = [];
+    const users = { appendRow: r => rows.push(r), setFrozenRows: () => {}, getDataRange: () => ({ getValues: () => rows }), getRange: (r, c) => ({ setValue: v => { rows[r - 1][c - 1] = v; } }) };
+    let hasUsers = false;
+    const db = { getSheetByName: n => (n === '사용자' && hasUsers ? users : null), insertSheet: () => { hasUsers = true; return users; } };
+    const ctx = {
+      SpreadsheetApp: { getActive: () => db },
+      PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }),
+        getUserProperties: () => ({ getProperty: k => props[k] || null, setProperties: o => Object.assign(props, o), deleteProperty: k => { delete props[k]; } }) },
+      LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
+      Session: { getActiveUser: () => ({ getEmail: () => active }), getEffectiveUser: () => ({ getEmail: () => effective }) },
+      ScriptApp: { getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/X/exec' }) },
+    };
+    inContext(ctx, null, { realAuth: true });
+    return { ctx, props, rows };
+  };
+  // "나" 권한으로 배포 → 다른 사람이 열면 막고 배포 방법 안내
+  const bad = mkCtx('', 'owner@ke.com');
+  assert.strictEqual(bad.ctx.apiAuthState().deployOk, false);
+  assert.throws(() => bad.ctx.apiLogin('kim@ke.com'), /웹 앱에 액세스하는 사용자/);
+  assert.throws(() => bad.ctx.apiMyRecords(), /LOGIN_REQUIRED/);
+
+  const { ctx, props, rows } = mkCtx('Kim@KE.com', 'Kim@KE.com');
+  assert.strictEqual(ctx.apiAuthState().loggedIn, false);
+  assert.throws(() => ctx.apiMyRecords(), /LOGIN_REQUIRED/);
+  assert.throws(() => ctx.apiLogin('lee@ke.com'), /지금 접속한 Google 계정\(kim@ke.com\)이 다릅니다/);
+  assert.throws(() => ctx.apiLogin('kim'), /정확히/);
+  const st = ctx.apiLogin('  KIM@ke.com ');
+  assert.strictEqual(st.loggedIn, true);
+  assert.strictEqual(st.isNew, true);
+  assert.strictEqual(rows.length, 2);                     // 머리글 + 등록
+  assert.strictEqual(rows[1][0], 'kim@ke.com');
+  assert.strictEqual(st.expiresAt - Number(props.LOGIN_AT), 4 * 3600000);
+  assert.strictEqual(ctx.auth_(), 'kim@ke.com');
+  assert.strictEqual(ctx.apiLogin('kim@ke.com').isNew, false);   // 두 번째는 등록하지 않음
+  assert.strictEqual(rows.length, 2);
+  props.LOGIN_AT = String(Date.now() - 4 * 3600000 - 1000);     // 4시간 지남
+  assert.strictEqual(ctx.apiAuthState().loggedIn, false);
+  assert.throws(() => ctx.auth_(), /LOGIN_REQUIRED/);
+  ctx.apiLogin('kim@ke.com'); ctx.apiLogout();
+  assert.strictEqual(ctx.apiAuthState().loggedIn, false);
+});

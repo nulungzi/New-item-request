@@ -434,3 +434,12 @@ test('예전 기록(parts 없음)은 Need-by 한 건으로', () => {
   assert.strictEqual(ps[0].qty, 1200);
   assert.strictEqual(L.fmtDate_(ps[0].needBy), '2027-01-05');
 });
+
+test('로그인 유지 시간 4시간', () => {
+  const t = Date.now();
+  assert.strictEqual(L.SESSION_HOURS, 4);
+  assert.ok(L.sessionValid_(t - 3.9 * 3600000, t));
+  assert.ok(!L.sessionValid_(t - 4 * 3600000, t));
+  assert.ok(!L.sessionValid_(0, t));
+  assert.ok(L.isEmail_(' A.b@ke.co.kr ') && !L.isEmail_('ab@') && !L.isEmail_('a b@x.com'));
+});

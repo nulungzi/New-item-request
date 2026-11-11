@@ -10,9 +10,11 @@ function load() {
   if (!loaded) { FILES.forEach(f => vm.runInThisContext(source(f), { filename: f })); loaded = globalThis; }
   return loaded;
 }
-function inContext(ctx, order) {
+// 기본은 로그인한 상태로 (auth_ 통과). 로그인 자체를 검사할 때는 { realAuth: true }
+function inContext(ctx, order, opts) {
   vm.createContext(ctx);
   (order || FILES).forEach(f => vm.runInContext(source(f), ctx, { filename: f }));
+  if (!(opts && opts.realAuth)) ctx.auth_ = () => 'me@ke.com';
   return ctx;
 }
 module.exports = { load, inContext, source, FILES };

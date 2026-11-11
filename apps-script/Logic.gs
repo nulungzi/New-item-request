@@ -775,6 +775,18 @@ function mergeRfqItems_(items) {
   return out;
 }
 
+/* ------------------------------------------------------------------
+ * 로그인: 담당자 이메일을 입력해 로그인, 4시간이 지나면 다시 로그인
+ * ------------------------------------------------------------------ */
+var SESSION_HOURS = 4;
+function normEmail_(s) { return String(s == null ? '' : s).trim().toLowerCase(); }
+function isEmail_(s) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normEmail_(s)); }
+/** 로그인 시각(ms)으로 아직 유효한지 */
+function sessionValid_(loginAt, now) {
+  loginAt = Number(loginAt) || 0;
+  return loginAt > 0 && now >= loginAt - 60000 && now - loginAt < SESSION_HOURS * 3600000;
+}
+
 /** 'yyyy-mm-dd' 또는 Date → 'm/d' */
 function dueText_(d) {
   d = toDate_(d);
