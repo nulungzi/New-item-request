@@ -324,20 +324,22 @@ function purchaseFileName_(custom, base, suppliers) {
 /** 업체정보 탭 머리글 위치: 업체명·이메일 (+ SUPPLIER 정식 이름 · SITE). 10행 안에서 찾음 */
 function vendorCols_(values) {
   for (var r = 0; r < Math.min(values.length, 10); r++) {
-    var cn = -1, ce = -1, cs = -1, ct = -1, alt = -1;
+    var cn = -1, ce = -1, cs = -1, ct = -1, alt = -1, cc = -1;
     values[r].forEach(function (h, c) {
       var k = headerKey_(h);
       if (cn < 0 && (k === '업체명' || k === '업체' || k === 'vendor')) cn = c;
       if (ce < 0 && (k === '이메일' || k === 'email' || k === 'e메일' || k === 'mail')) ce = c;
       if (k === 'supplier' || k === '공급사' || k === '정식명') { if (cs < 0) cs = c; if (alt < 0) alt = c; }
       if (ct < 0 && (k === 'site' || k === '사이트')) ct = c;
+      if (cc < 0 && (k === 'contact' || k === '담당자' || k === '연락처')) cc = c;
     });
     if (cn < 0 && alt >= 0) { cn = alt; cs = -1; }   // 업체명 열이 없고 SUPPLIER 만 있으면 그것이 업체명
-    if (cn >= 0 && ce >= 0) return { hr: r, cn: cn, ce: ce, cs: cs === cn ? -1 : cs, ct: ct };
+    if (cn >= 0 && ce >= 0) return { hr: r, cn: cn, ce: ce, cs: cs === cn ? -1 : cs, ct: ct, cc: cc, width: values[r].length };
   }
-  return { hr: -1, cn: 0, ce: 1, cs: -1, ct: -1 };   // 머리글이 없으면 A 업체명 · B 이메일
+  return { hr: -1, cn: 0, ce: 1, cs: -1, ct: -1, cc: -1, width: 2 };   // 머리글이 없으면 A 업체명 · B 이메일
 }
 
+/** 업체 목록 [{name, emails:[...], people:[{email, contact}]}] — 메일 초안에서 업체·담당자별로 고름 */
 function parseVendors_(values) {
   var k = vendorCols_(values);
   var map = {}, order = [];
@@ -345,10 +347,35 @@ function parseVendors_(values) {
     var name = String(row[k.cn] || '').trim();
     var mails = String(row[k.ce] || '').split(/[;,\s]+/).filter(function (m) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m); });
     if (!name || !mails.length) return;
+    var contact = k.cc >= 0 ? String(row[k.cc] == null ? '' : row[k.cc]).trim() : '';
     if (!map[name]) { map[name] = []; order.push(name); }
-    mails.forEach(function (m) { if (map[name].indexOf(m) < 0) map[name].push(m); });
+    mails.forEach(function (m) { if (!map[name].some(function (p) { return p.email === m; })) map[name].push({ email: m, contact: contact }); });
   });
-  return order.map(function (n) { return { name: n, emails: map[n] }; });
+  return order.map(function (n) { return { name: n, emails: map[n].map(function (p) { return p.email; }), people: map[n] }; });
+}
+
+/**
+ * 업체정보 탭에 넣을 한 줄. o = {name, email, contact, supplier, site, isNew}
+ * 기존 업체(isNew 아님)는 같은 업체명(대소문자·띄어쓰기 무시)이 있어야 하고 SUPPLIER·SITE 는 기존 값을 이어 씀.
+ * 새 업체는 같은 이름이 없어야 함. 같은 업체에 같은 이메일이 있으면 오류
+ */
+function vendorRow_(values, o) {
+  var k = vendorCols_(values), name = String(o.name || '').trim(), email = String(o.email || '').trim().toLowerCase();
+  if (!name) throw new Error('업체명을 적어 주세요.');
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('이메일 주소를 확인해 주세요.');
+  var rows = values.slice(k.hr + 1), same = rows.filter(function (r) { return vendorKey_(r[k.cn]) === vendorKey_(name); });
+  if (o.isNew && same.length) throw new Error('"' + name + '"은(는) 이미 등록된 업체입니다. 기존 업체에 연락처 추가를 쓰세요.');
+  if (!o.isNew && !same.length) throw new Error('"' + name + '" 업체를 찾지 못했습니다.');
+  if (same.some(function (r) { return String(r[k.ce] || '').toLowerCase().split(/[;,\s]+/).indexOf(email) >= 0; })) throw new Error(email + ' 은(는) 이미 ' + name + ' 연락처에 있습니다.');
+  var first = same[0] || [], pick = function (col, v) { return col < 0 ? '' : String(v || '').trim() || String(first[col] == null ? '' : first[col]).trim(); };
+  var width = Math.max(k.width, Math.max(k.cn, k.ce, k.cs, k.ct, k.cc) + 1), row = [];
+  for (var i = 0; i < width; i++) row.push('');
+  row[k.cn] = same.length ? String(first[k.cn]).trim() : name;   // 기존 업체는 표기 그대로
+  row[k.ce] = email;
+  if (k.cs >= 0) row[k.cs] = pick(k.cs, o.supplier);
+  if (k.ct >= 0) row[k.ct] = pick(k.ct, o.site);
+  if (k.cc >= 0) row[k.cc] = String(o.contact || '').trim();
+  return row;
 }
 
 /** 업체명 → {supplier: SUPPLIER(정식 이름), site: SITE}. 한 업체 여러 줄이면 처음 채워진 값 */

@@ -176,7 +176,7 @@ test('견적요청서 → 메일 초안 → 내 기록 → 완료 보관', () =>
     ScriptApp: { getOAuthToken: () => 't' },
     GmailApp: { createDraft: (to, subj, text, opt) => { drafts.push({ to, subj, text, opt }); return { getId: () => 'D1' }; } },
   });
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(ctx.apiVendors())), { vendors: [{ name: 'Hexcel', emails: ['a@hexcel.com', 'b@hexcel.com'] }, { name: '3M', emails: ['q@3m.com'] }], missing: false });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(ctx.apiVendors(), (k, x) => k === 'people' ? undefined : x)), { vendors: [{ name: 'Hexcel', emails: ['a@hexcel.com', 'b@hexcel.com'] }, { name: '3M', emails: ['q@3m.com'] }], missing: false });
 
   const title = '[KE] RFQ // 261110 Boeing Chemical Material Spot (due 11/20)';
   const r = ctx.apiCreateRfq({ baseDate: '2026-11-10', title, due: '2026-11-20', items: [

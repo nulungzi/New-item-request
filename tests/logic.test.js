@@ -386,7 +386,7 @@ test('Spot 견적 구매내역서 계획: 업체 수만큼 줄·비교 칸, 선�
 
 test('업체정보 탭 읽기 (머리글 위치 자동, 한 업체 여러 줄) · "-" 는 빈칸', () => {
   const v = L.parseVendors_([[null, null, null], [null, '업체명', '이메일'], [null, 'OMI', 'a@omi.com'], [null, 'OMI', 'b@omi.com; a@omi.com'], [null, '3M', '잘못된주소'], [null, 'PPG', 'p@ppg.com']]);
-  assert.deepStrictEqual(v, [{ name: 'OMI', emails: ['a@omi.com', 'b@omi.com'] }, { name: 'PPG', emails: ['p@ppg.com'] }]);
+  assert.deepStrictEqual(v.map(x => ({ name: x.name, emails: x.emails })), [{ name: 'OMI', emails: ['a@omi.com', 'b@omi.com'] }, { name: 'PPG', emails: ['p@ppg.com'] }]);
   const c = L.parseContracts_([['Item', '계약 구분', '업체명', '단가', 'CUR', '계약시작', '계약종료', 'Ship Form', 'QPL'], ['K1', 'Spot', '-', '-', '-', '-', '-', '-', 'MOMENTIVE_NY']]);
   assert.deepStrictEqual([c[0].supplier, c[0].price, c[0].cur, c[0].start, c[0].shipFrom, c[0].qpl], ['', null, '', null, '', 'MOMENTIVE_NY']);
   const r = L.classify_(L.parseRequest_('K1 5 2027-01-01').requests, c, L.toDate_('2026-11-10'))[0];
@@ -511,7 +511,7 @@ test('구매일정: 서식 복사가 템플릿 병합 칸과 겹치지 않는다
 test('업체정보 SUPPLIER·SITE 열 (업체명 열이 SUPPLIER 보다 앞)', () => {
   const v = [['', '업체명', '이메일', 'SUPPLIER', 'SITE', 'CONTACT'], ['', 'OMI', 'a@omi.com', 'OMI SPECIALTY PRODUCTS, LLC', 'LA', 'x'], ['', 'OMI', 'b@omi.com', '', '', ''],
     ['', 'GV엔지니어링', 'g@gv.com', 'GV 엔지니어링', 6138159311, '']];
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(L.parseVendors_(v))), [{ name: 'OMI', emails: ['a@omi.com', 'b@omi.com'] }, { name: 'GV엔지니어링', emails: ['g@gv.com'] }]);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(L.parseVendors_(v), (k, x) => k === 'people' ? undefined : x)), [{ name: 'OMI', emails: ['a@omi.com', 'b@omi.com'] }, { name: 'GV엔지니어링', emails: ['g@gv.com'] }]);
   const info = L.vendorInfo_(v);
   assert.deepStrictEqual(JSON.parse(JSON.stringify(L.vendorOf_(info, 'omi'))), { supplier: 'OMI SPECIALTY PRODUCTS, LLC', site: 'LA' });
   assert.deepStrictEqual(JSON.parse(JSON.stringify(L.vendorOf_(info, 'GV 엔지니어링'))), { supplier: 'GV 엔지니어링', site: '6138159311' });
@@ -588,4 +588,16 @@ test('구매일정 표시 개월: 기본 12, 늘리면 그만큼 칸·병합·�
   assert.strictEqual(L.scheduleConfirmOps_(base, [{ start: 0, len: 4 }], {}).filter(o => o.op === 'width').length, 24);
   assert.strictEqual(L.schedMonths_({ months: 99 }), 36);
   assert.strictEqual(L.schedMonths_({ months: 3 }), 12);
+});
+
+test('업체정보: 기존 업체에 연락처 추가 · 새 업체 등록 · 담당자별 목록', () => {
+  const v = [[], ['', '업체명', '이메일', 'SUPPLIER', 'SITE', 'CONTACT'], ['', 'CBOL', 'paul.lee@cbol.com', 'CBOL CORPORATION', 'CBOL', 'Jun Kim_ORDER'], ['', 'CBOL', 'jun.kim@cbol.com', '', '', '']];
+  const list = L.parseVendors_(v);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(list[0].people)), [{ email: 'paul.lee@cbol.com', contact: 'Jun Kim_ORDER' }, { email: 'jun.kim@cbol.com', contact: '' }]);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(L.vendorRow_(v, { name: 'cbol', email: 'New@CBOL.com', contact: '홍길동' }))), ['', 'CBOL', 'new@cbol.com', 'CBOL CORPORATION', 'CBOL', '홍길동']);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(L.vendorRow_(v, { isNew: true, name: 'Aerovac', email: 'sales@aerovac.com', supplier: 'AEROVAC SYSTEMS', site: 'KEIGHLEY' }))), ['', 'Aerovac', 'sales@aerovac.com', 'AEROVAC SYSTEMS', 'KEIGHLEY', '']);
+  assert.throws(() => L.vendorRow_(v, { isNew: true, name: 'CBOL', email: 'x@cbol.com' }), /이미 등록된 업체/);
+  assert.throws(() => L.vendorRow_(v, { name: '없는업체', email: 'x@y.com' }), /찾지 못했습니다/);
+  assert.throws(() => L.vendorRow_(v, { name: 'CBOL', email: 'JUN.KIM@cbol.com' }), /이미 CBOL 연락처/);
+  assert.throws(() => L.vendorRow_(v, { name: 'CBOL', email: 'jun' }), /이메일/);
 });

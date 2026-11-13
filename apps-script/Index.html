@@ -95,13 +95,25 @@ main { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px }
 @media (prefers-reduced-motion: reduce) { .doc-panel { animation: none } }
 .rfq-done { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center }
 /* 메일 초안 */
-.modal-box.draft-box { grid-template-rows: auto auto minmax(0, 1fr) auto auto auto; width: min(980px, 100%) }
+.modal-box.draft-box { grid-template-rows: auto auto minmax(0, 1fr) auto auto auto auto; width: min(980px, 100%) }
 .dm-subject { font: 500 .88rem var(--font-data); padding: 8px 10px; background: var(--surface-2); border-radius: 6px; word-break: break-all }
 .dm-vendors { display: grid; gap: 8px; min-height: 0 }
 .dm-list { max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)) }
-.dm-list label { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; padding: 9px 12px; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); cursor: pointer; align-items: center }
-.dm-list label:has(input:checked) { background: var(--accent-soft) }
-.dm-list label small { grid-column: 2; color: var(--muted); font: .75rem var(--font-data); word-break: break-all }
+.dm-v { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); align-self: start }
+.dm-v:has(.dm-vhead input:checked), .dm-v:has(.dm-vhead input:indeterminate) { background: var(--accent-soft) }
+.dm-vhead { display: flex; align-items: center; gap: 6px; padding: 7px 8px 7px 12px }
+.dm-vhead label { flex: 1; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: center; cursor: pointer; min-width: 0 }
+.dm-vhead small { grid-column: 2; color: var(--muted); font: .75rem var(--font-data); word-break: break-all }
+.dm-more { border: 1px solid var(--line); background: var(--surface); color: var(--accent); border-radius: 999px; padding: 3px 9px; font: 600 .74rem var(--font-body); cursor: pointer; white-space: nowrap }
+.dm-people { display: grid; gap: 2px; padding: 0 10px 8px 34px }
+.dm-people label { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; align-items: center; padding: 4px 6px; border-radius: 6px; cursor: pointer; font: .8rem var(--font-data); word-break: break-all }
+.dm-people label:hover { background: var(--surface) }
+.dm-people small { grid-column: 2; font: .72rem var(--font-body); color: var(--muted) }
+.dm-add { border: 1px dashed var(--line); border-radius: 8px; padding: 8px 12px }
+.dm-add summary { cursor: pointer; font-weight: 600; color: var(--accent); font-size: .88rem }
+.dm-add[open] { display: grid; gap: 10px; background: var(--surface-2) }
+.dm-add .field input, .dm-add .field select { width: 100%; text-align: left; font-family: var(--font-body) }
+.rec-fold { margin-right: auto }
 .dm-sign summary { cursor: pointer; color: var(--muted); font-size: .86rem }
 .dm-sign textarea { width: 100%; margin: 8px 0; font-family: var(--font-body) }
 /* 견적 입력 */
@@ -752,6 +764,23 @@ table.list td.nw { white-space: nowrap }
       <div class="dm-list" id="dmList"></div>
       <span class="muted" id="dmCount"></span>
     </div>
+    <details class="dm-add" id="dmAddBox">
+      <summary>+ 연락처 추가 · 새 업체 등록</summary>
+      <div class="row">
+        <label class="inline"><input type="radio" name="dmAddMode" value="old" checked> 기존 업체에 연락처 추가</label>
+        <label class="inline"><input type="radio" name="dmAddMode" value="new"> 새 업체 등록</label>
+      </div>
+      <div class="fields">
+        <label class="field" id="dmAddOldF" for="dmAddVendor">업체<select id="dmAddVendor"></select></label>
+        <label class="field" id="dmAddNameF" for="dmAddName" hidden>업체명<input id="dmAddName" type="text" maxlength="60" autocomplete="off" placeholder="예: Aerovac"></label>
+        <label class="field" for="dmAddEmail">이메일<input id="dmAddEmail" type="email" maxlength="120" autocomplete="off" spellcheck="false" placeholder="name@company.com"></label>
+        <label class="field" for="dmAddContact">담당자 (CONTACT · 선택)<input id="dmAddContact" type="text" maxlength="60" autocomplete="off"></label>
+        <label class="field" id="dmAddSupF" for="dmAddSup" hidden>SUPPLIER (정식 이름 · 선택)<input id="dmAddSup" type="text" maxlength="120" autocomplete="off"></label>
+        <label class="field" id="dmAddSiteF" for="dmAddSite" hidden>SITE (선택)<input id="dmAddSite" type="text" maxlength="60" autocomplete="off"></label>
+      </div>
+      <div class="row"><button class="btn-ghost" id="dmAddOk" type="button">업체정보에 저장</button><span class="muted">자재정보 스프레드시트의 <b>업체정보</b> 탭에 한 줄 추가되고, 바로 아래 목록에서 고를 수 있습니다.</span></div>
+      <div class="err" id="dmAddMsg"></div>
+    </details>
     <details class="dm-sign" id="dmSignBox">
       <summary id="dmSignState">서명</summary>
       <textarea id="dmSign" rows="5" placeholder="이름 / 직급&#10;부서&#10;전화 · 이메일"></textarea>
@@ -1383,14 +1412,8 @@ function openDraft(recordId, title) {
   $('dmMsg').textContent = ''; $('dmAll').checked = false;
   $('draftModal').hidden = false;
   $('dmList').innerHTML = '<div class="pk-empty">업체정보 불러오는 중…</div>';
-  call('apiVendors').then(function (d) {
-    draft.vendors = d.vendors;
-    $('dmList').innerHTML = d.vendors.length ? d.vendors.map(function (v, i) {
-      return '<label><input type="checkbox" data-i="' + i + '"><span>' + esc(v.name) + '</span><small>' + esc(v.emails.join(', ')) + '</small></label>';
-    }).join('') : '<div class="pk-empty">' + (d.missing ? '자재정보 스프레드시트에 "업체정보" 탭(업체명, 이메일 열)을 만들어 주세요.' : '업체정보 탭에 업체가 없습니다.') + '</div>';
-    $('dmList').querySelectorAll('input').forEach(function (c) { c.onchange = countDraft; });
-    countDraft();
-  }).catch(function (e) { $('dmMsg').textContent = e.message || e; });
+  $('dmAddBox').open = false; $('dmAddMsg').textContent = '';
+  call('apiVendors').then(function (d) { renderDraftVendors(d, []); }).catch(function (e) { $('dmMsg').textContent = e.message || e; });
   call('apiSignature').then(showSign);
 }
 function showSign(sg) {
@@ -1401,16 +1424,82 @@ function showSign(sg) {
   $('dmSign').value = sg.source === 'saved' ? sg.html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '') : '';
   $('dmSignBox').open = sg.source === 'none';
 }
+/* 업체마다 체크 = 그 업체 담당자 전부. '담당자 n명 ▾' 를 펼쳐 특정 담당자만 고를 수 있음 */
+function renderDraftVendors(d, keep) {
+  draft.vendors = d.vendors;
+  $('dmList').innerHTML = d.vendors.length ? d.vendors.map(function (v, i) {
+    var people = v.people || v.emails.map(function (m) { return { email: m, contact: '' }; });
+    return '<div class="dm-v" data-v="' + i + '"><div class="dm-vhead"><label><input type="checkbox" data-vall="' + i + '"><span><b>' + esc(v.name) + '</b></span>' +
+        '<small>' + esc(v.emails.join(', ')) + '</small></label>' +
+        '<button type="button" class="dm-more" data-more="' + i + '" aria-expanded="false">담당자 ' + people.length + '명 ▾</button></div>' +
+      '<div class="dm-people" hidden>' + people.map(function (p) {
+        return '<label><input type="checkbox" data-v="' + i + '" data-e="' + esc(p.email) + '"' + (keep.indexOf(p.email) >= 0 ? ' checked' : '') + '><span>' + esc(p.email) + '</span>' + (p.contact ? '<small>' + esc(p.contact) + '</small>' : '') + '</label>';
+      }).join('') + '</div></div>';
+  }).join('') : '<div class="pk-empty">' + (d.missing ? '자재정보 스프레드시트에 "업체정보" 탭(업체명, 이메일 열)을 만들어 주세요. 아래 "새 업체 등록"으로 만들 수도 있습니다.' : '업체정보 탭에 업체가 없습니다.') + '</div>';
+  $('dmList').querySelectorAll('[data-vall]').forEach(function (c) {
+    c.onchange = function () { $('dmList').querySelectorAll('[data-e][data-v="' + c.dataset.vall + '"]').forEach(function (p) { p.checked = c.checked; }); syncDraft(); };
+  });
+  $('dmList').querySelectorAll('[data-e]').forEach(function (c) { c.onchange = syncDraft; });
+  $('dmList').querySelectorAll('[data-more]').forEach(function (b) {
+    b.onclick = function () {
+      var box = b.closest('.dm-v').querySelector('.dm-people'), open = box.hidden;
+      box.hidden = !open; b.setAttribute('aria-expanded', open);
+      b.textContent = b.textContent.replace(/[▾▴]$/, open ? '▴' : '▾');
+    };
+  });
+  $('dmAddVendor').innerHTML = d.vendors.map(function (v) { return '<option>' + esc(v.name) + '</option>'; }).join('');
+  syncDraft();
+}
+function syncDraft() {   // 업체 체크 상태(전부/일부/없음)를 담당자 체크에 맞춤
+  $('dmList').querySelectorAll('[data-vall]').forEach(function (c) {
+    var ps = $('dmList').querySelectorAll('[data-e][data-v="' + c.dataset.vall + '"]'), on = 0;
+    ps.forEach(function (p) { if (p.checked) on++; });
+    c.checked = on > 0 && on === ps.length; c.indeterminate = on > 0 && on < ps.length;
+  });
+  countDraft();
+}
 function chosenEmails() {
   var out = [];
-  $('dmList').querySelectorAll('input:checked').forEach(function (c) { draft.vendors[+c.dataset.i].emails.forEach(function (m) { if (out.indexOf(m) < 0) out.push(m); }); });
+  $('dmList').querySelectorAll('[data-e]:checked').forEach(function (c) { if (out.indexOf(c.dataset.e) < 0) out.push(c.dataset.e); });
+  return out;
+}
+function chosenVendors() {
+  var out = [];
+  $('dmList').querySelectorAll('[data-e]:checked').forEach(function (c) { var n = draft.vendors[+c.dataset.v].name; if (out.indexOf(n) < 0) out.push(n); });
   return out;
 }
 function countDraft() {
-  var n = $('dmList').querySelectorAll('input:checked').length;
+  var n = chosenVendors().length;
   $('dmCount').textContent = n ? n + '개 업체 · 메일 주소 ' + chosenEmails().length + '개를 숨은 참조로 넣습니다' : '업체를 골라 주세요';
 }
-$('dmAll').onchange = function () { var on = this.checked; $('dmList').querySelectorAll('input').forEach(function (c) { c.checked = on; }); countDraft(); };
+$('dmAll').onchange = function () { var on = this.checked; $('dmList').querySelectorAll('[data-e]').forEach(function (c) { c.checked = on; }); syncDraft(); };
+/* 업체정보 추가: 기존 업체에 연락처 / 새 업체 */
+function dmAddMode() { return document.querySelector('input[name="dmAddMode"]:checked').value; }
+document.querySelectorAll('input[name="dmAddMode"]').forEach(function (r) {
+  r.onchange = function () {
+    var nw = dmAddMode() === 'new';
+    $('dmAddOldF').hidden = nw; $('dmAddNameF').hidden = !nw; $('dmAddSupF').hidden = !nw; $('dmAddSiteF').hidden = !nw;
+    $('dmAddMsg').textContent = '';
+  };
+});
+$('dmAddOk').onclick = function () {
+  var b = this, nw = dmAddMode() === 'new', email = $('dmAddEmail').value.trim();
+  var o = { isNew: nw, name: nw ? $('dmAddName').value.trim() : $('dmAddVendor').value, email: email, contact: $('dmAddContact').value.trim(),
+    supplier: nw ? $('dmAddSup').value.trim() : '', site: nw ? $('dmAddSite').value.trim() : '' };
+  if (!o.name) { $('dmAddMsg').textContent = '업체명을 적어 주세요.'; return; }
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { $('dmAddMsg').textContent = '이메일 주소를 확인해 주세요.'; $('dmAddEmail').focus(); return; }
+  b.disabled = true; b.textContent = '저장 중…'; $('dmAddMsg').textContent = '';
+  var keep = chosenEmails().concat([email.toLowerCase()]);
+  call('apiAddVendor', o).then(function (d) {
+    renderDraftVendors(d, keep);
+    var i = d.vendors.map(function (v) { return v.name.replace(/\s+/g, '').toLowerCase(); }).indexOf(o.name.replace(/\s+/g, '').toLowerCase());
+    var row = $('dmList').querySelector('.dm-v[data-v="' + i + '"]');
+    if (row) { row.scrollIntoView({ block: 'nearest' }); var more = row.querySelector('[data-more]'); if (more && more.getAttribute('aria-expanded') !== 'true') more.click(); }
+    ['dmAddName', 'dmAddEmail', 'dmAddContact', 'dmAddSup', 'dmAddSite'].forEach(function (id) { $(id).value = ''; });
+    $('dmAddMsg').innerHTML = '<span class="ok-msg">' + esc(o.name) + ' · ' + esc(email) + ' 를 업체정보에 저장하고 골라 두었습니다.</span>';
+  }).catch(function (e) { $('dmAddMsg').textContent = e.message || e; })
+    .finally(function () { b.disabled = false; b.textContent = '업체정보에 저장'; });
+};
 $('dmSignSave').onclick = function () { call('apiSaveSignature', $('dmSign').value).then(function (sg) { showSign(sg); $('dmMsg').textContent = ''; }).catch(function (e) { $('dmMsg').textContent = e.message || e; }); };
 $('dmCancel').onclick = function () { $('draftModal').hidden = true; };
 $('draftModal').addEventListener('click', function (e) { if (e.target === this) this.hidden = true; });
@@ -1419,8 +1508,7 @@ $('dmOk').onclick = function () {
   var b = this, bcc = chosenEmails();
   if (!bcc.length) { $('dmMsg').textContent = '메일을 받을 업체를 한 곳 이상 골라 주세요.'; return; }
   b.disabled = true; b.textContent = '만드는 중…';
-  var names = [];
-  $('dmList').querySelectorAll('input:checked').forEach(function (c) { names.push(draft.vendors[+c.dataset.i].name); });
+  var names = chosenVendors();
   call('apiCreateRfqDraft', { recordId: draft.recordId, bcc: bcc, vendors: names }).then(function (d) {
     $('draftModal').hidden = true;
     var msg = '<span class="ok-msg">Gmail 임시보관함에 초안을 만들었습니다 (숨은 참조 ' + d.bccCount + '명) · <a href="' + esc(d.link) + '" target="_blank" rel="noopener">임시보관함 열기 ↗</a> — 확인 후 직접 보내세요.</span>';
@@ -1542,7 +1630,8 @@ function saveQuoteSilently(c) {
 /* 펼친 견적요청서의 업체 목록 */
 function vendorListHtml(rec) {
   if (!rec.draft || !(rec.vendors || []).length) {
-    return '<div class="noreply-note">아직 메일 초안을 만들지 않았습니다. <b>메일 초안 만들기</b>에서 업체를 고르면, 그 업체들이 여기에 나와 견적을 입력할 수 있습니다.</div>';
+    return '<div class="noreply-note">아직 메일 초안을 만들지 않았습니다. <b>메일 초안 만들기</b>에서 업체를 고르면, 그 업체들이 여기에 나와 견적을 입력할 수 있습니다.</div>' +
+      '<div class="rec-vfoot"><button class="btn-ghost rec-fold" type="button" data-fold="' + esc(rec.id) + '">접기 ▴</button></div>';
   }
   var c = quoteFor(rec);
   return c.vendors.map(function (v) {
@@ -1551,6 +1640,7 @@ function vendorListHtml(rec) {
       '<span class="v-st ' + st.cls + '">' + esc(st.text) + '</span><span class="go">›</span></button>';
   }).join('') +
   '<div class="rec-vfoot"><span class="muted">업체별로 모두 입력했으면 종합하세요. 회신이 없는 업체는 입력 창에서 <b>회신 없음</b>을 체크합니다.</span>' +
+  '<button class="btn-ghost rec-fold" type="button" data-fold="' + esc(rec.id) + '">접기 ▴</button>' +
   '<span class="row">' + (rec.quoteSheet ? '<a class="btn-ghost" href="' + esc(rec.quoteSheet) + '" target="_blank" rel="noopener">견적 입력용 시트 열기 ↗</a>'
     : '<button class="btn-ghost" type="button" data-qsheet="' + esc(rec.id) + '" title="업체별 탭에 Item code·이름·요청 수량·Need-by 를 채운 구글 시트">견적 입력용 시트 만들기</button>') +
   '<button class="btn" type="button" data-sum="' + esc(rec.id) + '">견적 종합 →</button></span></div>';
@@ -1560,6 +1650,9 @@ function bindVendorList(box) {
     b.onclick = function () { openDrawer(recById(b.dataset.rec), b.dataset.vendor); };
   });
   box.querySelectorAll('[data-sum]').forEach(function (b) { b.onclick = function () { openSummary(recById(b.dataset.sum)); }; });
+  box.querySelectorAll('[data-fold]').forEach(function (b) {
+    b.onclick = function () { var t = document.querySelector('[data-toggle="' + b.dataset.fold + '"]'); if (t) { t.click(); t.scrollIntoView({ block: 'nearest' }); } };
+  });
   box.querySelectorAll('[data-qsheet]').forEach(function (b) {
     b.onclick = function () {
       var rec = recById(b.dataset.qsheet);

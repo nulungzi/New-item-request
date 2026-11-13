@@ -714,6 +714,18 @@ function vendorInfoMap_() {
   var sh = vendorSheet_();
   return sh ? vendorInfo_(sh.getDataRange().getValues()) : {};
 }
+/** 업체정보 탭에 연락처 추가(기존 업체) 또는 새 업체 등록. 탭이 없으면 만듦. 끝나면 새 업체 목록 */
+function apiAddVendor(o) {
+  auth_();
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sh = vendorSheet_();
+    if (!sh) { sh = db_().insertSheet(SHEET_VENDORS[0]); sh.appendRow(['업체명', '이메일', 'SUPPLIER', 'SITE', 'CONTACT']); sh.setFrozenRows(1); }
+    sh.appendRow(vendorRow_(sh.getDataRange().getValues(), o || {}));
+  } finally { lock.releaseLock(); }
+  return apiVendors();
+}
 function apiVendors() {
   auth_();
   var sh = vendorSheet_();
