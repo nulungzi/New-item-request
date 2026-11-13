@@ -684,6 +684,7 @@ table.list td.nw { white-space: nowrap }
   <button type="button" class="side-btn" data-view="items">자재 등록</button>
   <button type="button" class="side-btn" data-view="vendors">업체 등록</button>
   <button type="button" class="side-btn" data-view="history">자재 이력</button>
+  <button type="button" class="side-btn" data-view="expiring">계약 만료 <span class="side-count" id="expCount"></span></button>
 </nav>
 <div class="views">
 <div id="viewHome" class="stack" hidden>
@@ -715,11 +716,6 @@ table.list td.nw { white-space: nowrap }
         </div>
       </div>
     </div></div>
-  </section>
-  <section class="hm-exp" id="hmExp" hidden>
-    <div class="hm-exp-head"><h3>계약 만료 임박 <span class="muted" id="hmExpCount"></span></h3>
-      <div class="seg" role="group" aria-label="구분"><button type="button" data-ex="all" aria-pressed="true">전체</button><button type="button" data-ex="LTA" aria-pressed="false">LTA</button><button type="button" data-ex="3PP" aria-pressed="false">3PP</button><button type="button" data-ex="SPOT" aria-pressed="false">SPOT 단가</button></div></div>
-    <div class="scroll"><table class="list" id="hmExpTbl"></table></div>
   </section>
   <div class="hm-grid" id="hmGrid"></div>
   <p class="muted hm-foot">로그인은 4시간 유지됩니다 · 자재정보·업체정보 시트를 직접 고쳤다면 위쪽 <b>DB 새로고침</b> · 만든 파일은 모두 내 드라이브, 메일은 내 Gmail 임시보관함에 생깁니다.</p>
@@ -899,6 +895,19 @@ table.list td.nw { white-space: nowrap }
       <button class="btn" id="itSave" type="button">자재정보에 등록</button>
     </div>
     <div id="itMsg"></div>
+  </div>
+</div>
+
+<div id="viewExpiring" class="stack" hidden>
+  <div class="panel">
+    <div class="panel-head"><h2>계약 만료 임박</h2><span class="muted" id="hmExpCount"></span></div>
+    <p class="muted lead">자재정보에서 계약종료가 가까운 단가입니다 (단가가 있는 LTA · 3PP · SPOT 단가). 갱신은 자재정보 시트에서 합니다.</p>
+    <div class="rec-tools">
+      <input id="expFind" type="search" placeholder="Item · 업체 · Description 찾기" autocomplete="off" aria-label="계약 만료 찾기">
+      <div class="seg" role="group" aria-label="구분"><button type="button" data-ex="all" aria-pressed="true">전체</button><button type="button" data-ex="LTA" aria-pressed="false">LTA</button><button type="button" data-ex="3PP" aria-pressed="false">3PP</button><button type="button" data-ex="SPOT" aria-pressed="false">SPOT 단가</button></div>
+      <label class="inline" for="expDays">기간<select id="expDays"><option value="30">30일</option><option value="60">60일</option><option value="90" selected>90일</option><option value="180">180일</option></select></label>
+    </div>
+    <div class="scroll"><table class="list" id="hmExpTbl"></table></div>
   </div>
 </div>
 
@@ -1212,6 +1221,7 @@ function startApp() {
   startDb();
   loadRecords();
   startView();   // 홈(사용법) 또는 새 소요제기
+  setTimeout(function () { loadExpiring(); }, 1500);   // 왼쪽 메뉴 '계약 만료' 배지 (30일 안 건수)
 }
 function checkAuth() {
   call('apiAuthState').then(function (st) {
@@ -2340,7 +2350,8 @@ function showView(v) {
   $('viewItems').hidden = v !== 'items';
   $('viewVendors').hidden = v !== 'vendors';
   $('viewHistory').hidden = v !== 'history';
-  if (v === 'home') loadExpiring();
+  $('viewExpiring').hidden = v !== 'expiring';
+  if (v === 'expiring') loadExpiring();
   if (v === 'history') setTimeout(function () { $('ihItem').focus(); }, 30);
   if (v === 'records') loadRecords();
   if (v === 'items') renderItemTable();
@@ -3246,26 +3257,35 @@ function fillLastPurchases(c) {
   }).catch(function () { /* 이력 없음 */ });
 }
 
-/* ---------- 홈: 계약 만료 임박 (90일) ---------- */
-state.expKind = 'all';
-function loadExpiring() {
-  if (state.expiring) return renderExpiring();
-  call('apiExpiring', 90).then(function (d) { state.expiring = d.list || []; renderExpiring(); }).catch(function () { /* 홈만 */ });
+/* ---------- 계약 만료 임박 (왼쪽 메뉴, 기간 30~180일) ---------- */
+state.expKind = 'all'; state.expDays = 90;
+function loadExpiring(force) {
+  if (state.expiring && !force) return renderExpiring();
+  $('hmExpTbl').innerHTML = '<tr><td class="muted">불러오는 중…</td></tr>';
+  return call('apiExpiring', state.expDays).then(function (d) { state.expiring = d.list || []; renderExpiring(); })
+    .catch(function (e) { $('hmExpTbl').innerHTML = '<tr><td class="err">' + esc(e.message || e) + '</td></tr>'; });
 }
 function renderExpiring() {
-  var all = state.expiring || [], list = all.filter(function (x) { return state.expKind === 'all' || x.mode === state.expKind; });
-  $('hmExp').hidden = !all.length;
-  $('hmExpCount').textContent = '90일 안 ' + all.length + '건';
-  $('hmExpTbl').innerHTML = '<tr><th>남은 날</th><th>Item</th><th>구분</th><th>업체</th><th class="n">단가</th><th>계약종료</th><th>Description</th><th></th></tr>' + (list.length ? list.slice(0, 30).map(function (x) {
+  var all = state.expiring || [], q = ($('expFind').value || '').trim().toLowerCase();
+  var list = all.filter(function (x) {
+    return (state.expKind === 'all' || x.mode === state.expKind) && (!q || (x.item + ' ' + x.supplier + ' ' + (x.desc || '')).toLowerCase().indexOf(q) >= 0);
+  });
+  var soon = all.filter(function (x) { return x.days <= 30; }).length;
+  $('expCount').textContent = soon || '';
+  $('expCount').title = soon ? '30일 안에 끝나는 계약 ' + soon + '건' : '';
+  $('hmExpCount').textContent = state.expDays + '일 안 ' + all.length + '건' + (list.length !== all.length ? ' · 보이는 ' + list.length + '건' : '');
+  $('hmExpTbl').innerHTML = '<tr><th>남은 날</th><th>Item</th><th>구분</th><th>업체</th><th class="n">단가</th><th>계약종료</th><th>Description</th><th></th></tr>' + (list.length ? list.map(function (x) {
     return '<tr><td><span class="dday' + (x.days <= 30 ? ' soon' : '') + '">D-' + x.days + '</span></td><td class="data nw">' + esc(x.item) + '</td><td>' + esc(x.mode) + '</td><td>' + esc(x.supplier) + '</td>' +
-      '<td class="n data nw">' + fmt(x.price) + ' ' + esc(x.cur) + '</td><td class="data nw">' + esc(x.end) + '</td><td class="desc">' + esc(String(x.desc || '').slice(0, 50)) + '</td>' +
+      '<td class="n data nw">' + fmt(x.price) + ' ' + esc(x.cur) + '</td><td class="data nw">' + esc(x.end) + '</td><td class="desc">' + esc(String(x.desc || '').slice(0, 60)) + '</td>' +
       '<td><button type="button" class="link-btn" data-exih="' + esc(x.item) + '">이력</button></td></tr>';
-  }).join('') + (list.length > 30 ? '<tr><td colspan="8" class="muted">… 외 ' + (list.length - 30) + '건 (자재정보 시트에서 확인)</td></tr>' : '') : '<tr><td colspan="8" class="muted">이 구분에는 없습니다.</td></tr>');
+  }).join('') : '<tr><td colspan="8" class="muted">' + (all.length ? '맞는 계약이 없습니다.' : state.expDays + '일 안에 끝나는 계약이 없습니다.') + '</td></tr>');
   $('hmExpTbl').querySelectorAll('[data-exih]').forEach(function (b) { b.onclick = function () { openItemHistory(b.dataset.exih); }; });
 }
 document.querySelectorAll('[data-ex]').forEach(function (b) {
   b.onclick = function () { state.expKind = b.dataset.ex; document.querySelectorAll('[data-ex]').forEach(function (x) { x.setAttribute('aria-pressed', x === b); }); renderExpiring(); };
 });
+$('expFind').addEventListener('input', renderExpiring);
+$('expDays').onchange = function () { state.expDays = +this.value; loadExpiring(true); };
 checkAuth();   // 로그인 확인 → 화면 시작
 </script>
 </body>
