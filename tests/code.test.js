@@ -345,3 +345,44 @@ test('apiCreateQuoteSheet: 업체마다 탭, 사이트 표와 같은 값, 기록
   rec.quoteSheet = 'QSURL';
   assert.strictEqual(ctx.apiCreateQuoteSheet('R1', '').url, 'QSURL');   // 이미 있으면 그 시트
 });
+
+test('동시 사용: 다른 사람이 완료해서 줄이 밀려도 기록 고치기는 ID 로 다시 찾아 그 줄에만 씀', () => {
+  const db = fakeBook({ 진행기록: [['ID', '종류', '담당자', '작성일', '제목', 'URL', '파일ID', '상태', '초안', 'BCC', 'JSON', '수정일'],
+    ['A', '견적요청서', 'me@ke.com', '', 'A', '', '', '작성', '', '', '{"items":[]}', ''],
+    ['B', '견적요청서', 'me@ke.com', '', 'B', '', '', '작성', '', '', '{"items":[1]}', '']] });
+  const ctx = inContext({
+    SpreadsheetApp: { getActive: () => db }, PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }) },
+    LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
+    Session: { getActiveUser: () => ({ getEmail: () => 'me@ke.com' }), getEffectiveUser: () => ({ getEmail: () => 'me@ke.com' }) },
+  });
+  const found = ctx.findRecord_('B', true);          // B 는 3행
+  db.tabs['진행기록'].rows.splice(1, 1);             // 그 사이 다른 사람이 A 를 완료 → B 가 2행으로
+  ctx.updateRecord_(found, { status: '메일 초안', data: { vendors: ['OMI'] } });
+  const rows = db.tabs['진행기록'].rows;
+  assert.strictEqual(rows.length, 2);
+  assert.deepStrictEqual([rows[1][0], rows[1][7], JSON.parse(rows[1][10]).vendors[0], JSON.parse(rows[1][10]).items[0]], ['B', '메일 초안', 'OMI', 1]);
+  db.tabs['진행기록'].rows.splice(1, 1);             // B 도 완료됨
+  assert.throws(() => ctx.updateRecord_(found, { status: 'x' }), /이미 완료/);
+});
+
+test('자재정보 캐시: 큰 값도 나눠 저장·복원, 날짜는 글자로, 등록·새로고침이면 새로 읽음', () => {
+  const store = {};
+  let reads = 0;
+  const rows = [['Item', '계약 구분', '계약시작', 'Description']].concat(Array.from({ length: 900 }, (_, i) => ['K' + i, 'LTA', new Date(2026, 0, 1), '설명 '.repeat(20)]));
+  const sheet = { getDataRange: () => ({ getValues: () => { reads++; return rows; } }) };
+  const ctx = inContext({
+    SpreadsheetApp: { getActive: () => ({ getSheetByName: () => sheet }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }) },
+    CacheService: { getScriptCache: () => ({ putAll: m => Object.assign(store, m), get: k => store[k] || null,
+      getAll: ks => Object.fromEntries(ks.map(k => [k, store[k]])), remove: k => { delete store[k]; } }) },
+  });
+  const a = ctx.masterValues_();
+  assert.ok(Number(store.master_n) > 1);             // 여러 조각
+  assert.strictEqual(a[1][2], '2026-01-01');
+  const b = ctx.masterValues_();
+  assert.strictEqual(reads, 1);                      // 두 번째는 캐시
+  assert.strictEqual(JSON.stringify(a), JSON.stringify(b));
+  ctx.masterValues_(true); assert.strictEqual(reads, 2);   // DB 새로고침
+  ctx.cacheDrop_('master'); ctx.masterValues_(); assert.strictEqual(reads, 3);   // 자재 등록 뒤
+  assert.strictEqual(ctx.parseContracts_(b)[0].start.getFullYear(), 2026);
+});

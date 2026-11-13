@@ -6,7 +6,7 @@
 <title>소요제기 판정</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;600;700&display=swap">
 <style>
 /* 레이아웃: 위에서 아래로 흐르는 작업 단계. 왼쪽 단계 번호 + 오른쪽 작업 면.
    색: 구매내역서 시트의 하늘색 머리글(#c9daf8)을 바탕 색조로, 짙은 코발트를 강조색으로. */
@@ -1316,7 +1316,7 @@ $('btnInputSheet').onclick = function () {
 
 /** 자재정보(DB) 값을 불러온다. 처음 열 때와 "DB 새로고침" */
 function loadDb(first) {
-  return call('apiInit').then(function (d) {
+  return call('apiInit', !first).then(function (d) {   // DB 새로고침이면 캐시 없이 시트에서
     if (first) $('base').value = d.today;
     state.rates = Object.assign({}, d.rates || {}, first ? {} : state.rates);
     itemDesc = {};

@@ -37,7 +37,44 @@ function masterSheet_() {
   return sh;
 }
 
-function masterValues_() { return masterSheet_().getDataRange().getValues(); }
+/*
+ * 자재정보 캐시: 판정·화면 열기 때마다 시트 전체를 읽지 않게 10분 동안 기억 (모든 담당자 공용).
+ * 자재 등록 · DB 새로고침이면 새로 읽음. 날짜 칸은 'yyyy-mm-dd' 글자로 바꿔 저장 (시간대 밀림 없음)
+ */
+var CACHE_SEC = 600, CACHE_CHUNK = 30000;
+function scriptCache_() { try { return CacheService.getScriptCache(); } catch (e) { return null; } }
+function cachePut_(key, obj) {
+  var c = scriptCache_();
+  if (!c) return;
+  try {
+    var s = JSON.stringify(obj), n = Math.ceil(s.length / CACHE_CHUNK), m = {};
+    for (var i = 0; i < n; i++) m[key + '_' + i] = s.substr(i * CACHE_CHUNK, CACHE_CHUNK);
+    m[key + '_n'] = String(n);
+    c.putAll(m, CACHE_SEC);
+  } catch (e) { console.warn('캐시 저장 실패: ' + e); }
+}
+function cacheGet_(key) {
+  var c = scriptCache_();
+  if (!c) return null;
+  try {
+    var n = Number(c.get(key + '_n'));
+    if (!n) return null;
+    var keys = [];
+    for (var i = 0; i < n; i++) keys.push(key + '_' + i);
+    var got = c.getAll(keys), s = '';
+    for (var k = 0; k < keys.length; k++) { if (got[keys[k]] == null) return null; s += got[keys[k]]; }
+    return JSON.parse(s);
+  } catch (e) { return null; }
+}
+function cacheDrop_(key) { var c = scriptCache_(); if (c) try { c.remove(key + '_n'); } catch (e) { /* 무시 */ } }
+function masterValues_(fresh) {
+  if (!fresh) { var hit = cacheGet_('master'); if (hit) return hit; }
+  var values = masterSheet_().getDataRange().getValues().map(function (r) {
+    return r.map(function (x) { return Object.prototype.toString.call(x) === '[object Date]' ? (isNaN(x) ? '' : fmtDate_(x)) : x; });
+  });
+  cachePut_('master', values);
+  return values;
+}
 
 function loadContracts_() { return parseContracts_(masterValues_()); }
 
@@ -75,6 +112,11 @@ function loadRates_() {
 }
 
 function saveRates_(rates) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try { saveRatesLocked_(rates); } finally { lock.releaseLock(); }
+}
+function saveRatesLocked_(rates) {
   var sh = rateSheet_(), rows = sh.getDataRange().getValues(), now = new Date();
   Object.keys(rates).forEach(function (cur) {
     var i = -1;
@@ -169,9 +211,9 @@ function apiGuide() {
 }
 
 /** 화면이 처음 열릴 때: 작성일, 저장된 환율, 구매일정 설정, Item 안내, 신규 등록 양식 */
-function apiInit() {
+function apiInit(fresh) {
   auth_();
-  var values = masterValues_();
+  var values = masterValues_(!!fresh);   // DB 새로고침이면 시트에서 새로
   return {
     today: fmtDate_(new Date()),
     rates: loadRates_(),
@@ -237,6 +279,7 @@ function apiRegisterItems(recs) {
       if (k === 'start' || k === 'end') sh.getRange(at, i + 1, rows.length, 1).setNumberFormat('yyyy-mm-dd');
     });
     target.setValues(rows);
+    cacheDrop_('master');   // 다음 판정은 새 자재 포함
     return { ok: true, added: ok.map(function (rec, i) { return { row: at + i, item: rec.item, desc: rec.desc || '', ship: rec.shipFrom || '', shelf: rec.shelfLife || '', mode: rec.priceMode }; }) };
   } finally {
     lock.releaseLock();
@@ -894,19 +937,28 @@ function findRecord_(id, mine) {
   throw new Error('기록을 찾지 못했습니다. 새로고침해 주세요.');
 }
 
+/**
+ * 기록 고치기. 여러 사람이 동시에 써도 섞이지 않게: 잠금을 건 뒤 ID 로 줄을 다시 찾고(그 사이 다른 사람이
+ * 완료해서 줄이 밀렸을 수 있음) 최신 품목(JSON)에 합쳐서 한 번에 씀
+ */
 function updateRecord_(found, patch) {
-  var sh = found.sheet, r = found.row;
-  if (patch.data) {   // 품목(JSON) 칸에 값 합치기
-    var cur = {};
-    try { cur = JSON.parse(found.values[10] || '{}'); } catch (e) {}
-    if (Array.isArray(cur)) cur = { items: cur };
-    Object.keys(patch.data).forEach(function (k) { cur[k] = patch.data[k]; });
-    sh.getRange(r, 11).setValue(JSON.stringify(cur));
-  }
-  if (patch.status !== undefined) sh.getRange(r, 8).setValue(patch.status);
-  if (patch.draft !== undefined) sh.getRange(r, 9).setValue(patch.draft);
-  if (patch.bcc !== undefined) sh.getRange(r, 10).setValue(patch.bcc);
-  sh.getRange(r, 12).setValue(new Date());
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sh = recordSheet_(), values = sh.getDataRange().getValues(), id = String(found.values ? found.values[0] : found.rec.id), r = -1;
+    for (var i = 1; i < values.length; i++) if (String(values[i][0]) === id) { r = i; break; }
+    if (r < 0) throw new Error('기록을 찾지 못했습니다 (이미 완료되었을 수 있습니다). 새로고침해 주세요.');
+    var row = values[r], json = row[10];
+    if (patch.data) {   // 품목(JSON) 칸에 값 합치기
+      var cur = {};
+      try { cur = JSON.parse(row[10] || '{}'); } catch (e) {}
+      if (Array.isArray(cur)) cur = { items: cur };
+      Object.keys(patch.data).forEach(function (k) { cur[k] = patch.data[k]; });
+      json = JSON.stringify(cur);
+    }
+    sh.getRange(r + 1, 8, 1, 5).setValues([[patch.status !== undefined ? patch.status : row[7], patch.draft !== undefined ? patch.draft : row[8],
+      patch.bcc !== undefined ? patch.bcc : row[9], json, new Date()]]);
+  } finally { lock.releaseLock(); }
 }
 
 /** 내 진행 기록 (최근 순) */
