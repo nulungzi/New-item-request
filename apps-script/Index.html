@@ -227,6 +227,16 @@ a { color: var(--accent) }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
 [hidden] { display: none !important }
 
+.mode-box { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2) }
+.mode-opt { display: flex; gap: 10px; align-items: start; cursor: pointer; padding: 6px 4px }
+.mode-opt > span { display: grid; gap: 2px }
+.mode-opt input { margin-top: 3px }
+.confirm-box { display: flex; gap: 10px; align-items: center; padding: 10px 14px; border-radius: 10px; border: 2px solid var(--spot); background: var(--spot-soft); font-weight: 600; cursor: pointer }
+.confirm-box:has(input:checked) { border-color: var(--ok); background: var(--ok-soft) }
+.pick-sel { max-width: 300px }
+.chg { font-size: .72rem; font-weight: 600; color: var(--spot); margin-left: 4px }
+.fixed-note { padding: 10px 12px; border-radius: 8px; background: var(--ok-soft); font-size: .88rem }
+
 /* 견적요청서 양식 고르기 */
 .modal-box.rp-box { grid-template-rows: none; width: min(1100px, 100%); overflow: auto; align-content: start }
 .rp-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 12px }
@@ -531,7 +541,14 @@ table.list td.nw { white-space: nowrap }
   <div class="step-no">2</div>
   <div class="panel">
     <div class="panel-head"><h2>판정 결과</h2><div class="summary" id="counts"></div></div>
+    <p class="muted lead">DB 단가가 있어도 <b>업체 / 단가</b> 칸에서 다른 계약 업체를 고르거나 <b>견적 요청</b>으로 돌릴 수 있습니다. 확인한 뒤 아래를 체크하세요.</p>
     <div class="scroll"><table class="list" id="tbl"></table></div>
+    <div class="mode-box" id="modeBox" hidden>
+      <b>만드는 방식</b>
+      <label class="mode-opt"><input type="radio" name="mode" value="split" checked><span><b>따로 만들기</b><span class="muted" id="modeSplitText">계약 구매내역서는 지금 만들고, 견적 품목은 견적 접수 후 따로 견적 구매내역서로</span></span></label>
+      <label class="mode-opt"><input type="radio" name="mode" value="one"><span><b>하나로 만들기</b><span class="muted" id="modeOneText">계약 품목은 단가를 넣어 두고, 견적 접수 후 견적 품목과 함께 구매내역서 하나로</span></span></label>
+    </div>
+    <label class="confirm-box" id="confirmBox"><input type="checkbox" id="pickOk"><span>품목별 판정·업체·단가를 확인했습니다 <span class="muted">(체크해야 구매내역서·견적요청서를 만들 수 있습니다)</span></span></label>
   </div>
 </section>
 
@@ -594,11 +611,12 @@ table.list td.nw { white-space: nowrap }
   <div class="panel">
     <div class="panel-head"><h2>Spot 품목</h2><span class="muted">계약 구매내역서에는 들어가지 않습니다</span></div>
     <div class="sub first" id="pricedBox">
-      <div class="sub-title"><h3>DB 단가 있음 → Spot 구매내역서</h3><span class="muted">견적요청서에 넣지 않습니다 · 3단계 구매내역서 작성에서 계약 품목과 함께 만듭니다 (별도 파일, Sole source)</span></div>
+      <div class="sub-title"><h3>DB 단가 있음 → Spot 구매내역서</h3><span class="muted" id="pricedText">견적요청서에 넣지 않습니다 · 3단계 구매내역서 작성에서 만듭니다 (업체선정사유 Sole source)</span></div>
       <div class="scroll"><table class="list" id="pricedTbl"></table></div>
     </div>
     <div class="sub" id="rfqBox">
       <div class="sub-title"><h3>단가 없음 → 견적요청서</h3><span class="muted">Item name은 꼭 적어 주세요 · Description·QPL·UOM·Remark는 고칠 수 있습니다</span></div>
+      <div class="fixed-note" id="fixedNote" hidden></div>
       <div class="scroll"><table class="list rfq-edit" id="spotTbl"></table></div>
       <div class="rfq-title">
         <div class="fields rfq-fields">
@@ -655,6 +673,7 @@ table.list td.nw { white-space: nowrap }
         <p class="muted">비우거나 0으로 둔 통화는 전체구매요약 CUR 별 합계·적용환율에 나오지 않습니다 (KRW는 항상 표시).</p>
       </div>
       <div class="sub">
+        <div id="qFixed"></div>
         <h3>품목별 종합</h3>
         <div id="qItems" class="q-items"></div>
       </div>
@@ -1064,6 +1083,7 @@ $('btnClassify').onclick = function () {
   b.disabled = true; b.textContent = '판정 중…';
   call('apiClassify', reqRows, $('base').value).then(function (d) {
     state.results = d.results; state.rates = d.rates || state.rates;
+    prepResults(state.results);
     $('previewCard').hidden = true;
     $('step1').classList.add('done');
     render();
@@ -1073,7 +1093,36 @@ $('btnClassify').onclick = function () {
 };
 
 /* ---------- 2. 판정 결과 ---------- */
-function chosen(r) { var s = $('pick-' + r.line); return r.candidates[s ? +s.value : 0]; }
+/* 품목마다 고른 DB 단가(alts 의 번호) 또는 'rfq'(견적 요청). 기본값은 판정 결과 */
+function isSpotMode(m) { return /^spot$/i.test(String(m || '').trim()); }
+function chosen(r) { return (r.alts || r.candidates)[r.pick === 'rfq' || r.pick == null ? 0 : r.pick] || r.candidates[0] || {}; }
+function setPick(r, v) {
+  r.pick = v;
+  r.route = v === 'rfq' ? 'rfq' : (isSpotMode(r.alts[v].priceMode) ? 'spotPriced' : 'contract');
+  if (r.route === 'rfq' && !r.reason0) r.reason0 = r.reason;
+  r.reason = r.route === 'rfq' && r.route0 !== 'rfq' ? '사용자가 견적 요청으로 바꿈' : (r.reason0 || r.reason);
+  $('pickOk').checked = false;
+  render();
+}
+function prepResults(rs) {
+  rs.forEach(function (r) {
+    r.alts = r.alts && r.alts.length ? r.alts : r.candidates;
+    r.route0 = r.route;
+    r.pick = r.route === 'rfq' ? 'rfq' : 0;
+  });
+  $('pickOk').checked = false;
+  state.mode = 'split';
+  document.querySelector('input[name="mode"][value="split"]').checked = true;
+  state.group = 'G' + Date.now().toString(36);   // 이 소요제기에서 만드는 파일 묶음
+  state.docs = {};
+}
+function needPickOk(msgEl) {
+  if ($('pickOk').checked) return true;
+  msgEl.innerHTML = '<span class="err">2단계 판정 결과 아래 "확인했습니다"를 먼저 체크해 주세요.</span>';
+  $('confirmBox').scrollIntoView({ block: 'center' });
+  return false;
+}
+document.querySelectorAll('input[name="mode"]').forEach(function (el) { el.onchange = function () { state.mode = el.value; state.docs = {}; render(); }; });
 
 function render() {
   var rs = state.results;
@@ -1088,12 +1137,13 @@ function render() {
 
   $('tbl').innerHTML = '<tr><th>판정</th><th>ITEM</th><th class="n">수량</th><th>NEED-BY</th><th>업체 / 단가</th><th>계약기간</th><th>메모</th></tr>' +
     rs.map(function (r) {
-      var c = r.candidates, c0 = c[0] || {};
+      var c = r.alts || r.candidates, c0 = r.route === 'rfq' ? {} : chosen(r);
       var sup = !c.length ? '<span class="muted">—</span>'
-        : c.length === 1 ? esc(c0.supplier) + '<div class="data">' + fmt(c0.price) + ' ' + esc(c0.cur) + ' / ' + esc(c0.uom) + '</div>'
-        : '<select id="pick-' + r.line + '" aria-label="업체 선택">' + c.map(function (x, i) {
-            return '<option value="' + i + '">' + esc(x.supplier) + ' · ' + fmt(x.price) + ' ' + esc(x.cur) + ' (' + esc(x.priceMode) + ')</option>';
-          }).join('') + '</select>';
+        : '<select class="pick-sel" data-pick="' + r.line + '" aria-label="' + esc(r.item) + ' 업체 / 단가">' + c.map(function (x, i) {
+            return '<option value="' + i + '"' + (r.pick === i ? ' selected' : '') + '>' + esc(x.supplier) + ' · ' + fmt(x.price) + ' ' + esc(x.cur) + ' (' + esc(x.priceMode) + ')</option>';
+          }).join('') + '<option value="rfq"' + (r.pick === 'rfq' ? ' selected' : '') + '>견적 요청 (다른 업체 · Spot 견적)</option></select>' +
+          (r.route !== r.route0 || (r.pick !== 'rfq' && r.pick !== 0) ? '<span class="chg">변경</span>' : '') +
+          (c0.uom ? '<div class="data muted">/ ' + esc(c0.uom) + '</div>' : '');
       var chip = r.route === 'contract' ? '<span class="chip chip-ok">' + esc(c0.priceMode || '계약') + '</span>'
         : r.route === 'spotPriced' ? '<span class="chip chip-priced">SPOT 단가</span>' : '<span class="chip chip-spot">SPOT 견적</span>';
       return '<tr><td>' + chip + '</td>' +
@@ -1103,17 +1153,36 @@ function render() {
         '<td class="data muted nw">' + (c0.start ? esc(c0.start) + '<br>~ ' + esc(c0.end) : '') + '</td>' +
         '<td class="muted">' + esc(r.reason) + (r.warnings && r.warnings.length ? '<div class="warn">⚠ ' + esc(r.warnings.join(' · ')) + '</div>' : '') + '</td></tr>';
     }).join('');
-  rs.forEach(function (r) { var s = $('pick-' + r.line); if (s) s.onchange = renderPurchase; });
+  document.querySelectorAll('#tbl [data-pick]').forEach(function (sel) {
+    sel.onchange = function () { var r = rs.filter(function (x) { return String(x.line) === sel.dataset.pick; })[0]; setPick(r, sel.value === 'rfq' ? 'rfq' : +sel.value); };
+  });
+  // 만드는 방식: 계약·Spot 단가·견적 중 두 가지 이상이 있을 때
+  var kinds = [ok.length, priced.length, rfq.length].filter(Boolean).length;
+  $('modeBox').hidden = kinds < 2;
+  if (kinds < 2) state.mode = 'split';
+  $('modeSplitText').textContent = rfq.length ? '계약' + (priced.length ? '·Spot 단가' : '') + ' 구매내역서는 지금 만들고, 견적 품목은 견적 접수 후 따로 견적 구매내역서로'
+    : '계약 구매내역서와 Spot 단가 구매내역서를 따로 (탭으로 각각)';
+  $('modeOneText').textContent = rfq.length ? '계약' + (priced.length ? '·Spot 단가' : '') + ' 품목은 단가를 넣어 두고, 견적 접수 후 견적 품목과 함께 구매내역서 하나로 (Spot 견적 양식)'
+    : '계약과 Spot 단가 품목을 구매내역서 하나로';
 
   $('spotCard').hidden = !(priced.length || rfq.length);
   $('pricedBox').hidden = !priced.length;
   $('rfqBox').hidden = !rfq.length;
   $('rfqBox').classList.toggle('first', !priced.length);
   $('pricedTbl').innerHTML = '<tr><th>ITEM</th><th class="n">수량</th><th>NEED-BY</th><th>업체 / 단가</th><th>단가 기간</th></tr>' + priced.map(function (r) {
-    var c0 = r.candidates[0] || {};
+    var c0 = chosen(r);
     return '<tr><td><div class="data">' + esc(r.item) + '</div><div class="desc">' + esc(c0.desc || '') + '</div></td><td class="n data">' + fmt(r.qty) + '</td><td class="data nw">' + esc(r.needBy) +
       '</td><td class="nw">' + esc(c0.supplier) + '<div class="data">' + fmt(c0.price) + ' ' + esc(c0.cur) + ' / ' + esc(c0.uom) + '</div></td><td class="data muted nw">' + (c0.start ? esc(c0.start) + '<br>~ ' + esc(c0.end) : '') + '</td></tr>';
   }).join('');
+  var oneFixed = state.mode === 'one' && rfq.length && (ok.length || priced.length);
+  $('fixedNote').hidden = !oneFixed;
+  if (oneFixed) {
+    var sups = []; ok.concat(priced).forEach(function (r) { var c = chosen(r); if (sups.indexOf(c.supplier) < 0) sups.push(c.supplier); });
+    $('fixedNote').innerHTML = '<b>하나로 만들기</b> · 계약' + (priced.length ? '·Spot 단가' : '') + ' 품목 ' + (ok.length + priced.length) + '개(' + esc(sups.join(', ')) +
+      ')는 견적요청서·메일에는 들어가지 않고, 견적 접수 후 <b>견적 종합</b>에서 견적 품목과 함께 구매내역서 하나로 만들어집니다.';
+  }
+  $('pricedText').textContent = oneFixed ? '견적요청서에 넣지 않습니다 · 견적 종합 때 같은 구매내역서에 들어갑니다 (업체선정사유 Sole source)'
+    : '견적요청서에 넣지 않습니다 · 3단계 구매내역서 작성에서 만듭니다 (업체선정사유 Sole source)';
   renderRfq(rfq);
   document.querySelectorAll('#spotTbl [data-reg]').forEach(function (b) { b.onclick = function () { openRegister(b.dataset.reg); }; });
   renderPurchase();
@@ -1184,6 +1253,7 @@ $('btnRfq').onclick = function () {
   var missing = groups.filter(function (g) { return !String(state.rfqEdit[g.key].name).trim(); });
   if (missing.length) { $('rfqMsg').innerHTML = '<span class="err">Item name을 적어 주세요: ' + esc(missing.map(function (g) { return g.first.item; }).join(', ')) + '</span>'; return; }
   if (!$('rfqDue').value) { $('rfqMsg').innerHTML = '<span class="err">회신 기한(due)을 골라 주세요.</span>'; $('rfqDue').focus(); return; }
+  if (!needPickOk($('rfqMsg'))) return;
   openRfqPick();
 };
 function rfqItems() {
@@ -1269,7 +1339,10 @@ function createRfq(tpl, title) {
   pickFolder('견적요청서').then(function (folder) {
     if (!folder) return;
     b.disabled = true; b.textContent = '만드는 중…';
-    return call('apiCreateRfq', { template: tpl, baseDate: $('base').value, title: title, due: $('rfqDue').value, folder: folder.id, items: items }).then(function (d) {
+    var fixed = state.mode === 'one' ? fixedLines().map(function (r) {
+      return { item: r.item, qty: r.qty, needBy: r.needBy, program: r.program, shelfLife: r.shelfLife, shipFrom: r.shipFrom, taxCode: r.taxCode, contractRow: chosen(r).row };
+    }) : [];
+    return call('apiCreateRfq', { template: tpl, baseDate: $('base').value, title: title, due: $('rfqDue').value, folder: folder.id, items: items, group: state.group, fixed: fixed }).then(function (d) {
       $('rfqMsg').innerHTML = '<span class="rfq-done ok-msg">견적요청서(' + (tpl === 'list' ? '양식 2' : '양식 1') + ')를 ' + esc(folder.name) + '에 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">열어서 검토 ↗</a>' +
         '<button class="btn" type="button" id="btnRfqDraft">검토했으면 메일 초안 만들기</button></span>';
       $('btnRfqDraft').onclick = function () { openDraft(d.recordId, d.name); };
@@ -1576,6 +1649,14 @@ function renderQSum() {
     return '<label class="field" for="qr-' + c + '">1 ' + c + ' = KRW<input id="qr-' + c + '" data-qrate="' + c + '" type="number" step="0.01" inputmode="decimal" value="' + esc(qs.rates[c] || '') + '"></label>';
   }).join('');
   $('qRates').querySelectorAll('input').forEach(function (el) { el.oninput = function () { qs.rates[el.dataset.qrate] = el.value; updateRanks(); }; });
+  // 하나로 만들기로 붙여 둔 계약 품목: 단가가 정해져 있어 같은 구매내역서 앞쪽에 들어감
+  var fx = qs.rec.fixed || [];
+  $('qFixed').innerHTML = !fx.length ? '' : '<h3>계약 품목 · 같이 들어감 (' + fx.length + ')</h3><p class="muted">견적종합에 계약 업체로 미리 선정된 줄로 들어가고, 업체선정사유는 LTA·3PP (Spot 단가는 Sole source) 입니다.</p>' +
+    '<div class="scroll"><table class="list"><tr><th>ITEM</th><th>업체</th><th class="n">수량</th><th>Need-by</th><th class="n">단가</th><th>구분</th></tr>' + fx.map(function (l) {
+      var nb = (l.needs && l.needs.length > 1) ? l.needs.map(function (x) { return x.needBy + '(' + fmt(x.qty) + ')'; }).join('<br>') : esc(l.needBy || '');
+      return '<tr><td><div class="data">' + esc(l.item) + '</div><div class="desc">' + esc(l.desc || '') + '</div></td><td>' + esc(l.supplier) + '</td><td class="n data">' + fmt(l.qty) + ' ' + esc(l.uom || '') +
+        '</td><td class="data nw">' + nb + '</td><td class="n data">' + fmt(l.price) + ' ' + esc(l.cur) + '</td><td>' + esc(isSpotMode(l.priceMode) ? 'Sole source' : l.priceMode) + '</td></tr>';
+    }).join('') + '</table></div>';
   $('qItems').innerHTML = qs.items.map(function (x, i) {
     var it = x.src;
     return '<div class="q-item" data-i="' + i + '">' +
@@ -1799,11 +1880,13 @@ $('btnRegSave').onclick = function () {
 /* 구매내역서: 계약(LTA·3PP) 과 Spot 단가(DB) 는 따로 (탭으로 각각 구매일정·제목·담당자·비고) */
 var DOC_KINDS = {
   contract: { route: 'contract', title: '계약 구매내역서', chip: '<span class="chip chip-ok">LTA</span><span class="chip chip-ok">3PP</span>', word: ' 구매내역서_' },
-  spot: { route: 'spotPriced', title: 'Spot 구매내역서', chip: '<span class="chip chip-priced">SPOT 단가</span>', word: ' Spot 구매내역서_' }
+  spot: { route: 'spotPriced', title: 'Spot 구매내역서', chip: '<span class="chip chip-priced">SPOT 단가</span>', word: ' Spot 구매내역서_' },
+  all: { route: 'contract|spotPriced', title: '구매내역서', chip: '<span class="chip chip-ok">계약</span><span class="chip chip-priced">SPOT 단가</span>', word: ' 구매내역서_' }   // 하나로 만들기 (견적 품목 없음)
 };
+function fixedLines() { return state.results.filter(function (r) { return r.route === 'contract' || r.route === 'spotPriced'; }); }
 state.docs = {}; state.rateEdit = {};
 function emptySched() { return (state.tasks || []).map(function () { return { start: 0, len: 0 }; }); }
-function docLines(key) { return state.results.filter(function (r) { return r.route === DOC_KINDS[key].route; }); }
+function docLines(key) { var rt = DOC_KINDS[key].route.split('|'); return state.results.filter(function (r) { return rt.indexOf(r.route) >= 0; }); }
 function curDoc() { return state.docs[state.docKey]; }
 function setSched(a) { state.sched = a; if (state.schedOwner) state.schedOwner.sched = a; }
 function saveDocInputs() {
@@ -1821,10 +1904,12 @@ function switchDoc(key) {
   var p = $('docPanel'); p.classList.remove('doc-panel'); void p.offsetWidth; p.classList.add('doc-panel');   // 바뀌는 느낌
 }
 function renderPurchase() {
-  var ok = state.results.filter(function (r) { return r.route === 'contract' || r.route === 'spotPriced'; });
-  $('purchaseCard').hidden = !ok.length;
-  if (!ok.length) return;
-  var keys = Object.keys(DOC_KINDS).filter(function (k) { return docLines(k).length; });
+  var ok = fixedLines(), hasRfq = state.results.some(function (r) { return r.route === 'rfq'; });
+  // 하나로 만들기: 견적 품목이 있으면 계약 품목은 견적요청서에 붙어 견적 종합 때 같이 만듦 (3단계 없음)
+  var keys = state.mode === 'one' ? (hasRfq ? [] : ['all']) : ['contract', 'spot'];
+  keys = keys.filter(function (k) { return docLines(k).length; });
+  $('purchaseCard').hidden = !ok.length || !keys.length;
+  if (!ok.length || !keys.length) return;
   keys.forEach(function (k) {
     var lines = docLines(k), sig = JSON.stringify(lines.map(function (r) { return [r.item, r.qty, r.needBy, chosen(r).row]; }));
     var d = state.docs[k] = state.docs[k] || { key: k, sched: emptySched(), name: '', nameEdited: false, confirmer: '', remarks: {}, done: null, sig: sig };
@@ -1996,6 +2081,7 @@ $('base').addEventListener('change', function () { if (!$('purchaseCard').hidden
 
 $('btnCreate').onclick = function () {
   var b = this; $('msg2').innerHTML = '';
+  if (!needPickOk($('msg2'))) return;
   if (state.sched && !state.sched.some(function (x) { return x.len > 0; }) && !b.dataset.ok) {
     b.dataset.ok = '1';
     $('msg2').innerHTML = '<span class="err">구매일정이 비어 있습니다. 이대로 만들려면 한 번 더 누르세요.</span>';
@@ -2013,7 +2099,8 @@ function createPurchase(b, folder) {
   var lines = docLines(key).map(function (r) {
     return { item: r.item, qty: r.qty, needBy: r.needBy, program: r.program, shelfLife: r.shelfLife, shipFrom: r.shipFrom, taxCode: r.taxCode, contractRow: chosen(r).row };
   });
-  call('apiCreatePurchase', { baseDate: $('base').value, rates: rates, remarks: doc.remarks, lines: lines, schedule: doc.sched, name: $('fileName').value, confirmer: doc.confirmer, folder: folder.id }).then(function (d) {
+  call('apiCreatePurchase', { baseDate: $('base').value, rates: rates, remarks: doc.remarks, lines: lines, schedule: doc.sched, name: $('fileName').value, confirmer: doc.confirmer, folder: folder.id,
+    group: state.group, split: key !== 'all' }).then(function (d) {
     state.rates = Object.assign(state.rates, rates);
     doc.done = (d.files || [d]).map(function (f) { f.folder = folder.name; return f; });
     var keys = Object.keys(state.docs).filter(function (k) { return docLines(k).length; });

@@ -247,6 +247,10 @@ function classify_(requests, contracts, today) {
     var spotPriced = spots.filter(function (c) { return c.price !== null && c.price !== '' && inPeriod(c); }).sort(byPrice);
     var res = { line: q.line, item: q.item, qty: q.qty, needBy: q.needBy, program: q.program,
       shipFrom: q.shipFrom || '', shelfLife: q.shelfLife || '', taxCode: q.taxCode || '', candidates: valid, warnings: [], registered: all.length > 0 };
+    // 고를 수 있는 DB 단가 전부 (계약 + Spot 단가, 기본값이 맨 앞). 화면에서 다른 업체나 '견적 요청'으로 바꿀 수 있음
+    res.alts = valid.concat(spotPriced);
+    var ref0 = all[0];
+    if (ref0) { res.desc = ref0.desc; res.qpl = ref0.qpl; res.uom = ref0.uom; res.material = ref0.material; }
     if (valid.length) {
       // 계약 → 계약 구매내역서
       res.status = '계약'; res.route = 'contract';
@@ -254,7 +258,7 @@ function classify_(requests, contracts, today) {
       res.warnings = needByWarnings_(q, valid[0], today);
     } else if (spotPriced.length) {
       // SPOT 인데 DB에 단가가 있음 → 견적 없이 Spot 구매내역서
-      res.status = 'Spot'; res.route = 'spotPriced'; res.candidates = spotPriced;
+      res.status = 'Spot'; res.route = 'spotPriced'; res.candidates = spotPriced; res.alts = spotPriced;
       res.reason = 'Spot · DB 단가 있음' + (spotPriced.length > 1 ? ' (' + spotPriced.length + '건 — 업체 선택 필요)' : '');
       res.warnings = needByWarnings_(q, spotPriced[0], today);
     } else {
@@ -575,6 +579,19 @@ function mergePurchaseLines_(lines) {
     delete g.programs;
   });
   return out;
+}
+
+/**
+ * 하나로 만들기: 견적요청서 기록에 붙여 둔 계약·Spot 단가 줄(mergePurchaseLines_ 결과) → Spot 견적 구매내역서 품목.
+ * 견적종합에 계약 업체 한 줄로 미리 선정 (업체선정사유 LTA·3PP, Spot 단가는 Sole source)
+ */
+function fixedSpotItem_(l) {
+  var needs = (l.needs || [{ needBy: l.needBy, qty: l.qty }]).map(function (x) { return { qty: x.qty, needBy: x.needBy }; });
+  return {
+    item: l.item, name: l.product || l.desc || l.item, desc: l.desc || '', material: l.material || '', qpl: l.qpl || '', uom: l.uom || '',
+    remark: '', qty: Number(l.qty) || 0, needBy: toDate_(needs[0] && needs[0].needBy), parts: needs, program: l.program || '', prev: {},
+    fixed: { vendor: l.supplier, price: l.price, cur: l.cur, lt: l.leadtime || '', mfg: l.product || '', reason: isSpotMode_(l.priceMode) ? 'Sole source' : (l.priceMode || '') }
+  };
 }
 
 /**
@@ -1036,13 +1053,15 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
   var num = function (v) { var x = toNumber_(v); return x === null ? (v === undefined || v === null ? '' : String(v).trim()) : x; };
 
   /* ---------- 견적종합 ---------- */
+  var RANKEND = SPOT.Q_FIRST + items.reduce(function (t, it) { return t + (it.fixed ? 1 : N); }, 0) - 1;
   var m0 = rfqStart_(items, base);   // 견적요청서와 같은 월 칸 (가장 이른 Need-by 달부터 12개월)
   for (var k = 0; k < 12; k++) set(Q, 3, SPOT.Q_M0 + k, { date: fmtDate_(new Date(m0.getFullYear(), m0.getMonth() + k, 1)) });
-  var qLast = SPOT.Q_FIRST + n * N - 1;
+  // 품목마다 줄: 견적 품목은 업체 수(N)만큼, 계약 품목(it.fixed)은 계약 업체 한 줄 (미리 선정)
+  var qRow = SPOT.Q_FIRST;
   items.forEach(function (it, i) {
-    var mq = rfqMonthQty_(m0, it);
-    vendors.forEach(function (v, j) {
-      var r = SPOT.Q_FIRST + i * N + j, q = (it.quotes || {})[v] || {};
+    var mq = rfqMonthQty_(m0, it), fx = it.fixed;
+    (fx ? [fx.vendor] : vendors).forEach(function (v) {
+      var r = qRow++, q = fx ? { sel: true, review: fx.reason, qty: it.qty, mfg: fx.mfg || '', uom: it.uom, price: fx.price, cur: fx.cur, lt: fx.lt } : (it.quotes || {})[v] || {};
       add({ op: 'fmt', s: Q, r: r, from: SPOT.P_Q_ROW, c1: 1, c2: SPOT.Q_LAST, fs: SPOT.PROTO });
       set(Q, r, 1, !!q.sel);
       if (q.review) set(Q, r, 2, q.review);
@@ -1064,7 +1083,8 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
       var amt = 'AE' + r + '*AH' + r, cur = 'AI' + r;
       set(Q, r, 28, '=IF(AND(ISNUMBER(AE' + r + '), ISNUMBER(AH' + r + ')), IF(' + cur + '="KRW", ' + amt + ', IF(' + cur + '="USD", ' + amt + '*$AP$2, IF(' +
         cur + '="JPY", ' + amt + '*$AQ$2, IF(' + cur + '="EUR", ' + amt + '*$AR$2, IF(' + cur + '="SGD", ' + amt + '*$AS$2, ""))))), "")');
-      set(Q, r, 29, '=IF(AB' + r + '="", "", RANK(AB' + r + ', OFFSET($AB$' + SPOT.Q_FIRST + ', INT((ROW()-' + SPOT.Q_FIRST + ')/' + N + ')*' + N + ', 0, ' + N + ', 1), 1))');
+      // 순위: 같은 품목(E열 L/I) 안에서 원화가격이 낮은 순
+      set(Q, r, 29, '=IF(AB' + r + '="", "", COUNTIFS($E$' + SPOT.Q_FIRST + ':$E$' + RANKEND + ', E' + r + ', $AB$' + SPOT.Q_FIRST + ':$AB$' + RANKEND + ', "<"&AB' + r + ')+1)');
       set(Q, r, 30, v);
       var put = function (c, x) { if (x !== undefined && x !== null && String(x).trim() !== '') set(Q, r, c, x); };
       if (q.noReply) q = { qty: q.qty, uom: q.uom, price: 'NO BID', remark: q.remark || '회신 없음' };   // 회신 없음 = NO BID 로 회색 줄
@@ -1077,6 +1097,7 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
       if (vi.site) set(Q, r, SPOT.Q_SITE, vi.site);
     });
   });
+  var qLast = qRow - 1;
   if (qLast >= SPOT.Q_FIRST) {
     add({ op: 'checkbox', s: Q, r1: SPOT.Q_FIRST, r2: qLast, c: 1 });
     // 조건부 서식: 선정(A=TRUE) 노란 줄, NO BID·회신 없음 회색 줄 (회색이 먼저)
@@ -1111,8 +1132,9 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
     var needs = rfqParts_(it).map(function (p2) { return { needBy: p2.needBy, qty: p2.qty }; });
     add({ op: 'height', s: D, r: r, pt: Math.max(57, 15 * needs.length) });
     set(D, r, 1, i + 1);
-    set(D, r, 2, '=OFFSET(' + QR + '$F$' + SPOT.Q_FIRST + ', (A' + r + '-1)*' + N + ', 0)');
-    set(D, r, 3, '=OFFSET(' + QR + '$G$' + SPOT.Q_FIRST + ', (A' + r + '-1)*' + N + ', 0)');
+    // 견적종합에서 이 품목(E열 = L/I)의 첫 줄
+    set(D, r, 2, '=IFERROR(INDEX(' + QR + '$F:$F, MATCH($A' + r + ', ' + QR + '$E:$E, 0)), "")');
+    set(D, r, 3, '=IFERROR(INDEX(' + QR + '$G:$G, MATCH($A' + r + ', ' + QR + '$E:$E, 0)), "")');
     set(D, r, 4, xl('$B' + r, 'F:H', '미정', true));
     set(D, r, 5, xl('$B' + r, 'F:J', '미정', true));
     [p.year, p.qty, p.cur, p.price].forEach(function (x, k2) { if (x !== undefined && x !== null && String(x).trim() !== '') set(D, r, 6 + k2, k2 === 2 ? String(x).toUpperCase() : num(x)); });

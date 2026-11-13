@@ -183,6 +183,7 @@ function apiClassify(input, baseDateStr) {
   var results = classify_(parsed.requests, loadContracts_(), base).map(function (r) {
     r.needBy = fmtDate_(r.needBy);
     r.candidates = r.candidates.map(plainDates_);
+    r.alts = (r.alts || []).map(plainDates_);
     return r;
   });
   return { results: results, skipped: parsed.skipped, rates: loadRates_() };
@@ -253,7 +254,7 @@ function apiCreatePurchase(payload) {
     var proto = ss.getSheetByName(TPL.PROTO);
     if (proto) ss.deleteSheet(proto);
     ss.setActiveSheet(ss.getSheetByName(TPL.SUMMARY));
-    var rec = addRecord_({ kind: g.spot ? 'Spot 구매내역서' : '계약 구매내역서', title: name, url: ss.getUrl(), fileId: ss.getId(), status: '작성',
+    var rec = addRecord_({ kind: g.spot ? 'Spot 구매내역서' : '계약 구매내역서', title: name, url: ss.getUrl(), fileId: ss.getId(), status: '작성', group: payload.group || '',
       items: g.lines.map(function (l) { return { item: l.item, qty: l.qty, needBy: fmtDate_(toDate_(l.needBy)), supplier: l.supplier, price: l.price, cur: l.cur }; }) });
     return { url: ss.getUrl(), name: name, id: ss.getId(), recordId: rec.id, spot: g.spot };
   });
@@ -638,7 +639,16 @@ function apiCreateRfq(payload) {
   var file = folder ? tpl.makeCopy(title, folder) : tpl.makeCopy(title);
   var ss = SpreadsheetApp.openById(file.getId());
   applyPlan_(ss, list ? buildRfq2Plan_(items) : buildRfqPlan_(items, base));
-  var rec = addRecord_({ kind: '견적요청서', title: title, url: ss.getUrl(), fileId: ss.getId(), status: '견적요청서 작성',
+  // 하나로 만들기: 계약·Spot 단가 줄을 기록에 붙여 두었다가 견적 종합 때 같은 구매내역서에 넣음
+  var fixed = (payload.fixed || []).length ? mergePurchaseLines_(purchaseLines_({ lines: payload.fixed })).map(function (l) {
+    var o = {};
+    ['item', 'row', 'supplier', 'cur', 'price', 'priceMode', 'material', 'desc', 'product', 'uom', 'qpl', 'leadtime', 'shipFrom', 'shelfLife', 'taxCode', 'program', 'qty']
+      .forEach(function (k) { if (l[k] !== undefined && l[k] !== null) o[k] = l[k]; });
+    o.needBy = fmtDate_(toDate_(l.needBy));
+    o.needs = (l.needs || []).map(function (x) { return { needBy: fmtDate_(toDate_(x.needBy)), qty: x.qty }; });
+    return o;
+  }) : [];
+  var rec = addRecord_({ kind: '견적요청서', title: title, url: ss.getUrl(), fileId: ss.getId(), status: '견적요청서 작성', group: payload.group || '', fixed: fixed,
     items: rows, due: payload.due || '' });
   return { url: ss.getUrl(), name: title, id: ss.getId(), recordId: rec.id };
 }
@@ -730,6 +740,7 @@ function rowToRecord_(r) {
     id: String(r[0]), kind: r[1], owner: String(r[2]).toLowerCase(), created: Object.prototype.toString.call(r[3]) === '[object Date]' ? fmtDate_(r[3]) : String(r[3]),
     title: r[4], url: r[5], fileId: r[6], status: r[7], draft: r[8], bcc: r[9],
     items: extra ? extra.items : items, due: extra ? extra.due : '', vendors: extra && extra.vendors || [], quote: extra && extra.quote || null,
+    group: extra && extra.group || '', parent: extra && extra.parent || '', fixed: extra && extra.fixed || [], quoteSheet: extra && extra.quoteSheet || '',
     updated: r[11] instanceof Date ? r[11].toISOString() : String(r[11] || '')
   };
 }
@@ -740,7 +751,10 @@ function addRecord_(o) {
   try {
     var sh = recordSheet_(), now = new Date();
     var id = Utilities.formatDate(now, 'Asia/Seoul', 'yyMMdd-HHmmss') + '-' + Math.floor(Math.random() * 900 + 100);
-    sh.appendRow([id, o.kind, me_(), now, o.title, o.url, o.fileId, o.status, '', '', JSON.stringify({ items: o.items || [], due: o.due || '' }), now]);
+    var data = { items: o.items || [], due: o.due || '' };
+    // group: 같은 소요제기에서 만든 파일 묶음, parent: 이 파일을 만든 견적요청서, fixed: 하나로 만들기 때 같이 들어갈 계약 줄
+    ['group', 'parent', 'fixed'].forEach(function (k) { if (o[k] && (!Array.isArray(o[k]) || o[k].length)) data[k] = o[k]; });
+    sh.appendRow([id, o.kind, me_(), now, o.title, o.url, o.fileId, o.status, '', '', JSON.stringify(data), now]);
     return { id: id };
   } finally { lock.releaseLock(); }
 }
@@ -834,6 +848,8 @@ function apiCreateSpotPurchase(payload) {
     o.needBy = toDate_(it.needBy);
     return o;
   });
+  // 하나로 만들기로 붙여 둔 계약 품목이 있으면 앞에 넣음 (견적종합에 계약 업체로 미리 선정)
+  items = (found.rec.fixed || []).map(fixedSpotItem_).concat(items);
   if (!items.length) throw new Error('구매내역서에 넣을 품목이 없습니다.');
   var vendors = uniq_((payload.vendors || []).map(function (v) { return String(v).trim(); }));
   var rates = {};
@@ -854,7 +870,7 @@ function apiCreateSpotPurchase(payload) {
   if (proto) ss.deleteSheet(proto);
   ss.setActiveSheet(ss.getSheetByName(SPOT.SUMMARY));
   updateRecord_(found, { status: '견적 구매내역서 작성', data: { quote: { vendors: vendors, items: payload.items, rates: payload.rates }, spotFile: ss.getUrl() } });
-  var rec = addRecord_({ kind: '견적 구매내역서', title: name, url: ss.getUrl(), fileId: ss.getId(), status: '작성',
+  var rec = addRecord_({ kind: '견적 구매내역서', title: name, url: ss.getUrl(), fileId: ss.getId(), status: '작성', parent: found.rec.id, group: found.rec.group || found.rec.id,
     items: items.map(function (it) { return { item: it.item, qty: it.qty, needBy: fmtDate_(it.needBy) }; }) });
   return { url: ss.getUrl(), name: name, id: ss.getId(), recordId: rec.id };
 }

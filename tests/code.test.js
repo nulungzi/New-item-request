@@ -255,6 +255,19 @@ test('견적 저장 → Spot 견적 구매내역서, 계약+Spot 단가는 두 �
   assert.ok(ops.includes('insertCheckboxes') && ops.includes('deleteColumns'));
   mine = ctx.apiMyRecords().records;
   assert.deepStrictEqual(mine.map(r => [r.kind, r.status]).sort(), [['Spot 구매내역서', '작성'], ['견적 구매내역서', '작성'], ['견적요청서', '견적 구매내역서 작성'], ['계약 구매내역서', '작성']].sort());
+
+  // 하나로 만들기: 계약 줄(A1)을 견적요청서에 붙여 두고, 견적 구매내역서를 만들 때 같이 넣고 묶음·부모를 기록
+  const rfq2 = ctx.apiCreateRfq({ baseDate: '2026-11-13', title: 'R2', due: '2026-11-20', group: 'G1',
+    items: [{ item: 'MS1', name: 'MS1', uom: 'EA', qty: 1, needBy: '2027-01-15' }],
+    fixed: [{ item: 'A1', qty: 2, needBy: '2027-06-10', contractRow: 2 }, { item: 'A1', qty: 3, needBy: '2027-07-10', contractRow: 2 }] });
+  let r2 = ctx.apiMyRecords().records.find(r => r.id === rfq2.recordId);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify([r2.group, r2.fixed.length, r2.fixed[0].supplier, r2.fixed[0].qty, r2.fixed[0].needs])),
+    ['G1', 1, 'AKZO', 5, [{ needBy: '2027-06-10', qty: 2 }, { needBy: '2027-07-10', qty: 3 }]]);
+  ctx.updateRecord_(ctx.findRecord_(rfq2.recordId, true), { data: { vendors: ['Hexcel'] } });
+  const sp2 = ctx.apiCreateSpotPurchase({ recordId: rfq2.recordId, baseDate: '2026-11-13', rates: { USD: 1350 }, vendors: ['Hexcel'],
+    items: [{ item: 'MS1', uom: 'EA', qty: 1, needBy: '2027-01-15', quotes: { Hexcel: { sel: true, price: 4, cur: 'USD' } } }] });
+  const child = ctx.apiMyRecords().records.find(r => r.id === sp2.recordId);
+  assert.deepStrictEqual([child.parent, child.group, child.items.map(x => x.item).join(',')], [rfq2.recordId, 'G1', 'A1,MS1']);
 });
 
 test('로그인: 입력한 이메일 = 접속한 Google 계정이어야 하고, 처음이면 사용자 탭에 등록, 4시간 뒤 만료', () => {
