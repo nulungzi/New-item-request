@@ -3684,7 +3684,7 @@ document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$
 /* ================= 움직임 · 그래픽 도우미 ================= */
 var REDUCE = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/* 진행 단계 트랙: 견적요청서 = 작성 → 메일 → 견적 입력 → 구매내역서, 구매내역서 = 작성 → 사업부 확인 → 품의 → PR → PO → 입고 */
+/* 진행 단계 트랙: 견적요청서 = 작성 → 메일 → 견적 입력 → 구매내역서, 구매내역서 = 작성 → 사업부 확인 → 품의 → PR → PO */
 function stageTrack(r) {
   var names, reached, cur;
   if (r.kind === '견적요청서') {
@@ -3692,9 +3692,9 @@ function stageTrack(r) {
     var got = ((r.quote || {}).items || []).some(function (x) { return x && x.quotes && Object.keys(x.quotes).some(function (v) { return String(x.quotes[v].price || '').trim(); }); });
     reached = r.spotFile ? 3 : got ? 2 : r.draft ? 1 : 0;
   } else {
-    names = ['작성', '사업부 확인', '품의', 'PR', 'PO', '입고'];
+    names = ['작성', '사업부 확인', '품의', 'PR', 'PO'];
     var st = (r.po && r.po.stage) || r.status;
-    reached = st === '입고' ? 5 : st === 'PO 발행' ? 4 : st === 'PR 발행' ? 3 : st === '품의 완료' ? 2 : (st === '품의 중' || (r.confirmMail && r.confirmMail.mode === 'send')) ? 1 : 0;
+    reached = st === '입고' || st === 'PO 발행' ? 4 : st === 'PR 발행' ? 3 : st === '품의 완료' ? 2 : (st === '품의 중' || (r.confirmMail && r.confirmMail.mode === 'send')) ? 1 : 0;
     if (st === '품의 중') { reached = 1; cur = 2; }
   }
   if (cur === undefined) cur = reached + 1;
