@@ -995,6 +995,117 @@ function apiMyRecords() {
 }
 
 /** 완료: 진행기록에서 보관 파일로 옮긴다 (본인 기록만) */
+/* ================================================================
+ * 구매 이력 (DB 구매이력 탭) — 완료할 때 올릴지 · 뺄 줄을 고름
+ * ================================================================ */
+function historySheet_() {
+  var ss = db_(), sh = ss.getSheetByName(HISTORY.SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(HISTORY.SHEET);
+    sh.getRange(1, 1, 1, HISTORY.HEAD.length).setValues([HISTORY.HEAD]).setFontWeight('bold').setBackground('#c9daf8');
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+/** 완료할 기록들의 이력 후보 줄. 견적 구매내역서는 파일의 견적종합에서 선정(A열)한 줄을 읽음 */
+function historyCandidates_(ids) {
+  var mine = recordSheet_().getDataRange().getValues().slice(1).map(rowToRecord_).filter(function (r) { return r.id && r.owner === me_(); });
+  var byId = {}; mine.forEach(function (r) { byId[r.id] = r; });
+  var info = vendorInfoMap_(), rows = [], notes = [];
+  var firstDate = function (r) { return String((r.reqDates || [])[0] || '').split(' ')[0]; };
+  (ids || []).forEach(function (id) {
+    var r = byId[id];
+    if (!r) { notes.push(id + ': 기록을 찾지 못했습니다.'); return; }
+    var push = function (h, k) {
+      h.recId = r.id; h.url = r.url; h.key = r.id + '#' + k; h.title = r.title; h.kind = r.kind;
+      if (!h.supplierName) h.supplierName = vendorOf_(info, h.supplier).supplier;
+      rows.push(h);
+    };
+    if (r.kind === '견적요청서') return;   // 구매가 정해진 건 구매내역서
+    if (r.kind === '견적 구매내역서') {
+      var parent = r.parent && byId[r.parent], dates = {};
+      if (parent) (parent.items || []).concat(parent.fixed || []).forEach(function (it) {
+        var d = it.reqDate || ((it.parts || [])[0] || {}).reqDate;
+        if (d) dates[itemKey_(it.item)] = d;
+      });
+      try {
+        var q = SpreadsheetApp.openById(r.fileId).getSheetByName(SPOT.QUOTE);
+        if (!q) throw new Error('견적종합 탭이 없습니다');
+        quoteSheetSelected_(q.getDataRange().getValues()).forEach(function (h, k) {
+          h.mode = /^lta$|^3pp$/i.test(h.reason) ? h.reason.toUpperCase() : 'SPOT 견적';
+          h.reqDate = dates[h.item] || firstDate(r) || (parent ? firstDate(parent) : '');
+          push(h, k);
+        });
+      } catch (e) { notes.push(r.title + ': 파일을 읽지 못했습니다 (' + e.message + ')'); }
+      return;
+    }
+    (r.items || []).forEach(function (it, k) {   // 계약 · Spot 구매내역서
+      var mode = String(it.priceMode || (r.kind === 'Spot 구매내역서' ? 'SPOT' : '')).toUpperCase();
+      push({ item: itemKey_(it.item), desc: it.desc || '', supplier: it.supplier || '', price: it.price, cur: it.cur || '', qty: it.qty, uom: it.uom || '', mfg: it.mfg || '',
+        lt: it.leadtime || '', mode: mode, reason: mode === 'SPOT' ? 'Sole source' : mode, program: it.program || '', reqDate: it.reqDate || firstDate(r) }, k);
+    });
+  });
+  return { rows: rows, notes: notes };
+}
+function apiHistoryCandidates(ids) {
+  auth_();
+  var c = historyCandidates_(ids);
+  c.rows.forEach(function (h) { if (h.price === undefined) h.price = ''; });
+  return c;
+}
+/**
+ * 완료 + 구매 이력. o = {ids, upload: true|false, skip: [후보 key]}
+ * upload 이면 뺀 줄(skip)을 제외하고 구매이력 탭에 쌓은 뒤, 기록을 보관 파일로 옮김
+ */
+function apiCompleteGroup(o) {
+  auth_();
+  o = o || {};
+  var ids = (o.ids || []).map(String), added = 0;
+  if (!ids.length) throw new Error('완료할 기록이 없습니다.');
+  if (o.upload) {
+    var skip = {}; (o.skip || []).forEach(function (k) { skip[k] = 1; });
+    var rows = historyCandidates_(ids).rows.filter(function (h) { return !skip[h.key]; });
+    if (rows.length) {
+      var who = me_(), today = fmtDate_(new Date()), lock = LockService.getScriptLock();
+      lock.waitLock(20000);
+      try {
+        var sh = historySheet_(), at = sh.getLastRow() + 1;
+        sh.getRange(at, 1, rows.length, HISTORY.HEAD.length).setValues(rows.map(function (h) { return historyRow_(h, who, today); }));
+        added = rows.length;
+      } finally { lock.releaseLock(); }
+    }
+  }
+  ids.forEach(function (id) { apiCompleteRecord(id); });
+  return { ok: true, added: added, completed: ids.length };
+}
+/** 자재 이력 조회: 자재정보 단가(계약·Spot) + 구매이력 (최근 순 100건) */
+function apiItemHistory(item) {
+  auth_();
+  var k = itemKey_(item);
+  if (!k) throw new Error('Item 을 입력해 주세요.');
+  var contracts = loadContracts_().filter(function (c) { return c.item === k; }).map(plainDates_);
+  var sh = db_().getSheetByName(HISTORY.SHEET), hist = [];
+  if (sh) sh.getDataRange().getValues().slice(1).forEach(function (r) {
+    if (itemKey_(r[2]) !== k) return;
+    var o = {};
+    HISTORY.HEAD.forEach(function (h, i) { var v = r[i]; o[h] = Object.prototype.toString.call(v) === '[object Date]' ? fmtDate_(v) : v; });
+    hist.push(o);
+  });
+  hist.sort(function (a, b) { return String(b['등록일']).localeCompare(String(a['등록일'])); });
+  return { item: k, contracts: contracts, history: hist.slice(0, 100), historyReady: !!sh };
+}
+/** 견적 종합 '직전 구매' 채우기: Item 별 가장 최근 구매 */
+function apiLastPurchases(items) {
+  auth_();
+  var sh = db_().getSheetByName(HISTORY.SHEET);
+  return sh ? lastPurchases_(sh.getDataRange().getValues(), items) : {};
+}
+/** 계약 만료 임박 (기본 90일) — 홈 화면 */
+function apiExpiring(days) {
+  auth_();
+  return { days: days || 90, list: expiringContracts_(loadContracts_(), toDate_(new Date()), days || 90) };
+}
+
 /** 완료 보관 파일에서 내 기록 (최근 순, 최대 300건). 화면의 '완료 기록 보기' */
 function apiArchivedRecords() {
   auth_();

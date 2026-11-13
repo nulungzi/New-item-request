@@ -1,5 +1,5 @@
 // 사용법 팝업용 실제 화면 사진 찍기 (예시 데이터, 가짜 서버). 화면을 바꾼 뒤 다시 찍을 때:
-//   LANG=ko_KR.UTF-8 node tools/capture_guide.js . <작업 폴더>
+//   LANG=ko_KR.UTF-8 node tools/capture_guide.js "$PWD" <작업 폴더>
 //   python3 -I tools/pack_guide.py <작업 폴더>/guide apps-script/Guide.html
 // Guide.html = JSON {img: {id: {src, w, h}}, hot: {단계 id: [x%, y%]}} — 단계 글은 Index.html 의 GUIDES
 const { chromium } = require('playwright');

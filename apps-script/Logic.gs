@@ -1091,6 +1091,58 @@ function rfq2FileName_(base, kind, initials, program) {
 }
 
 /* ------------------------------------------------------------------
+ * 구매 이력: 소요제기를 완료할 때 실제 구매 줄을 구매이력 탭에 쌓음 (올릴지·뺄 줄을 고름)
+ *   긴급으로 비싸게 산 건처럼 튀는 데이터는 빼고 올릴 수 있음
+ * ------------------------------------------------------------------ */
+var HISTORY = {
+  SHEET: '구매이력',
+  HEAD: ['등록일', '소요제기 일자', 'Item', 'Description', '업체', 'SUPPLIER', '단가', 'CUR', '수량', 'UOM', '금액', 'MFG', 'L/T', '구분', '선정 사유', 'Program', '담당자', '파일', '기록 ID']
+};
+/** 이력 한 줄 → 시트 값 (HEAD 순서) */
+function historyRow_(h, who, today) {
+  var price = toNumber_(h.price), qty = toNumber_(h.qty);
+  return [today, h.reqDate || '', h.item || '', h.desc || '', h.supplier || '', h.supplierName || '', price === null ? (h.price || '') : price, String(h.cur || '').toUpperCase(),
+    qty === null ? (h.qty || '') : qty, h.uom || '', price !== null && qty !== null ? Math.round(price * qty * 100) / 100 : '', h.mfg || '', h.lt || '', h.mode || '',
+    h.reason || '', h.program || '', who || '', h.url || '', h.recId || ''];
+}
+/** 견적종합 값(5행부터)에서 선정(A열 TRUE)한 줄 → 이력 후보 */
+function quoteSheetSelected_(values) {
+  var out = [];
+  (values || []).slice(SPOT.Q_FIRST - 1).forEach(function (r) {
+    if (r[0] !== true && String(r[0]).toUpperCase() !== 'TRUE') return;
+    if (!String(r[5] || '').trim()) return;
+    var price = r[33];
+    if (/^no\s*bid$/i.test(String(price || '').trim())) return;
+    out.push({ item: itemKey_(r[5]), desc: String(r[6] || ''), supplier: String(r[29] || ''), qty: r[30], mfg: String(r[31] || ''), uom: String(r[32] || ''),
+      price: price, cur: String(r[34] || ''), lt: String(r[37] || ''), reason: String(r[1] || ''), supplierName: String(r[SPOT.Q_SUP - 1] || '') });
+  });
+  return out;
+}
+/**
+ * 이력 행들 → Item 별 가장 최근 구매 {year, qty, cur, price, supplier, date} (견적 종합의 '직전 구매' 채우기)
+ * values: 구매이력 탭 값 (머리글 포함)
+ */
+function lastPurchases_(values, items) {
+  var want = {}, out = {};
+  (items || []).forEach(function (i) { want[itemKey_(i)] = 1; });
+  (values || []).slice(1).forEach(function (r) {
+    var k = itemKey_(r[2]);
+    if (!want[k]) return;
+    var d = toDate_(r[0]), cur = out[k];
+    if (!cur || (d && (!cur._d || d >= cur._d))) out[k] = { _d: d, date: d ? fmtDate_(d) : '', year: d ? d.getFullYear() : '', qty: r[8], cur: String(r[7] || ''), price: r[6], supplier: String(r[4] || '') };
+  });
+  Object.keys(out).forEach(function (k) { delete out[k]._d; });
+  return out;
+}
+/** 계약 만료 임박: 오늘부터 days 일 안에 계약종료가 끝나는 단가 (구분별) */
+function expiringContracts_(contracts, today, days) {
+  var end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + (days || 90));
+  return (contracts || []).filter(function (c) { return c.end && c.end >= today && c.end <= end && c.price !== null && c.price !== ''; })
+    .sort(function (a, b) { return a.end - b.end; })
+    .map(function (c) { return { item: c.item, supplier: c.supplier, mode: String(c.priceMode || '').toUpperCase(), price: c.price, cur: c.cur, end: fmtDate_(c.end), desc: c.desc || '', days: Math.round((c.end - today) / 86400000) }; });
+}
+
+/* ------------------------------------------------------------------
  * 견적 입력용 시트: 업체별 탭, 사이트 견적 입력 표와 같은 열 순서 (복사해 사이트에 붙여넣기)
  *   A No · B Item code · C Item name · D 요청 수량 · E Need-by | F U/P · G CUR · H Vendor Qty · I UOM · J MFG · K MOQ · L Lead Time · M Shelf Life · N Supplier Remarks
  * ------------------------------------------------------------------ */

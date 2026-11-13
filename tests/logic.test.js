@@ -633,3 +633,24 @@ test('소요제기 일자 전달 · 진행 중 같은 자재 찾기', () => {
   assert.deepStrictEqual(JSON.parse(JSON.stringify(idx.KERC00064.map(x => [x.title, x.mine]))), [['RFQ 1', true], ['구매내역서', false]]);
   assert.strictEqual(idx.KERN1.length, 1);
 });
+
+test('구매 이력: 줄 만들기 · 견적종합 선정 줄 읽기 · 직전 구매 · 계약 만료 임박', () => {
+  const row = L.historyRow_({ reqDate: '2026-11-10', item: 'K1', desc: 'D', supplier: 'CBOL', supplierName: 'CBOL CORP', price: '11.8', cur: 'usd', qty: 3, uom: 'SH', mfg: '3M', lt: '6wks', mode: 'SPOT 견적', reason: '최저가', program: '787', url: 'u', recId: 'R2' }, 'me@ke.com', '2026-11-20');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(row)), ['2026-11-20', '2026-11-10', 'K1', 'D', 'CBOL', 'CBOL CORP', 11.8, 'USD', 3, 'SH', 35.4, '3M', '6wks', 'SPOT 견적', '최저가', '787', 'me@ke.com', 'u', 'R2']);
+  assert.strictEqual(L.HISTORY.HEAD.length, row.length);
+  const q = Array.from({ length: 4 }, () => []);
+  const mk = (sel, item, vendor, price) => { const r = Array(47).fill(''); r[0] = sel; r[1] = sel ? '최저가' : ''; r[5] = item; r[6] = 'desc'; r[29] = vendor; r[30] = 3; r[32] = 'SH'; r[33] = price; r[34] = 'USD'; r[45] = vendor + ' CORP'; return r; };
+  q.push(mk(false, 'K1', 'OMI', 12.5), mk(true, 'K1', 'CBOL', 11.8), mk('TRUE', 'K2', 'OMI', 'NO BID'), mk(true, 'k3', 'Aerovac', 79));
+  const sel = L.quoteSheetSelected_(q);
+  assert.deepStrictEqual(sel.map(h => [h.item, h.supplier, h.price, h.reason, h.supplierName]), [['K1', 'CBOL', 11.8, '최저가', 'CBOL CORP'], ['K3', 'Aerovac', 79, '최저가', 'Aerovac CORP']]);
+  const hv = [L.HISTORY.HEAD, ['2026-01-05', '', 'K1', '', 'OMI', '', 10, 'USD', 5], [new Date(2026, 5, 1), '', 'k1', '', 'CBOL', '', 9, 'USD', 7], ['2025-12-01', '', 'K2', '', 'X', '', 1, 'EUR', 1]];
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(L.lastPurchases_(hv, ['K1', 'K9']))), { K1: { date: '2026-06-01', year: 2026, qty: 7, cur: 'USD', price: 9, supplier: 'CBOL' } });
+  const today = L.toDate_('2026-11-13');
+  const ex = L.expiringContracts_([
+    { item: 'A', supplier: 'S', priceMode: 'lta', price: 1, cur: 'USD', end: L.toDate_('2026-12-31') },
+    { item: 'B', supplier: 'S', priceMode: '3PP', price: 1, cur: 'USD', end: L.toDate_('2026-11-20') },
+    { item: 'C', supplier: 'S', priceMode: 'SPOT', price: '', cur: '', end: L.toDate_('2026-11-20') },
+    { item: 'D', supplier: 'S', priceMode: 'LTA', price: 1, cur: 'USD', end: L.toDate_('2027-06-30') },
+    { item: 'E', supplier: 'S', priceMode: 'LTA', price: 1, cur: 'USD', end: L.toDate_('2026-11-01') }], today, 90);
+  assert.deepStrictEqual(ex.map(x => [x.item, x.mode, x.days]), [['B', '3PP', 7], ['A', 'LTA', 48]]);
+});

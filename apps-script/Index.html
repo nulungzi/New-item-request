@@ -277,6 +277,20 @@ a.btn-ghost { display: inline-block; text-decoration: none; border-radius: 6px }
 .po-form .field input, .po-form .field select { width: 100%; text-align: left; font-family: var(--font-body) }
 .chip-done { background: var(--surface-2); color: var(--muted) }
 .rec.done-rec { opacity: .92 }
+.modal-box.hist-box { width: min(1100px, 100%); grid-template-rows: auto auto minmax(0, 1fr) auto auto auto }
+.hist-wrap { max-height: 50vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px }
+#hmTbl tr.off td { opacity: .45; text-decoration: line-through }
+#hmTbl td.n, #hmTbl th.n { text-align: right }
+.ih-find input { flex: 1 1 260px; max-width: 360px; padding: 8px 10px; font-family: var(--font-data); text-transform: uppercase }
+.ih-stats { display: flex; flex-wrap: wrap; gap: 8px }
+.ih-stat { padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); display: grid; gap: 2px; min-width: 150px }
+.ih-stat small { color: var(--muted); font-size: .74rem }
+.ih-stat b { font: 600 1rem var(--font-data) }
+.hm-exp { padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); display: grid; gap: 10px }
+.hm-exp-head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between }
+.hm-exp h3 { font-size: 1rem }
+.dday { display: inline-block; min-width: 46px; text-align: center; padding: 1px 8px; border-radius: 999px; font: 600 .74rem var(--font-data); background: var(--surface-2); color: var(--muted) }
+.dday.soon { background: var(--spot-soft); color: var(--warn) }
 .rec-group { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2) }
 .rec-ghead { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; padding: 2px 4px }
 .rec-gtitle { font-weight: 700 }
@@ -669,6 +683,7 @@ table.list td.nw { white-space: nowrap }
   <div class="side-sep" role="presentation"></div>
   <button type="button" class="side-btn" data-view="items">자재 등록</button>
   <button type="button" class="side-btn" data-view="vendors">업체 등록</button>
+  <button type="button" class="side-btn" data-view="history">자재 이력</button>
 </nav>
 <div class="views">
 <div id="viewHome" class="stack" hidden>
@@ -700,6 +715,11 @@ table.list td.nw { white-space: nowrap }
         </div>
       </div>
     </div></div>
+  </section>
+  <section class="hm-exp" id="hmExp" hidden>
+    <div class="hm-exp-head"><h3>계약 만료 임박 <span class="muted" id="hmExpCount"></span></h3>
+      <div class="seg" role="group" aria-label="구분"><button type="button" data-ex="all" aria-pressed="true">전체</button><button type="button" data-ex="LTA" aria-pressed="false">LTA</button><button type="button" data-ex="3PP" aria-pressed="false">3PP</button><button type="button" data-ex="SPOT" aria-pressed="false">SPOT 단가</button></div></div>
+    <div class="scroll"><table class="list" id="hmExpTbl"></table></div>
   </section>
   <div class="hm-grid" id="hmGrid"></div>
   <p class="muted hm-foot">로그인은 4시간 유지됩니다 · 자재정보·업체정보 시트를 직접 고쳤다면 위쪽 <b>DB 새로고침</b> · 만든 파일은 모두 내 드라이브, 메일은 내 Gmail 임시보관함에 생깁니다.</p>
@@ -879,6 +899,14 @@ table.list td.nw { white-space: nowrap }
       <button class="btn" id="itSave" type="button">자재정보에 등록</button>
     </div>
     <div id="itMsg"></div>
+  </div>
+</div>
+
+<div id="viewHistory" class="stack" hidden>
+  <div class="panel">
+    <div class="panel-head"><h2>자재 이력</h2><span class="muted">자재정보의 계약·Spot 단가와, 완료할 때 올린 구매 이력을 함께 봅니다</span></div>
+    <form class="row ih-find" id="ihForm"><input id="ihItem" type="search" placeholder="Item (예: KERC00064)" autocomplete="off" spellcheck="false" aria-label="Item"><button class="btn" type="submit">조회</button><span id="ihMsg"></span></form>
+    <div id="ihOut" class="stack"></div>
   </div>
 </div>
 
@@ -1095,6 +1123,20 @@ table.list td.nw { white-space: nowrap }
   </div>
 </div>
 
+<div class="modal" id="histModal" hidden role="dialog" aria-modal="true" aria-labelledby="hmTitle">
+  <div class="modal-box hist-box">
+    <div class="panel-head"><h2 id="hmTitle">완료 · 구매 이력</h2><span class="muted">완료하면 기록이 보관 파일로 옮겨집니다</span></div>
+    <p class="muted">이번 구매를 <b>구매 이력</b>(DB 구매이력 탭)에 올릴지 고르세요. 긴급으로 비싸게 산 건처럼 단가가 튀는 줄은 체크를 풀면 빼고 올립니다. 올린 이력은 자재 이력 조회와 견적 종합의 직전 구매에 쓰입니다.</p>
+    <div class="scroll hist-wrap"><table class="list" id="hmTbl"></table></div>
+    <div class="err" id="hmNotes"></div>
+    <div class="pk-foot">
+      <span class="muted" id="hmCount"></span>
+      <div class="row"><button class="btn-ghost" id="hmCancel" type="button">취소</button><button class="btn-ghost" id="hmNo" type="button">이력에 올리지 않고 완료</button><button class="btn" id="hmYes" type="button">이력에 올리고 완료</button></div>
+    </div>
+    <div class="err" id="hmMsg"></div>
+  </div>
+</div>
+
 <div class="modal" id="picker" hidden role="dialog" aria-modal="true" aria-labelledby="pkTitle">
   <div class="modal-box">
     <div class="panel-head"><h2 id="pkTitle">저장할 폴더 선택</h2><span class="muted" id="pkFor"></span></div>
@@ -1138,7 +1180,7 @@ function showLogin(msg, st) {
   st = st || auth.st;
   clearTimeout(auth.timer);
   document.body.classList.add('locked');
-  ['vDrawer', 'draftModal', 'picker', 'rfqPick', 'guide'].forEach(function (id) { if ($(id)) $(id).hidden = true; });
+  ['vDrawer', 'draftModal', 'picker', 'rfqPick', 'guide', 'histModal'].forEach(function (id) { if ($(id)) $(id).hidden = true; });
   $('loginGate').hidden = false;
   $('loginMsg').textContent = msg || '';
   if (st) {
@@ -1505,7 +1547,7 @@ function render() {
       var chip = r.route === 'contract' ? '<span class="chip chip-ok">' + esc(c0.priceMode || '계약') + '</span>'
         : r.route === 'spotPriced' ? '<span class="chip chip-priced">SPOT 단가</span>' : '<span class="chip chip-spot">SPOT 견적</span>';
       return '<tr><td>' + chip + '</td>' +
-        '<td><div class="data">' + esc(r.item) + '</div><div class="desc">' + esc(c0.desc || r.desc || '') + '</div>' +
+        '<td><div class="data">' + esc(r.item) + ' <button type="button" class="link-btn ih-link" data-ih="' + esc(r.item) + '">이력</button></div><div class="desc">' + esc(c0.desc || r.desc || '') + '</div>' +
           (r.program ? '<div class="muted">' + esc(r.program) + '</div>' : '') + '</td>' +
         '<td class="n data">' + fmt(r.qty) + '</td><td class="data nw">' + esc(r.needBy) + '</td><td class="nw">' + sup + '</td>' +
         '<td class="data muted nw">' + (c0.start ? esc(c0.start) + '<br>~ ' + esc(c0.end) : '') + '</td>' +
@@ -1513,6 +1555,7 @@ function render() {
           (r.dups && r.dups.length ? '<div class="warn dup">⚠ 진행 중인 다른 소요제기에 같은 자재: ' + r.dups.map(function (x) { return esc(x.title) + ' (' + (x.mine ? '내 기록' : esc(x.owner)) + ')'; }).join(', ') + '</div>' : '') +
           (state.reqDates.length > 1 && r.reqDate ? '<div class="muted rq-of">소요제기 ' + esc(r.reqDate) + (r.reqMemo ? ' ' + esc(r.reqMemo) : '') + '</div>' : '') + '</td></tr>';
     }).join('');
+  document.querySelectorAll('#tbl [data-ih]').forEach(function (b) { b.onclick = function () { openItemHistory(b.dataset.ih); }; });
   document.querySelectorAll('#tbl [data-pick]').forEach(function (sel) {
     sel.onchange = function () { var r = rs.filter(function (x) { return String(x.line) === sel.dataset.pick; })[0]; setPick(r, sel.value === 'rfq' ? 'rfq' : +sel.value); };
   });
@@ -2145,6 +2188,7 @@ function openSummary(rec) {
   useSched(c);
   if (state.sched) renderGantt();
   renderQSum();
+  fillLastPurchases(c);
   $('quoteView').scrollIntoView();
   saveQuoteSilently(c).catch(function () {});
 }
@@ -2295,6 +2339,9 @@ function showView(v) {
   $('viewRecords').hidden = v !== 'records';
   $('viewItems').hidden = v !== 'items';
   $('viewVendors').hidden = v !== 'vendors';
+  $('viewHistory').hidden = v !== 'history';
+  if (v === 'home') loadExpiring();
+  if (v === 'history') setTimeout(function () { $('ihItem').focus(); }, 30);
   if (v === 'records') loadRecords();
   if (v === 'items') renderItemTable();
   if (v === 'vendors') loadVendorView();
@@ -2517,16 +2564,7 @@ function renderRecords() {
           '<button class="btn-ghost" type="button" data-gdone="' + esc(g.recs.map(function (r) { return r.id; }).join(',')) + '">모두 완료</button></div>' +
         g.recs.map(function (r) { return recCard(r, r._child); }).join('') + '</div>';
     }).join('');
-    $('recList').querySelectorAll('[data-gdone]').forEach(function (b) {
-      b.onclick = function () {
-        if (!b.dataset.ok) { b.dataset.ok = '1'; b.textContent = '한 번 더 누르면 모두 보관'; return; }
-        b.disabled = true;
-        var ids = b.dataset.gdone.split(',');
-        ids.reduce(function (p, id) { return p.then(function () { return call('apiCompleteRecord', id); }); }, Promise.resolve())
-          .then(function () { $('recMsg').innerHTML = '<span class="ok-msg">묶음 ' + ids.length + '건을 완료 처리해서 보관 파일로 옮겼습니다.</span>'; loadRecords(); })
-          .catch(function (e) { $('recMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; loadRecords(); });
-      };
-    });
+    $('recList').querySelectorAll('[data-gdone]').forEach(function (b) { b.onclick = function () { openComplete(b.dataset.gdone.split(',')); }; });
     $('recList').querySelectorAll('[data-draft]').forEach(function (b) {
       b.onclick = function () { var r = recById(b.dataset.draft); openDraft(r.id, r.title); };
     });
@@ -2544,14 +2582,7 @@ function renderRecords() {
       };
     });
     $('recList').querySelectorAll('.rec-vendors:not([hidden])').forEach(bindVendorList);
-    $('recList').querySelectorAll('[data-done]').forEach(function (b) {
-      b.onclick = function () {
-        if (!b.dataset.ok) { b.dataset.ok = '1'; b.textContent = '한 번 더 누르면 보관'; return; }
-        b.disabled = true;
-        call('apiCompleteRecord', b.dataset.done).then(function () { $('recMsg').innerHTML = '<span class="ok-msg">완료 처리해서 보관 파일로 옮겼습니다.</span>'; loadRecords(); })
-          .catch(function (e) { $('recMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; b.disabled = false; });
-      };
-    });
+    $('recList').querySelectorAll('[data-done]').forEach(function (b) { b.onclick = function () { openComplete([b.dataset.done]); }; });
     $('recList').querySelectorAll('[data-po]').forEach(function (b) { b.onclick = function () { togglePoForm(b.dataset.po); }; });
 }
 /* 완료 기록 (보관 파일, 읽기만) */
@@ -2998,10 +3029,10 @@ var GUIDES = [
       { id: 'q3', img: 'qtable', t: '표에 입력 · 붙여넣기', d: '시트의 줄을 통째로 복사해 붙여넣으면 Item code로 맞춰 들어갑니다. 회신 없음 · 모든 품목 NO BID · 통화 일괄도 있고, 다음 업체로 넘기면 자동 저장됩니다.' },
       { id: 'q4', img: 'qsum', t: '견적 종합 → 구매내역서', d: '품목마다 원화 금액과 순위를 비교하고 업체를 선정한 뒤 Spot 견적 구매내역서를 만듭니다. 선정은 시트의 견적종합에서 나중에 바꿔도 됩니다.' }] },
   { id: 'records', view: 'records', title: '진행 중', desc: '내가 만든 구매내역서 · 견적요청서를 소요제기 단위로 묶어 보여 줍니다.',
-    points: ['견적요청서 아래에 그 견적 구매내역서', '다른 담당자 기록은 안 보임', '완료하면 보관 파일로'],
+    points: ['견적요청서 아래에 그 견적 구매내역서 · 재요청 메일', '찾기 · 필터 · 품의/PR/PO 상태 기록', '완료할 때 구매 이력에 올릴 줄 고르기'],
     steps: [
       { id: 'c1', img: 'records', t: '소요제기 묶음', d: '같은 소요제기에서 만든 파일이 한 묶음입니다. 견적요청서 바로 아래에 그 견적으로 만든 견적 구매내역서가 이어집니다.' },
-      { id: 'c2', img: 'records', t: '완료', d: '소요제기가 끝나면 완료(또는 모두 완료)를 두 번 누릅니다. 기록이 보관 파일로 옮겨지고 목록이 가벼워집니다.' }] },
+      { id: 'c2', img: 'records', t: '완료 · 구매 이력', d: '소요제기가 끝나면 모두 완료를 누릅니다. 구매 줄 목록이 나오고, 구매 이력(DB)에 올릴지 고릅니다. 긴급 고가 구매처럼 튀는 줄은 체크를 풀고 올립니다. 기록은 보관 파일로 옮겨집니다.' }] },
   { id: 'items', view: 'items', title: '자재 등록', desc: '자재정보(DB)에 새 자재를 여러 줄 한 번에 추가합니다.',
     points: ['자재정보와 같은 열 순서', '입력용 시트에서 붙여넣기', '틀린 줄은 이유와 함께 표시'],
     steps: [
@@ -3120,6 +3151,121 @@ document.addEventListener('keydown', function (e) {
   if (e.key === 'ArrowLeft' && gd.i > 0) $('gdPrev').click();
 });
 renderHome();
+/* ---------- 완료 · 구매 이력: 올릴지 고르고, 튀는 줄은 빼고 ---------- */
+var hm = { ids: [], rows: [] };
+function openComplete(ids) {
+  hm.ids = ids; hm.rows = [];
+  $('histModal').hidden = false;
+  $('hmMsg').textContent = ''; $('hmNotes').textContent = '';
+  $('hmTbl').innerHTML = '<tr><td class="muted">구매 줄을 불러오는 중… (견적 구매내역서는 파일의 견적종합에서 선정한 줄을 읽습니다)</td></tr>';
+  ['hmYes', 'hmNo'].forEach(function (id) { $(id).disabled = true; });
+  call('apiHistoryCandidates', ids).then(function (d) {
+    hm.rows = d.rows || [];
+    $('hmNotes').textContent = (d.notes || []).join(' · ');
+    if (!hm.rows.length) {
+      $('hmTbl').innerHTML = '<tr><td class="muted">구매 이력에 올릴 줄이 없습니다 (견적요청서만 있거나 선정한 업체가 없음). 완료만 합니다.</td></tr>';
+      $('hmYes').hidden = true; $('hmNo').textContent = '완료'; $('hmNo').disabled = false; $('hmCount').textContent = '';
+      return;
+    }
+    $('hmYes').hidden = false; $('hmNo').textContent = '이력에 올리지 않고 완료';
+    $('hmTbl').innerHTML = '<tr><th><input type="checkbox" id="hmAll" checked aria-label="모두"></th><th>소요제기</th><th>Item</th><th>Description</th><th>업체</th><th class="n">단가</th><th class="n">수량</th><th>구분 · 사유</th><th>파일</th></tr>' +
+      hm.rows.map(function (h, i) {
+        return '<tr data-i="' + i + '"><td><input type="checkbox" data-hk="' + esc(h.key) + '" checked aria-label="' + esc(h.item) + ' 올리기"></td><td class="data nw">' + esc(h.reqDate || '') + '</td><td class="data nw">' + esc(h.item) + '</td>' +
+          '<td>' + esc(String(h.desc || '').slice(0, 60)) + '</td><td>' + esc(h.supplier) + '</td><td class="n data nw">' + fmt(h.price) + ' ' + esc(h.cur || '') + '</td>' +
+          '<td class="n data nw">' + fmt(h.qty) + ' ' + esc(h.uom || '') + '</td><td>' + esc([h.mode, h.reason && h.reason !== h.mode ? h.reason : ''].filter(Boolean).join(' · ')) + '</td><td class="muted">' + esc(h.kind) + '</td></tr>';
+      }).join('');
+    var sync = function () {
+      var on = $('hmTbl').querySelectorAll('[data-hk]:checked').length;
+      $('hmTbl').querySelectorAll('[data-hk]').forEach(function (c) { c.closest('tr').classList.toggle('off', !c.checked); });
+      $('hmCount').textContent = '올릴 줄 ' + on + ' / ' + hm.rows.length;
+      $('hmYes').textContent = '이력에 ' + on + '줄 올리고 완료';
+      $('hmYes').disabled = !on;
+    };
+    $('hmTbl').querySelectorAll('[data-hk]').forEach(function (c) { c.onchange = sync; });
+    $('hmAll').onchange = function () { var on = this.checked; $('hmTbl').querySelectorAll('[data-hk]').forEach(function (c) { c.checked = on; }); sync(); };
+    $('hmNo').disabled = false;
+    sync();
+  }).catch(function (e) { $('hmTbl').innerHTML = ''; $('hmMsg').textContent = e.message || e; $('hmNo').disabled = false; });
+}
+function finishComplete(upload) {
+  var skip = [];
+  $('hmTbl').querySelectorAll('[data-hk]').forEach(function (c) { if (!c.checked) skip.push(c.dataset.hk); });
+  ['hmYes', 'hmNo', 'hmCancel'].forEach(function (id) { $(id).disabled = true; });
+  call('apiCompleteGroup', { ids: hm.ids, upload: upload, skip: skip }).then(function (d) {
+    $('histModal').hidden = true;
+    $('recMsg').innerHTML = '<span class="ok-msg">' + d.completed + '건을 완료해서 보관 파일로 옮겼습니다' + (upload ? ' · 구매 이력 ' + d.added + '줄 올림' : ' · 구매 이력에는 올리지 않음') + '.</span>';
+    loadRecords();
+  }).catch(function (e) { $('hmMsg').textContent = e.message || e; })
+    .finally(function () { ['hmYes', 'hmNo', 'hmCancel'].forEach(function (id) { $(id).disabled = false; }); });
+}
+$('hmYes').onclick = function () { finishComplete(true); };
+$('hmNo').onclick = function () { finishComplete(false); };
+$('hmCancel').onclick = function () { $('histModal').hidden = true; };
+$('histModal').addEventListener('click', function (e) { if (e.target === this) this.hidden = true; });
+
+/* ---------- 자재 이력 조회 ---------- */
+function openItemHistory(item) { showView('history'); $('ihItem').value = item; loadItemHistory(item); }
+$('ihForm').addEventListener('submit', function (e) { e.preventDefault(); loadItemHistory($('ihItem').value); });
+function loadItemHistory(item) {
+  item = String(item || '').trim();
+  if (!item) { $('ihMsg').innerHTML = '<span class="err">Item 을 입력해 주세요.</span>'; return; }
+  $('ihMsg').innerHTML = '<span class="muted">조회 중…</span>';
+  call('apiItemHistory', item).then(function (d) {
+    $('ihMsg').innerHTML = '';
+    var h = d.history || [], byCur = {};
+    h.forEach(function (x) { var c = x.CUR || '', p = Number(x['단가']); if (!c || !isFinite(p)) return; var b = byCur[c] = byCur[c] || { min: p, max: p, n: 0 }; b.min = Math.min(b.min, p); b.max = Math.max(b.max, p); b.n++; });
+    var last = h[0];
+    var stats = '<div class="ih-stats">' +
+      '<div class="ih-stat"><small>계약 · Spot 단가</small><b>' + d.contracts.length + '건</b></div>' +
+      '<div class="ih-stat"><small>구매 이력</small><b>' + h.length + '건</b></div>' +
+      (last ? '<div class="ih-stat"><small>최근 구매 ' + esc(last['등록일']) + '</small><b>' + fmt(last['단가']) + ' ' + esc(last.CUR) + '</b><small>' + esc(last['업체']) + ' · ' + fmt(last['수량']) + ' ' + esc(last.UOM || '') + '</small></div>' : '') +
+      Object.keys(byCur).map(function (c) { var b = byCur[c]; return '<div class="ih-stat"><small>' + esc(c) + ' 단가 범위 (' + b.n + '건)</small><b>' + fmt(b.min) + ' ~ ' + fmt(b.max) + '</b></div>'; }).join('') + '</div>';
+    var ct = d.contracts.length ? '<div class="scroll"><table class="list"><tr><th>구분</th><th>업체</th><th class="n">단가</th><th>계약 기간</th><th>MOQ</th><th>QPL</th><th>Description</th></tr>' + d.contracts.map(function (c) {
+      return '<tr><td><span class="chip ' + (/spot/i.test(c.priceMode) ? 'chip-priced' : 'chip-ok') + '">' + esc(c.priceMode) + '</span></td><td>' + esc(c.supplier || '—') + '</td><td class="n data nw">' + (c.price !== null && c.price !== '' ? fmt(c.price) + ' ' + esc(c.cur) : '—') + '</td>' +
+        '<td class="data nw">' + esc(c.start || '') + (c.end ? ' ~ ' + esc(c.end) : '') + '</td><td class="data">' + esc(c.moq || '') + '</td><td>' + esc(c.qpl || '') + '</td><td class="desc">' + esc(c.desc || '') + '</td></tr>';
+    }).join('') + '</table></div>' : '<p class="muted">자재정보에 이 Item 이 없습니다.</p>';
+    var ht = h.length ? '<div class="scroll"><table class="list"><tr><th>등록일</th><th>소요제기</th><th>업체</th><th class="n">단가</th><th class="n">수량</th><th>MFG</th><th>L/T</th><th>구분 · 사유</th><th>Program</th><th>담당자</th><th></th></tr>' + h.map(function (x) {
+      return '<tr><td class="data nw">' + esc(x['등록일']) + '</td><td class="data nw">' + esc(x['소요제기 일자'] || '') + '</td><td>' + esc(x['업체']) + '</td><td class="n data nw">' + fmt(x['단가']) + ' ' + esc(x.CUR) + '</td>' +
+        '<td class="n data nw">' + fmt(x['수량']) + ' ' + esc(x.UOM || '') + '</td><td>' + esc(x.MFG || '') + '</td><td>' + esc(x['L/T'] || '') + '</td><td>' + esc([x['구분'], x['선정 사유']].filter(Boolean).join(' · ')) + '</td>' +
+        '<td>' + esc(x.Program || '') + '</td><td class="muted">' + esc(String(x['담당자'] || '').split('@')[0]) + '</td><td>' + (x['파일'] ? '<a href="' + esc(x['파일']) + '" target="_blank" rel="noopener">파일 ↗</a>' : '') + '</td></tr>';
+    }).join('') + '</table></div>' : '<p class="muted">' + (d.historyReady ? '아직 구매 이력이 없습니다.' : '구매 이력 탭이 아직 없습니다. 소요제기를 완료할 때 "이력에 올리고 완료"를 누르면 DB 에 구매이력 탭이 생깁니다.') + '</p>';
+    $('ihOut').innerHTML = '<h3 class="data">' + esc(d.item) + '</h3>' + stats + '<div class="sub first"><h3>자재정보 단가</h3>' + ct + '</div><div class="sub"><h3>구매 이력</h3>' + ht + '</div>';
+  }).catch(function (e) { $('ihMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; });
+}
+
+/* ---------- 견적 종합: 직전 구매를 구매 이력에서 채움 (비어 있을 때만) ---------- */
+function fillLastPurchases(c) {
+  call('apiLastPurchases', c.items.map(function (x) { return x.src.item; })).then(function (m) {
+    var n = 0;
+    c.items.forEach(function (x) {
+      var p = m[String(x.src.item || '').trim().toUpperCase()], v = x.prev || {};
+      if (!p || [v.year, v.qty, v.cur, v.price].some(function (t) { return String(t || '').trim(); })) return;
+      x.prev = { year: p.year, qty: p.qty, cur: p.cur, price: p.price }; n++;
+    });
+    if (n && qs === c && !$('quoteView').hidden) { renderQSum(); $('qMsg').innerHTML = '<span class="ok-msg">직전 구매 ' + n + '개를 구매 이력에서 채웠습니다 (고칠 수 있습니다).</span>'; }
+  }).catch(function () { /* 이력 없음 */ });
+}
+
+/* ---------- 홈: 계약 만료 임박 (90일) ---------- */
+state.expKind = 'all';
+function loadExpiring() {
+  if (state.expiring) return renderExpiring();
+  call('apiExpiring', 90).then(function (d) { state.expiring = d.list || []; renderExpiring(); }).catch(function () { /* 홈만 */ });
+}
+function renderExpiring() {
+  var all = state.expiring || [], list = all.filter(function (x) { return state.expKind === 'all' || x.mode === state.expKind; });
+  $('hmExp').hidden = !all.length;
+  $('hmExpCount').textContent = '90일 안 ' + all.length + '건';
+  $('hmExpTbl').innerHTML = '<tr><th>남은 날</th><th>Item</th><th>구분</th><th>업체</th><th class="n">단가</th><th>계약종료</th><th>Description</th><th></th></tr>' + (list.length ? list.slice(0, 30).map(function (x) {
+    return '<tr><td><span class="dday' + (x.days <= 30 ? ' soon' : '') + '">D-' + x.days + '</span></td><td class="data nw">' + esc(x.item) + '</td><td>' + esc(x.mode) + '</td><td>' + esc(x.supplier) + '</td>' +
+      '<td class="n data nw">' + fmt(x.price) + ' ' + esc(x.cur) + '</td><td class="data nw">' + esc(x.end) + '</td><td class="desc">' + esc(String(x.desc || '').slice(0, 50)) + '</td>' +
+      '<td><button type="button" class="link-btn" data-exih="' + esc(x.item) + '">이력</button></td></tr>';
+  }).join('') + (list.length > 30 ? '<tr><td colspan="8" class="muted">… 외 ' + (list.length - 30) + '건 (자재정보 시트에서 확인)</td></tr>' : '') : '<tr><td colspan="8" class="muted">이 구분에는 없습니다.</td></tr>');
+  $('hmExpTbl').querySelectorAll('[data-exih]').forEach(function (b) { b.onclick = function () { openItemHistory(b.dataset.exih); }; });
+}
+document.querySelectorAll('[data-ex]').forEach(function (b) {
+  b.onclick = function () { state.expKind = b.dataset.ex; document.querySelectorAll('[data-ex]').forEach(function (x) { x.setAttribute('aria-pressed', x === b); }); renderExpiring(); };
+});
 checkAuth();   // 로그인 확인 → 화면 시작
 </script>
 </body>

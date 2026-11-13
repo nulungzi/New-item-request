@@ -149,6 +149,7 @@ function fakeBook(tabs) {
       name, rows,
       getDataRange: () => ({ getValues: () => sh.rows.map(r => r.slice()) }),
       appendRow: r => sh.rows.push(r.slice()),
+      getLastRow: () => sh.rows.length,
       deleteRow: n => sh.rows.splice(n - 1, 1),
       getRange: (r, c, nr, nc) => ({
         setValues: v => { v.forEach((row, i) => row.forEach((x, j) => { (sh.rows[r - 1 + i] = sh.rows[r - 1 + i] || [])[c - 1 + j] = x; })); return chain; },
@@ -419,4 +420,41 @@ test('PO 상태 기록 · 완료 기록 보기', () => {
   assert.throws(() => ctx.apiSetPoStatus('Q1', { stage: 'PO 발행' }), /견적요청서는/);
   const a = ctx.apiArchivedRecords();
   assert.deepStrictEqual(a.records.map(x => [x.id, x.done]), [['A3', '2026-11-01'], ['A1', '2026-10-01']]);
+});
+
+test('완료 + 구매 이력: 후보 줄(계약·견적 구매내역서), 뺀 줄 제외하고 올림, 안 올리고 완료', () => {
+  const H = ['ID', '종류', '담당자', '작성일', '제목', 'URL', '파일ID', '상태', '초안', 'BCC', 'JSON', '수정일'];
+  const db = fakeBook({ 진행기록: [H,
+    ['C1', '계약 구매내역서', 'me@ke.com', '', '계약', 'u1', 'f1', '작성', '', '', JSON.stringify({ group: 'G', items: [{ item: 'A1', qty: 5, supplier: 'AKZO', price: 2, cur: 'USD', priceMode: 'LTA', uom: 'KT', reqDate: '2026-11-10' }, { item: 'A2', qty: 1, supplier: 'AKZO', price: 900, cur: 'USD', priceMode: 'LTA' }] }), ''],
+    ['Q1', '견적요청서', 'me@ke.com', '', 'RFQ', 'u2', 'f2', '메일 초안', '', '', JSON.stringify({ group: 'G', reqDates: ['2026-11-12 EFAB'], items: [{ item: 'K1', parts: [{ reqDate: '2026-11-11' }] }] }), ''],
+    ['S1', '견적 구매내역서', 'me@ke.com', '', '견적', 'u3', 'f3', '작성', '', '', JSON.stringify({ parent: 'Q1', group: 'G', items: [] }), '']] });
+  const arc = fakeBook({});
+  const q = Array.from({ length: 4 }, () => []);
+  const r = Array(47).fill(''); r[0] = true; r[1] = '최저가'; r[5] = 'K1'; r[29] = 'CBOL'; r[30] = 3; r[33] = 11.8; r[34] = 'USD'; q.push(r);
+  const quoteBook = { getSheetByName: n => (n === '견적종합' ? { getDataRange: () => ({ getValues: () => q }) } : null) };
+  const ctx = inContext({
+    SpreadsheetApp: { getActive: () => db, openById: id => (id === 'arc' ? arc : quoteBook) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: k => (k === 'ARCHIVE_SHEET_ID' ? 'arc' : null) }) },
+    LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
+    Session: { getActiveUser: () => ({ getEmail: () => 'me@ke.com' }), getEffectiveUser: () => ({ getEmail: () => 'me@ke.com' }) },
+  });
+  const c = ctx.apiHistoryCandidates(['C1', 'Q1', 'S1']);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(c.rows.map(h => [h.key, h.item, h.supplier, h.price, h.mode, h.reqDate]))),
+    [['C1#0', 'A1', 'AKZO', 2, 'LTA', '2026-11-10'], ['C1#1', 'A2', 'AKZO', 900, 'LTA', ''], ['S1#0', 'K1', 'CBOL', 11.8, 'SPOT 견적', '2026-11-11']]);
+  // A2 는 긴급 고가 → 빼고 올림
+  const done = ctx.apiCompleteGroup({ ids: ['C1', 'Q1', 'S1'], upload: true, skip: ['C1#1'] });
+  assert.deepStrictEqual([done.added, done.completed], [2, 3]);
+  const hist = db.tabs['구매이력'].rows;
+  assert.deepStrictEqual(hist.slice(1).map(r => [r[2], r[4], r[6], r[16]]), [['A1', 'AKZO', 2, 'me@ke.com'], ['K1', 'CBOL', 11.8, 'me@ke.com']]);
+  assert.strictEqual(db.tabs['진행기록'].rows.length, 1);
+  assert.strictEqual(arc.tabs['완료기록'].rows.length, 4);
+  // 이력 조회 · 직전 구매
+  db.insertSheet('자재정보').rows.push(['Item', '계약 구분', '업체명', '단가', 'CUR', '계약시작', '계약종료'], ['K1', 'SPOT', 'Airtech', 80, 'USD', '2026-01-01', '2027-12-31']);
+  const ih = ctx.apiItemHistory('k1');
+  assert.deepStrictEqual([ih.contracts.length, ih.history.length, ih.history[0]['업체']], [1, 1, 'CBOL']);
+  assert.strictEqual(ctx.apiLastPurchases(['K1']).K1.price, 11.8);
+  // 안 올리고 완료
+  db.tabs['진행기록'].rows.push(['C2', '계약 구매내역서', 'me@ke.com', '', '계약2', '', '', '작성', '', '', '{"items":[{"item":"Z"}]}', '']);
+  ctx.apiCompleteGroup({ ids: ['C2'], upload: false });
+  assert.strictEqual(db.tabs['구매이력'].rows.length, 3);
 });
