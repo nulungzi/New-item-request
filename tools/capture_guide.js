@@ -9,13 +9,15 @@ const OUT = path.join(S, 'guide'); fs.mkdirSync(OUT, { recursive: true }); fs.mk
 fs.copyFileSync(path.join(repo, 'apps-script/Index.html'), path.join(S, 'ui/index.html'));
 const L = require(path.join(repo, 'tests/load.js')).load();
 const shots = {}, hots = {};
+const TODAY = L.toDate_('2026-11-13');
+const dl = (needBy, lt, ship) => JSON.parse(JSON.stringify(L.poDeadline_(needBy, lt, ship, TODAY)));   // 발주 마감일
 
-const cand = (row, supplier, mode, price, desc, uom) => ({ row, supplier, priceMode: mode, price, cur: 'USD', uom, desc, start: '2026-01-01', end: '2028-12-31' });
+const cand = (row, supplier, mode, price, desc, uom, need, lt, ship) => ({ row, supplier, priceMode: mode, price, cur: 'USD', uom, desc, start: '2026-01-01', end: '2028-12-31', leadtime: lt, deadline: dl(need, lt, ship) });
 const res = (line, item, qty, needBy, route, alts, desc, uom, program) => ({ line, item, qty, needBy, program: program || '', route, candidates: alts.slice(0, 1), alts, warnings: [], reason: route === 'rfq' ? 'Spot 자재 · DB 단가 없음' : '', desc, uom, registered: true });
 const RESULTS = [
-  res(1, 'KERC00064', 500, '2027-05-14', 'contract', [cand(7, 'AKZO', 'LTA', 78.49, 'BMS10-11,TY-1,CL-A GREEN PRIMER', 'KT'), cand(8, 'PPG', '3PP', 80.1, 'BMS10-11,TY-1,CL-A GREEN PRIMER', 'KT')], 'BMS10-11,TY-1,CL-A GREEN PRIMER', 'KT', '787'),
-  res(2, 'KERC00064', 600, '2027-06-20', 'contract', [cand(7, 'AKZO', 'LTA', 78.49, 'BMS10-11,TY-1,CL-A GREEN PRIMER', 'KT'), cand(8, 'PPG', '3PP', 80.1, 'BMS10-11,TY-1,CL-A GREEN PRIMER', 'KT')], 'BMS10-11,TY-1,CL-A GREEN PRIMER', 'KT', '787'),
-  res(3, 'KERN00278-014', 64, '2027-05-10', 'spotPriced', [cand(20, 'Airtech', 'SPOT', 83.58, 'FEP FILM 2MIL A5000V', 'RL')], 'FEP FILM 2MIL A5000V', 'RL', 'AH-64E'),
+  res(1, 'KERC00064', 500, '2027-05-14', 'contract', [cand(7, 'AKZO', 'LTA', 78.49, 'BMS10-11,TY-1,CL-A GREEN PRIMER', 'KT', '2027-05-14', '12wks', 'Ocean'), cand(8, 'PPG', '3PP', 80.1, 'BMS10-11,TY-1,CL-A GREEN PRIMER', 'KT', '2027-05-14', '10wks', 'Ocean')], 'BMS10-11,TY-1,CL-A GREEN PRIMER', 'KT', '787'),
+  res(2, 'KERC00064', 600, '2027-06-20', 'contract', [cand(7, 'AKZO', 'LTA', 78.49, 'BMS10-11,TY-1,CL-A GREEN PRIMER', 'KT', '2027-06-20', '12wks', 'Ocean'), cand(8, 'PPG', '3PP', 80.1, 'BMS10-11,TY-1,CL-A GREEN PRIMER', 'KT', '2027-06-20', '10wks', 'Ocean')], 'BMS10-11,TY-1,CL-A GREEN PRIMER', 'KT', '787'),
+  res(3, 'KERN00278-014', 64, '2027-05-10', 'spotPriced', [cand(20, 'Airtech', 'SPOT', 83.58, 'FEP FILM 2MIL A5000V', 'RL', '2027-05-10', '3wks', 'Air')], 'FEP FILM 2MIL A5000V', 'RL', 'AH-64E'),
   res(4, 'KERN00736-001', 3, '2027-03-01', 'rfq', [], '88TB0110 TAPE, MASKING', 'SH', 'AH-64E'),
   res(5, 'KERN02113-001', 10, '2027-03-15', 'rfq', [], 'A88TB0092-6 SPACER', 'PC', 'EFAB')];
 const VSHEET = [[], ['', '업체명', '이메일', 'SUPPLIER', 'SITE', 'CONTACT'],
@@ -27,14 +29,17 @@ const rfqItems = [{ item: 'KERN00736-001', registered: true, name: '88TB0110', d
   { item: 'KERN02113-001', registered: true, name: 'A88TB0092-6', desc: 'SPACER', qty: 10, uom: 'PC', needBy: '2027-03-15' },
   { item: 'KERN00278-014', registered: true, name: 'A5000V 2MIL', desc: 'FEP FILM', qty: 64, uom: 'RL', needBy: '2027-05-10' }];
 const quote = { vendors: ['OMI', 'CBOL', 'Armacorp', 'Aerovac'], noReply: { Armacorp: true }, rates: { USD: 1350 }, items: [
-  { quotes: { OMI: { price: 12.5, cur: 'USD', qty: 3, uom: 'SH', lt: '4wks', mfg: '3M' }, CBOL: { price: 11.8, cur: 'USD', qty: 3, uom: 'SH', lt: '6wks', mfg: '3M', sel: true }, Aerovac: { price: 'NO BID', qty: 3, uom: 'SH' } } },
-  { quotes: { OMI: { price: 2.1, cur: 'USD', qty: 10, uom: 'PC', lt: '8wks' }, CBOL: { price: 'NO BID' } } },
+  { prev: { year: 2026, qty: 5, cur: 'USD', price: 9.4 }, quotes: { OMI: { price: 12.5, cur: 'USD', qty: 3, uom: 'SH', lt: '4wks', mfg: '3M' }, CBOL: { price: 11.8, cur: 'USD', qty: 3, uom: 'SH', lt: '6wks', mfg: '3M', sel: true }, Aerovac: { price: 'NO BID', qty: 3, uom: 'SH' } } },
+  { quotes: { OMI: { price: 2.1, cur: 'USD', qty: 10, uom: 'PC', lt: '8wks', sel: true }, CBOL: { price: 1.95, cur: 'USD', qty: 10, uom: 'PC', lt: '10wks' } } },
   { quotes: { OMI: { price: 'NO BID' }, Aerovac: { price: 79, cur: 'USD', qty: 64, uom: 'RL', lt: '3wks', mfg: 'AEROVAC', sel: true } } }] };
 let records = [
-  { id: 'R1', kind: '견적요청서', title: '[KE] RFQ // 261113 Boeing Process Material Spot (due 11/20)', created: '2026-11-13', status: '메일 초안', url: '#', draft: 'D', vendors: quote.vendors, quote, items: rfqItems, group: 'G1', fixed: [{ item: 'KERC00064', supplier: 'AKZO', qty: 1100, uom: 'KT', price: 78.49, cur: 'USD', priceMode: 'LTA', needBy: '2027-05-14', needs: [{ needBy: '2027-05-14', qty: 500 }, { needBy: '2027-06-20', qty: 600 }], desc: 'GREEN PRIMER' }] },
+  { id: 'R1', kind: '견적요청서', title: '[KE] RFQ // 261113 Boeing Process Material Spot (due 11/20)', created: '2026-11-13', status: '메일 초안', url: '#', draft: 'D', due: '2026-11-14', vendors: quote.vendors.concat(['GV엔지니어링']), quote, items: rfqItems,
+    mails: [{ no: 1, kind: '견적 요청', at: '2026-11-13 09:10', vendors: quote.vendors, count: 6 }], group: 'G1', fixed: [{ item: 'KERC00064', supplier: 'AKZO', qty: 1100, uom: 'KT', price: 78.49, cur: 'USD', priceMode: 'LTA', needBy: '2027-05-14', needs: [{ needBy: '2027-05-14', qty: 500 }, { needBy: '2027-06-20', qty: 600 }], desc: 'GREEN PRIMER' }] },
   { id: 'R2', kind: '견적 구매내역서', title: '261113 Boeing Process Material Spot (due 11/20) 견적 구매내역서', created: '2026-11-13', status: '작성', url: '#', items: [{}, {}, {}, {}], parent: 'R1', group: 'G1' },
-  { id: 'R3', kind: '계약 구매내역서', title: '261112 구매내역서_AKZO_Syensqo', created: '2026-11-12', status: '작성', url: '#', items: [{}, {}], group: 'G0' },
-  { id: 'R4', kind: 'Spot 구매내역서', title: '261112 Spot 구매내역서_Airtech', created: '2026-11-12', status: '작성', url: '#', items: [{}], group: 'G0' }];
+  { id: 'R3', kind: '계약 구매내역서', title: '261112 구매내역서_AKZO_Syensqo', created: '2026-11-12', status: '사업부 확인 요청', url: 'https://docs.google.com/spreadsheets/d/example', items: [{ deadline: '2026-11-24' }, { deadline: '2027-01-08' }], group: 'G0',
+    confirmMail: { mode: 'send', at: '2026-11-12 16:40', to: ['biz@ke.com'] } },
+  { id: 'R4', kind: 'Spot 구매내역서', title: '261112 Spot 구매내역서_Airtech', created: '2026-11-12', status: '품의 중', url: '#', items: [{ deadline: '2027-03-30' }], group: 'G0', po: { stage: '품의 중', approval: 'AP-2026-1188' } }];
+records.forEach(r => { r.alert = JSON.parse(JSON.stringify(L.recordAlert_(r, TODAY))); });
 const fieldsH = ['Item', '계약 구분', '업체명', '단가', 'CUR', '계약시작', '계약종료', 'MOQ', 'UOM', 'Ship From', 'Leadtime', 'Description', 'QPL'];
 const fields = fieldsH.map(h => ({ header: h, key: L.keyForHeader_(h) }));
 const vendorsResp = () => { const info = L.vendorInfo_(VSHEET); return { vendors: JSON.parse(JSON.stringify(L.parseVendors_(VSHEET).map(v => Object.assign(v, L.vendorOf_(info, v.name))))), missing: false }; };
@@ -54,6 +59,8 @@ const vendorsResp = () => { const info = L.vendorInfo_(VSHEET); return { vendors
       case 'apiRegisterItems': return { ok: false, errors: [{ i: 2, item: 'KERC09001', messages: ['LTA·3PP는 단가가 필요합니다.', 'LTA·3PP는 계약시작과 계약종료가 필요합니다.'] }] };
       case 'apiSaveQuotes': return { ok: true };
       case 'apiGuide': return '{"img":{},"hot":{}}';
+      case 'apiDigestState': return { on: false, hour: 8 };
+      case 'apiConfirmDefaults': return { to: 'biz.team@ke.com', cc: '', name: '홍길동', body: '', signature: '<div style="font-family:Arial,sans-serif;font-size:10pt;color:#444">홍길동 사원<br>자재구매팀</div>' };
       default: return null;
     }
   });
@@ -95,7 +102,7 @@ const vendorsResp = () => { const info = L.vendorInfo_(VSHEET); return { vendors
   // 2. 판정 결과
   await pg.evaluate(() => call('apiClassify').then(d => { state.results = d.results; prepResults(state.results); $('step1').classList.add('done'); render(); }));
   await pg.waitForTimeout(300);
-  await shot('result', '#step2 .panel', { n3: '#tbl [data-pick="3"]', n4: '#modeBox', n5: '#confirmBox' });
+  await shot('result', '#step2 .panel', { n3: '#tbl [data-pick="3"]', n4: '#modeBox', n5: '#confirmBox', a1: '#tbl .po-dl' });
   await pg.check('#pickOk');
   // 3. 구매내역서
   await shot('ptabs', '#purchaseCard .panel', { p1: '.doc-tab[data-doc="spot"]' }, { bottom: '#remarks' });
@@ -103,6 +110,10 @@ const vendorsResp = () => { const info = L.vendorInfo_(VSHEET); return { vendors
   await shot('gantt', '#schedSub', { p2: '#gbar-1', p3: '#moUp' });
   await pg.fill('#confirmer', '홍길동 과장');
   await shot('pfoot', '#purchaseCard .panel', { p4: '#btnCreate' }, { top: '#fileName' });
+  // 만드는 중 창 (14초째, 3단계)
+  await pg.evaluate(() => { const m = makingStart('apiCreatePurchase'); m.t0 = Date.now() - 14200; mkTick(); });
+  await shot('making', '#mk .mk-box', { p5: '#mkHide' });
+  await pg.evaluate(() => makingEnd(mkCur));
   // 4. 견적요청서
   const names = ['88TB0110', 'A88TB0092-6', 'A5000V 2MIL'];
   const inputs = await pg.$$('#spotTbl input[data-f="name"]'); for (let i = 0; i < inputs.length; i++) await inputs[i].fill(names[i] || 'ITEM');
@@ -114,7 +125,12 @@ const vendorsResp = () => { const info = L.vendorInfo_(VSHEET); return { vendors
   await pg.click('#rpCancel');
   // 5. 진행 중
   await pg.evaluate(() => showView('records')); await pg.waitForTimeout(300);
-  await shot('records', '#recPanel', { c1: '.rec-ghead', c2: '[data-gdone]' });
+  await shot('records', '#recPanel', { c1: '.rec-ghead', c2: '[data-gdone]' }, { top: '.rec-group' });
+  await shot('alerts', '#recPanel', { a2: '.al-chip', a3: '#dgToggle', m1: '[data-cf="R3"]' }, { top: '#recPanel .rec-tools', maxH: 760 });
+  // 사업부 확인 메일
+  await pg.click('[data-cf="R3"]'); await pg.waitForTimeout(400);
+  await shot('confirm', '#cfModal .modal-box', { m2: '#cfPrev', m3: '#cfSend' });
+  await pg.click('#cfCancel');
   await pg.click('[data-toggle="R1"]'); await pg.waitForTimeout(150);
   await shot('vlist', '.rec[data-id="R1"]', { q1: '[data-vendor="OMI"]', q2: '[data-qsheet]' });
   // 메일 초안
@@ -129,6 +145,7 @@ const vendorsResp = () => { const info = L.vendorInfo_(VSHEET); return { vendors
   // 견적 종합
   await pg.click('[data-sum="R1"]'); await pg.waitForTimeout(300);
   await shot('qsum', '#quoteView', { q4: '#qItems tr[data-v="CBOL"] input[type="radio"]' }, { maxH: 900 });
+  await shot('qbest', '#qItems', { q5: '#qBest .warn-txt' }, { top: '#qBest', maxH: 820 });
   await pg.click('#qBack');
   // 6. 자재 등록
   await pg.evaluate(() => {
