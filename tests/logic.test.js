@@ -558,3 +558,15 @@ test('하나로 만들기: 계약 품목(fixed)은 견적종합에 계약 업체
   assert.strictEqual(get('구매내역서', 12, 2), "=IFERROR(INDEX('견적종합'!$F:$F, MATCH($A12, '견적종합'!$E:$E, 0)), \"\")");
   assert.strictEqual(get('구매내역서', 11, 23), '2027-03-15(500)\n2027-04-15(520)');
 });
+
+test('견적 입력용 시트: 사이트 표와 같은 열, Need-by 여러 건은 날짜(수량)', () => {
+  const rows = L.quoteSheetRows_([
+    { item: 'KERN00736-001', name: '88TB0110', qty: 1, uom: 'SH', needBy: '2027-03-01' },
+    { item: 'KERC00064', name: 'PRIMER', qty: 1020, uom: 'KT', needBy: '2027-03-15', parts: [{ qty: 500, needBy: '2027-03-15' }, { qty: 520, needBy: '2027-04-15' }] }]);
+  assert.deepStrictEqual(rows[0].slice(0, 6), ['No', 'Item code', 'Item name', '요청 수량', 'Need-by', 'U/P (단가)']);
+  assert.strictEqual(rows[0].length, 14);
+  assert.deepStrictEqual(rows[1], [1, 'KERN00736-001', '88TB0110', 1, '2027-03-01', '', '', 1, 'SH', '', '', '', '', '']);
+  assert.strictEqual(rows[2][4], '2027-03-15(500), 2027-04-15(520)');
+  const used = {};
+  assert.deepStrictEqual(['A/B:C', 'a/b:c', '사용 방법'].map(n => L.sheetTabName_(n, used)), ['A B C', 'a b c (2)', '사용 방법']);
+});

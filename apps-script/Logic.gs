@@ -1020,6 +1020,34 @@ function rfq2FileName_(base, kind, initials, program) {
 }
 
 /* ------------------------------------------------------------------
+ * 견적 입력용 시트: 업체별 탭, 사이트 견적 입력 표와 같은 열 순서 (복사해 사이트에 붙여넣기)
+ *   A No · B Item code · C Item name · D 요청 수량 · E Need-by | F U/P · G CUR · H Vendor Qty · I UOM · J MFG · K MOQ · L Lead Time · M Shelf Life · N Supplier Remarks
+ * ------------------------------------------------------------------ */
+var QUOTE_SHEET = {
+  HEAD: ['No', 'Item code', 'Item name', '요청 수량', 'Need-by', 'U/P (단가)', 'CUR', 'Vendor Qty', 'UOM', 'MFG', 'MOQ', 'Lead Time', 'Shelf Life', 'Supplier Remarks'],
+  FIXED: 5, WIDTHS: [40, 130, 190, 90, 150, 100, 60, 90, 60, 160, 80, 90, 110, 260]
+};
+/** 견적요청서 품목 → 시트 값 (머리글 + 품목 줄). Vendor Qty·UOM 은 요청 값으로 미리 채움 */
+function quoteSheetRows_(items) {
+  var need = function (it) {
+    var ps = it.parts && it.parts.length > 1 ? it.parts : null;
+    return ps ? ps.map(function (p) { var d = toDate_(p.needBy); return (d ? fmtDate_(d) : 'ASAP') + '(' + qtyText_(p.qty) + ')'; }).join(', ')
+      : (toDate_(it.needBy) ? fmtDate_(toDate_(it.needBy)) : 'ASAP');
+  };
+  return [QUOTE_SHEET.HEAD.slice()].concat(items.map(function (it, i) {
+    var qty = Number(toNumber_(it.qty)) || 0;
+    return [i + 1, String(it.item || ''), String(it.name || ''), qty, need(it), '', '', qty, String(it.uom || ''), '', '', '', '', ''];
+  }));
+}
+/** 시트 탭 이름 (금지 글자 빼고, 겹치면 번호) */
+function sheetTabName_(name, used) {
+  var base = String(name || '업체').replace(/[\[\]:*?\/\\']/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 90) || '업체', n = base, k = 2;
+  while (used[n.toLowerCase()]) n = base + ' (' + (k++) + ')';
+  used[n.toLowerCase()] = 1;
+  return n;
+}
+
+/* ------------------------------------------------------------------
  * Spot 견적 구매내역서 (템플릿: templates/Spot_구매내역서_템플릿.xlsx)
  *   견적종합   품목마다 업체 수(N)만큼 줄. A 선정 체크 · B 검토 문구 · AD~AN 업체 견적
  *   구매내역서 견적종합에서 A=TRUE 인 줄을 찾아 선정 결과, 오른쪽은 업체별 비교(업체마다 4칸)

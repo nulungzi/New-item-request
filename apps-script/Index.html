@@ -143,7 +143,7 @@ main { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px }
 .drawer-wrap { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
   padding: max(24px, env(safe-area-inset-top, 0px)) 16px max(24px, env(safe-area-inset-bottom, 0px)) }
 .drawer-backdrop { position: absolute; inset: 0; background: rgba(10, 16, 32, .5); opacity: 0; transition: opacity .18s ease }
-.drawer { position: relative; width: min(920px, 100%); max-height: 100%; display: flex; flex-direction: column; overflow: hidden;
+.drawer { position: relative; width: min(1640px, 100%); max-height: 100%; display: flex; flex-direction: column; overflow: hidden;
   background: var(--bg); border-radius: 14px; box-shadow: 0 24px 70px rgba(0, 0, 0, .35);
   opacity: 0; transform: translateY(14px) scale(.97); transition: transform .22s cubic-bezier(.2, .8, .2, 1), opacity .18s ease; will-change: transform, opacity }
 .drawer-wrap.open .drawer { opacity: 1; transform: none }
@@ -176,20 +176,31 @@ main { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px }
 .drawer-foot { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; padding: 12px 20px; background: var(--surface); border-top: 1px solid var(--line) }
 .toggle { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; font-weight: 600; font-size: .88rem }
 .toggle:has(input:checked) { background: var(--surface-2); border-color: var(--muted); color: var(--muted) }
-.vq { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 10px }
-.vq.nobid { opacity: .6 }
-.vq.filled { border-left: 3px solid var(--ok) }
-.vq-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline }
-.vq-head .data { font-weight: 600 }
-.vq-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px }
-.vq-grid .field input, .vq-grid .field select { width: 100%; text-align: left; font-family: var(--font-data); padding: 7px 8px }
-.vq-grid .field.wide { grid-column: span 2 }
-.vq-grid .field.full { grid-column: 1 / -1 }
-.vq-grid textarea { width: 100%; min-height: 54px; resize: vertical; font-family: var(--font-body) }
 @media (max-width: 560px) { .vq-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) } .drawer-head, .drawer-tools, .drawer-body, .drawer-foot { padding-left: 14px; padding-right: 14px } }
-.drawer-body.disabled .vq { opacity: .45; pointer-events: none }
+
 .nb-line + .nb-line { margin-top: 4px }
 .merged { font: .74rem var(--font-body); margin-top: 3px }
+/* 견적 입력 표 (소요제기 표처럼 한 줄 = 한 자재, 시트에서 복사해 붙여넣기) */
+.vq-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface) }
+.vq-table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 1380px; font-size: .86rem }
+.vq-table th { position: sticky; top: 0; z-index: 2; background: var(--surface-2); text-align: left; font-size: .74rem; font-weight: 600; color: var(--muted); padding: 7px 6px; border-bottom: 1px solid var(--line); white-space: nowrap }
+.vq-table th.in { color: var(--ink) }
+.vq-table td { padding: 3px 4px; border-bottom: 1px solid var(--line); vertical-align: middle }
+.vq-table td.fx { color: var(--muted); font-family: var(--font-data); font-size: .8rem; white-space: nowrap; background: var(--surface) }
+.vq-table td.fx.nm { font-family: var(--font-body); color: var(--ink); white-space: normal; min-width: 130px; max-width: 220px }
+.vq-table td.sticky, .vq-table th.sticky { position: sticky; left: 0; z-index: 1 }
+.vq-table th.sticky { z-index: 3 }
+.vq-table input, .vq-table select, .vq-table textarea { width: 100%; min-width: 0; padding: 5px 6px; font: .84rem var(--font-data); text-align: left; border-radius: 4px }
+.vq-table textarea { font-family: var(--font-body); min-height: 30px; resize: vertical; line-height: 1.3 }
+.vq-table tr.vq.filled td.no { box-shadow: inset 3px 0 0 var(--ok) }
+.vq-table tr.vq.nobid td { opacity: .55 }
+.vq-table tr.vq.nobid td.in-price { opacity: 1 }
+.vq-table .c-price { width: 110px } .vq-table .c-cur { width: 76px } .vq-table .c-qty { width: 86px } .vq-table .c-uom { width: 64px }
+.vq-table .c-mfg { width: 150px } .vq-table .c-moq { width: 80px } .vq-table .c-lt { width: 90px } .vq-table .c-shelf { width: 110px } .vq-table .c-remark { width: 240px }
+.vq-tip { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: .82rem; color: var(--muted) }
+.vq-tip kbd { font: .76rem var(--font-data); padding: 1px 5px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface) }
+.vq-pasted { color: var(--ok); font-weight: 600 }
+.drawer-body.disabled .vq-wrap { opacity: .45; pointer-events: none }
 .noreply-note { padding: 12px 14px; border-radius: 8px; background: var(--surface-2); color: var(--muted) }
 
 /* 진행 중: 견적요청서 펼치기 */
@@ -1421,6 +1432,53 @@ $('dmOk').onclick = function () {
  * → 업체를 누르면 오른쪽 입력 창(그 업체에 보낸 자재 목록)에서 견적 입력, 회신 없음 체크
  * → 견적 종합: 품목별 비교(원화·순위), 선택해서 선정·검토 문구 → Spot 견적 구매내역서 */
 var Q_CURS = ['USD', 'EUR', 'JPY', 'SGD', 'KRW'];
+// 견적 입력 칸 (견적 입력용 시트의 F열부터 같은 순서)
+var Q_COLS = [['price', 'U/P (단가)'], ['cur', 'CUR'], ['qty', 'Vendor Qty'], ['uom', 'UOM'], ['mfg', 'MFG'], ['moq', 'MOQ'], ['lt', 'Lead Time'], ['shelf', 'Shelf Life'], ['remark', 'Supplier Remarks']];
+var Q_FIXED = 5;   // 시트 앞 고정 열: No · Item code · Item name · 요청 수량 · Need-by
+/** 엑셀·구글 시트에서 복사한 글(탭·줄바꿈, 따옴표 안 줄바꿈 포함) → 2차원 배열 */
+function parseTsv(t) {
+  var rows = [], row = [], cell = '', q = false;
+  t = String(t || '').replace(/\r\n?/g, '\n');
+  for (var i = 0; i < t.length; i++) {
+    var ch = t[i];
+    if (q) { if (ch === '"') { if (t[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; }
+    else if (ch === '"' && cell === '') q = true;
+    else if (ch === '\t') { row.push(cell); cell = ''; }
+    else if (ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += ch;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(function (r) { return r.some(function (x) { return String(x).trim() !== ''; }); });
+}
+function normCur(x) {
+  var u = String(x || '').trim().toUpperCase().replace(/^US\$|^\$$/, 'USD').replace(/^€$/, 'EUR').replace(/^¥$|^JPN$/, 'JPY').replace(/^S\$$/, 'SGD').replace(/^₩$|^WON$/, 'KRW');
+  return u;
+}
+/**
+ * 붙여넣기: (1) 줄 전체(Item code 열 포함)면 Item code 로 맞춰 입력 칸을 채움
+ *           (2) 아니면 커서가 있는 칸(줄 i, 입력 칸 c)부터 오른쪽·아래로 채움
+ */
+function pasteQuotes(c, v, grid, startI, startC) {
+  var n = 0, codes = c.items.map(function (x) { return String(x.src.item || '').trim().toUpperCase(); }), used = {};
+  var full = grid.every(function (r) { return r.length >= Q_FIXED + 1 && codes.indexOf(String(r[1] || '').trim().toUpperCase()) >= 0; });
+  var put = function (i, ci, val) {
+    if (i < 0 || i >= c.items.length || ci < 0 || ci >= Q_COLS.length) return;
+    var key = Q_COLS[ci][0], q = qOf(c.items[i], v);
+    val = String(val == null ? '' : val).trim();
+    q[key] = key === 'cur' ? normCur(val) : key === 'price' && /^no\s*bid$/i.test(val) ? 'NO BID' : val;
+    n++;
+  };
+  grid.forEach(function (r, ri) {
+    if (full) {
+      var code = String(r[1]).trim().toUpperCase(), i = -1;
+      for (var k = 0; k < codes.length; k++) if (codes[k] === code && !used[k]) { i = k; break; }   // 같은 코드가 여러 줄이면 순서대로
+      if (i < 0) return;
+      used[i] = 1;
+      r.slice(Q_FIXED).forEach(function (val, j) { put(i, j, val); });
+    } else r.forEach(function (val, j) { put(startI + ri, startC + j, val); });
+  });
+  return n;
+}
 var qs = null;                 // 종합 화면·입력 창에서 쓰는 현재 견적
 state.qcache = {};             // 기록별 견적 (펼쳤다 접어도 유지)
 state.recOpen = {};            // 펼친 견적요청서
@@ -1489,13 +1547,29 @@ function vendorListHtml(rec) {
       '<span class="v-st ' + st.cls + '">' + esc(st.text) + '</span><span class="go">›</span></button>';
   }).join('') +
   '<div class="rec-vfoot"><span class="muted">업체별로 모두 입력했으면 종합하세요. 회신이 없는 업체는 입력 창에서 <b>회신 없음</b>을 체크합니다.</span>' +
-  '<button class="btn" type="button" data-sum="' + esc(rec.id) + '">견적 종합 →</button></div>';
+  '<span class="row">' + (rec.quoteSheet ? '<a class="btn-ghost" href="' + esc(rec.quoteSheet) + '" target="_blank" rel="noopener">견적 입력용 시트 열기 ↗</a>'
+    : '<button class="btn-ghost" type="button" data-qsheet="' + esc(rec.id) + '" title="업체별 탭에 Item code·이름·요청 수량·Need-by 를 채운 구글 시트">견적 입력용 시트 만들기</button>') +
+  '<button class="btn" type="button" data-sum="' + esc(rec.id) + '">견적 종합 →</button></span></div>';
 }
 function bindVendorList(box) {
   box.querySelectorAll('[data-vendor]').forEach(function (b) {
     b.onclick = function () { openDrawer(recById(b.dataset.rec), b.dataset.vendor); };
   });
   box.querySelectorAll('[data-sum]').forEach(function (b) { b.onclick = function () { openSummary(recById(b.dataset.sum)); }; });
+  box.querySelectorAll('[data-qsheet]').forEach(function (b) {
+    b.onclick = function () {
+      var rec = recById(b.dataset.qsheet);
+      pickFolder('견적 입력용 시트').then(function (folder) {
+        if (!folder) return;
+        b.disabled = true; b.textContent = '만드는 중…';
+        return call('apiCreateQuoteSheet', rec.id, folder.id).then(function (d) {
+          rec.quoteSheet = d.url;
+          refreshVendorList(rec);
+          $('recMsg').innerHTML = '<span class="ok-msg">견적 입력용 시트를 ' + esc(folder.name) + '에 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.name) + ' 열기 ↗</a></span>';
+        });
+      }).catch(function (e) { $('recMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; b.disabled = false; b.textContent = '견적 입력용 시트 만들기'; });
+    };
+  });
 }
 function recById(id) { return state.records.filter(function (x) { return x.id === id; })[0]; }
 function refreshVendorList(rec) {
@@ -1548,24 +1622,25 @@ function renderDrawer() {
   $('vdSteps').querySelectorAll('[data-step]').forEach(function (b) { b.onclick = function () { var i = +b.dataset.step, cur = c.vendors.indexOf(dr.v); goVendor(c.vendors[i], i > cur ? 1 : -1); }; });
   var on = $('vdSteps').querySelector('.on'); if (on) on.scrollIntoView({ block: 'nearest', inline: 'center' });
   $('vdBody').classList.toggle('disabled', none);
-  var f = function (q, key, label, cls, ph) {
-    return '<label class="field ' + (cls || '') + '">' + label + '<input data-f="' + key + '" value="' + esc(q[key] || '') + '"' + (ph ? ' placeholder="' + ph + '"' : '') + (none ? ' disabled' : '') + '></label>';
-  };
+  // 시트(견적 입력용 구글 시트)와 같은 열 순서: No · Item code · Item name · 요청 수량 · Need-by · 입력 칸들
   $('vdBody').innerHTML = (none ? '<div class="noreply-note">회신 없음으로 표시했습니다. 견적종합에는 NO BID(회색 줄)로 들어가고 Supplier Remarks에 "회신 없음"이 적힙니다.</div>' : '') +
+    '<div class="vq-tip"><span>업체 견적서나 <b>견적 입력용 시트</b>에서 복사해 붙여넣을 수 있습니다 (<kbd>Ctrl</kbd>+<kbd>V</kbd>).</span>' +
+    '<span>시트의 <b>줄 전체</b>를 복사하면 Item code로 맞춰 들어가고, 입력 칸만 복사하면 커서가 있는 칸부터 채웁니다.</span><span class="vq-pasted" id="vqPasted"></span></div>' +
+    '<div class="vq-wrap"><table class="vq-table"><thead><tr><th class="sticky">No</th><th>Item code</th><th>Item name</th><th>요청 수량</th><th>Need-by</th>' +
+      Q_COLS.map(function (k) { return '<th class="in c-' + k[0] + '">' + k[1] + '</th>'; }).join('') + '</tr></thead><tbody>' +
     c.items.map(function (x, i) {
       var q = qOf(x, v), it = x.src, nb = /^no\s*bid$/i.test(String(q.price || '').trim());
-      return '<div class="vq' + (nb ? ' nobid' : '') + (qFilled(q) ? ' filled' : '') + '" data-i="' + i + '">' +
-        '<div class="vq-head"><span class="chip chip-spot">' + (i + 1) + '</span><span class="data">' + esc(it.item) + '</span><span>' + esc(it.name || '') + '</span>' +
-          '<span class="muted data">요청 ' + fmt(it.qty) + ' ' + esc(it.uom || '') + ' · ' + esc(needText(it)) + '</span></div>' +
-        '<div class="vq-grid">' +
-          f(q, 'price', 'U/P (단가)', '', '단가 또는 NO BID') +
-          '<label class="field">CUR<select data-f="cur"' + (none ? ' disabled' : '') + '><option value=""></option>' + Q_CURS.map(function (x2) { return '<option' + (q.cur === x2 ? ' selected' : '') + '>' + x2 + '</option>'; }).join('') + '</select></label>' +
-          f(q, 'qty', 'Vendor Qty') + f(q, 'uom', 'UOM') +
-          f(q, 'mfg', 'MFG', 'wide') + f(q, 'moq', 'MOQ') + f(q, 'lt', 'Lead Time') +
-          f(q, 'shelf', 'Shelf Life', 'wide') +
-          '<label class="field full">Supplier Remarks<textarea data-f="remark" rows="2" placeholder="추가 비용 등 여러 줄 가능"' + (none ? ' disabled' : '') + '>' + esc(q.remark || '') + '</textarea></label>' +
-        '</div></div>';
-    }).join('');
+      return '<tr class="vq' + (nb ? ' nobid' : '') + (qFilled(q) ? ' filled' : '') + '" data-i="' + i + '">' +
+        '<td class="fx no sticky">' + (i + 1) + '</td><td class="fx">' + esc(it.item) + '</td><td class="fx nm">' + esc(it.name || '') + '</td>' +
+        '<td class="fx">' + fmt(it.qty) + ' ' + esc(it.uom || '') + '</td><td class="fx">' + esc(needText(it)).replace(/, /g, '<br>') + '</td>' +
+        Q_COLS.map(function (k, ci) {
+          var dis = none ? ' disabled' : '', key = k[0];
+          var el = key === 'cur' ? '<select data-f="cur" data-c="' + ci + '"' + dis + '><option value=""></option>' + Q_CURS.map(function (x2) { return '<option' + (q.cur === x2 ? ' selected' : '') + '>' + x2 + '</option>'; }).join('') + '</select>'
+            : key === 'remark' ? '<textarea data-f="remark" data-c="' + ci + '" rows="' + Math.min(4, String(q.remark || '').split('\n').length) + '" placeholder="추가 비용 등"' + dis + '>' + esc(q.remark || '') + '</textarea>'
+            : '<input data-f="' + key + '" data-c="' + ci + '" value="' + esc(q[key] || '') + '"' + (key === 'price' ? ' placeholder="단가 / NO BID"' : '') + dis + ' aria-label="' + esc((it.item || '') + ' ' + k[1]) + '">';
+          return '<td class="in-' + key + '">' + el + '</td>';
+        }).join('') + '</tr>';
+    }).join('') + '</tbody></table></div>';
   $('vdBody').querySelectorAll('.vq').forEach(function (box) {
     var x = c.items[+box.dataset.i], q = qOf(x, v);
     box.querySelectorAll('[data-f]').forEach(function (el) {
@@ -1611,6 +1686,15 @@ function goVendor(nv, dir) {   // 이전/다음 업체로: 저장하고 밀어�
     return Promise.all(ins.map(function (a) { return a.finished; }));
   }).catch(function () {}).then(function () { dr.busy = false; focus(); });
 }
+$('vdBody').addEventListener('paste', function (e) {
+  var el = e.target.closest('[data-c]'), tr = e.target.closest('tr.vq');
+  var text = (e.clipboardData || window.clipboardData).getData('text');
+  if (!el || !tr || !/[\t\n]/.test(String(text).replace(/\n$/, ''))) return;   // 한 칸짜리는 그냥 붙여넣기
+  e.preventDefault();
+  var c = quoteFor(dr.rec), n = pasteQuotes(c, dr.v, parseTsv(text), +tr.dataset.i, +el.dataset.c);
+  renderDrawer();
+  $('vqPasted').textContent = '✓ ' + n + '칸 붙여넣음';
+});
 $('vdNoReply').onchange = function () { var c = quoteFor(dr.rec); if (this.checked) c.noReply[dr.v] = true; else delete c.noReply[dr.v]; renderDrawer(); };
 $('vdCur').onchange = function () { var c = quoteFor(dr.rec), cur = this.value; if (!cur) return; c.items.forEach(function (x) { qOf(x, dr.v).cur = cur; }); renderDrawer(); };
 $('vdNoBid').onclick = function () { var c = quoteFor(dr.rec); c.items.forEach(function (x) { qOf(x, dr.v).price = 'NO BID'; }); renderDrawer(); };

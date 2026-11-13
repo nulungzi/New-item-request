@@ -313,3 +313,26 @@ test('로그인: 입력한 이메일 = 접속한 Google 계정이어야 하고, 
   ctx.apiLogin('kim@ke.com'); ctx.apiLogout();
   assert.strictEqual(ctx.apiAuthState().loggedIn, false);
 });
+
+test('apiCreateQuoteSheet: 업체마다 탭, 사이트 표와 같은 값, 기록에 시트 주소', () => {
+  const calls = [];
+  const chain = new Proxy(function () {}, { get: (t, k) => (k === 'getId' ? () => 'QS' : k === 'getUrl' ? () => 'QSURL' : k === 'getSheets' ? () => [chain, chain] : (...a) => { calls.push([k, a]); return chain; }), apply: () => chain });
+  const ctx = inContext({
+    SpreadsheetApp: { create: () => chain, newDataValidation: () => chain, BorderStyle: { SOLID: 'S' } },
+    DriveApp: { getFileById: () => chain, getFolderById: () => chain },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }) },
+  });
+  let saved = null;
+  const rec = { kind: '견적요청서', title: '[KE] RFQ // 261113 Material Spot (due 11/14)', vendors: ['OMI', 'CBOL'],
+    items: [{ item: 'KERN00736-001', name: '88TB0110', qty: 1, uom: 'SH', needBy: '2027-03-01' }] };
+  ctx.findRecord_ = () => ({ rec });
+  ctx.updateRecord_ = (f, p) => { saved = p; };
+  const d = ctx.apiCreateQuoteSheet('R1', '');
+  assert.deepStrictEqual([d.url, d.name], ['QSURL', '261113 Material Spot (due 11/14) 견적 입력']);
+  assert.deepStrictEqual(calls.filter(c => c[0] === 'insertSheet').map(c => c[1][0]), ['OMI', 'CBOL']);
+  const vals = calls.filter(c => c[0] === 'setValues').map(c => c[1][0]);
+  assert.strictEqual(JSON.stringify(vals[1][1].slice(0, 5)), JSON.stringify([1, 'KERN00736-001', '88TB0110', 1, '2027-03-01']));
+  assert.strictEqual(JSON.stringify(saved), JSON.stringify({ data: { quoteSheet: 'QSURL' } }));
+  rec.quoteSheet = 'QSURL';
+  assert.strictEqual(ctx.apiCreateQuoteSheet('R1', '').url, 'QSURL');   // 이미 있으면 그 시트
+});

@@ -653,6 +653,51 @@ function apiCreateRfq(payload) {
   return { url: ss.getUrl(), name: title, id: ss.getId(), recordId: rec.id };
 }
 
+/**
+ * 견적 입력용 구글 시트: 메일 초안에서 고른 업체마다 탭, Item code·이름·요청 수량·Need-by 를 채움.
+ * 담당자가 업체 견적을 여기 적고 줄을 복사해 사이트 견적 입력 창에 붙여넣음. 이미 있으면 그 시트를 돌려줌
+ */
+function apiCreateQuoteSheet(recordId, folderInput) {
+  auth_();
+  var found = findRecord_(recordId, true), rec = found.rec;
+  if (rec.kind !== '견적요청서') throw new Error('견적요청서 기록이 아닙니다.');
+  if (rec.quoteSheet) return { url: rec.quoteSheet, name: rec.title + ' 견적 입력' };
+  if (!(rec.vendors || []).length) throw new Error('메일 초안을 먼저 만들어 업체를 골라 주세요.');
+  var name = rec.title.replace(/^\[KE\] RFQ \/\/ /, '') + ' 견적 입력';
+  var ss = SpreadsheetApp.create(name), folder = targetFolder_(folderInput);
+  if (folder) DriveApp.getFileById(ss.getId()).moveTo(folder);
+  var values = quoteSheetRows_(rec.items || []), n = values.length, W = QUOTE_SHEET.HEAD.length, F = QUOTE_SHEET.FIXED, used = {};
+  var guide = ss.getSheets()[0].setName(sheetTabName_('사용 방법', used));
+  guide.getRange(1, 1, 6, 1).setValues([[rec.title + ' — 견적 입력용 시트'],
+    ['1. 업체 탭에 업체 견적서의 값을 F열(U/P)부터 적거나 붙여넣습니다. 회신이 없으면 비워 두고 사이트에서 "회신 없음"을 체크하세요.'],
+    ['2. NO BID 는 U/P 칸에 NO BID 라고 적습니다. CUR 은 USD·EUR·JPY·SGD·KRW.'],
+    ['3. 줄 전체(A~N)를 복사해 사이트 → 진행 중 → 그 업체 견적 입력 창 표에 붙여넣으면 Item code 로 맞춰 들어갑니다.'],
+    ['4. 입력 칸(F~N)만 복사했다면 사이트 표에서 같은 칸을 누르고 붙여넣으세요.'],
+    ['A~E열(No·Item code·Item name·요청 수량·Need-by)은 견적요청서 그대로이니 고치지 마세요.']]);
+  guide.getRange(1, 1).setFontWeight('bold').setFontSize(12);
+  guide.setColumnWidth(1, 900);
+  rec.vendors.forEach(function (v) {
+    var sh = ss.insertSheet(sheetTabName_(v, used));
+    sh.getRange(1, 1, n, W).setNumberFormat('@');
+    sh.getRange(1, 1, n, W).setValues(values);
+    sh.getRange(2, 1, Math.max(1, n - 1), 1).setNumberFormat('0');
+    sh.getRange(1, 1, 1, W).setFontWeight('bold').setWrap(true).setVerticalAlignment('middle');
+    sh.getRange(1, 1, 1, F).setBackground('#d9d9d9');
+    sh.getRange(1, F + 1, 1, W - F).setBackground('#fff2cc');
+    if (n > 1) {
+      sh.getRange(2, 1, n - 1, F).setBackground('#f3f3f3').setFontColor('#555555');
+      sh.getRange(2, F + 2, n - 1, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['USD', 'EUR', 'JPY', 'SGD', 'KRW'], true).setAllowInvalid(true).build());
+      sh.getRange(2, W, n - 1, 1).setWrap(true);
+    }
+    sh.getRange(1, 1, n, W).setBorder(true, true, true, true, true, true, '#999999', SpreadsheetApp.BorderStyle.SOLID);
+    QUOTE_SHEET.WIDTHS.forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
+    sh.setFrozenRows(1); sh.setFrozenColumns(F);
+  });
+  if (rec.vendors.length) ss.setActiveSheet(ss.getSheets()[1]);
+  updateRecord_(found, { data: { quoteSheet: ss.getUrl() } });
+  return { url: ss.getUrl(), name: name };
+}
+
 /** 업체정보 탭: [{name, emails:[...]}] */
 function vendorSheet_() {
   var ss = db_();
