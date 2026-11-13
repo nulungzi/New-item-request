@@ -86,6 +86,15 @@ test('apiRegisterItem: 자재정보 맨 아래에 머리글 순서대로 추가,
   assert.strictEqual(written.length, 1);
   assert.deepStrictEqual(JSON.parse(JSON.stringify(written[0].v[0])), [2, 'KERN99999-001', 'SPOT', 'Hexcel', '', '', '', '', '', 'Air', 'PREPREG']);
   assert.throws(() => ctx.apiRegisterItem({ item: 'B', priceMode: 'LTA' }), /업체명/);
+  // 여러 줄: 하나라도 틀리면 아무것도 안 씀, 같은 묶음 안의 겹치는 SPOT 도 막음
+  const bad = ctx.apiRegisterItems([{ item: 'C1', priceMode: 'SPOT', supplier: 'X' }, { item: 'C1', priceMode: 'spot', supplier: 'x' }, {}, { item: 'C2', priceMode: 'LTA' }]);
+  assert.strictEqual(bad.ok, false);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(bad.errors.map(e => [e.i, e.item]))), [[1, 'C1'], [3, 'C2']]);
+  assert.match(bad.errors[0].messages[0], /이번 1번째 줄/);
+  assert.strictEqual(written.length, 1);
+  const good = ctx.apiRegisterItems([{ item: 'D1', priceMode: 'SPOT', supplier: 'X' }, { item: 'D2', priceMode: 'LTA', supplier: 'PPG', price: '2.5', cur: 'usd', start: '2027-01-01', end: '2027-12-31' }, {}]);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify([good.ok, good.added.map(a => [a.row, a.item])])), [true, [[4, 'D1'], [5, 'D2']]]);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(written[1].v.map(r => [r[0], r[1], r[4], r[5]]))), [[2, 'D1', '', ''], [3, 'D2', 2.5, 'USD']]);
   // 초기화: 등록 양식 필드는 시트 머리글 순서
   const init = ctx.apiInit();
   assert.deepStrictEqual(JSON.parse(JSON.stringify(init.fields.map(f => f.key))), ['item', 'priceMode', 'supplier', 'price', 'cur', 'start', 'end', 'moq', 'shipFrom', 'desc']);
@@ -176,7 +185,7 @@ test('견적요청서 → 메일 초안 → 내 기록 → 완료 보관', () =>
     ScriptApp: { getOAuthToken: () => 't' },
     GmailApp: { createDraft: (to, subj, text, opt) => { drafts.push({ to, subj, text, opt }); return { getId: () => 'D1' }; } },
   });
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(ctx.apiVendors(), (k, x) => k === 'people' ? undefined : x)), { vendors: [{ name: 'Hexcel', emails: ['a@hexcel.com', 'b@hexcel.com'] }, { name: '3M', emails: ['q@3m.com'] }], missing: false });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(ctx.apiVendors(), (k, x) => ['people', 'supplier', 'site'].includes(k) ? undefined : x)), { vendors: [{ name: 'Hexcel', emails: ['a@hexcel.com', 'b@hexcel.com'] }, { name: '3M', emails: ['q@3m.com'] }], missing: false });
 
   const title = '[KE] RFQ // 261110 Boeing Chemical Material Spot (due 11/20)';
   const r = ctx.apiCreateRfq({ baseDate: '2026-11-10', title, due: '2026-11-20', items: [

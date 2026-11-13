@@ -192,29 +192,86 @@ function apiClassify(input, baseDateStr) {
 /** 신규 자재를 자재정보 시트 맨 아래에 추가. rec 키는 masterFields_ 의 key. 머리글 없는 맨 앞 번호 열은 윗줄 + 1 */
 function apiRegisterItem(rec) {
   auth_();
+  var r = apiRegisterItems([rec]);
+  if (!r.ok) throw new Error(r.errors[0].messages.join('\n'));
+  return r.added[0];
+}
+
+/**
+ * 자재 여러 줄 등록 (자재 등록 화면·입력용 시트에서 붙여넣기). 모두 검사해서 하나라도 틀리면 아무것도 쓰지 않고
+ * {ok:false, errors:[{i, item, messages}]}, 모두 맞으면 자재정보 맨 아래에 이어 붙이고 {ok:true, added:[...]}
+ * 같은 묶음 안에서 겹치는 계약·SPOT 도 막음
+ */
+function apiRegisterItems(recs) {
+  auth_();
+  recs = recs || [];
+  var filled = function (r) { return Object.keys(r || {}).some(function (k) { return String(r[k] == null ? '' : r[k]).trim() !== ''; }); };
+  if (!recs.some(filled)) throw new Error('등록할 자재를 입력해 주세요.');
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
     var sh = masterSheet_(), values = sh.getDataRange().getValues(), head = masterHeader_(values);
-    var v = validateNewItem_(rec, parseContracts_(values));
-    if (v.errors.length) throw new Error(v.errors.join('\n'));
+    var known = parseContracts_(values), errors = [], ok = [];
+    recs.forEach(function (rec, i) {   // i = 화면 표의 줄 번호(0부터), 빈 줄은 건너뜀
+      if (!filled(rec)) return;
+      var v = validateNewItem_(rec, known);
+      if (v.errors.length) { errors.push({ i: i, item: String(rec.item || ''), messages: v.errors }); return; }
+      ok.push(v.rec);
+      known.push({ item: v.rec.item, supplier: v.rec.supplier, priceMode: v.rec.priceMode, start: v.rec.start || null, end: v.rec.end || null, row: '이번 ' + (i + 1) + '번째 줄' });
+    });
+    if (errors.length) return { ok: false, errors: errors };
 
-    var row = newItemRow_(head.headers, v.rec), n = row.length, last = sh.getLastRow(), at = last + 1;
-    var prev = values[last - 1] || [];
-    if (!String(head.headers[0]).trim() && last > head.row && typeof prev[0] === 'number') row[0] = prev[0] + 1;
-
-    var target = sh.getRange(at, 1, 1, n);
+    var last = sh.getLastRow(), prev = values[last - 1] || [], num = !String(head.headers[0]).trim() && last > head.row && typeof prev[0] === 'number' ? prev[0] : null;
+    var rows = ok.map(function (rec) { var row = newItemRow_(head.headers, rec); if (num !== null) row[0] = ++num; return row; });
+    var n = head.headers.length, at = last + 1, target = sh.getRange(at, 1, rows.length, n);
     if (last > head.row) sh.getRange(last, 1, 1, n).copyTo(target, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
     head.headers.forEach(function (h, i) {
       var k = keyForHeader_(h);
-      if (k === 'item') sh.getRange(at, i + 1).setNumberFormat('@');
-      if (k === 'start' || k === 'end') sh.getRange(at, i + 1).setNumberFormat('yyyy-mm-dd');
+      if (k === 'item') sh.getRange(at, i + 1, rows.length, 1).setNumberFormat('@');
+      if (k === 'start' || k === 'end') sh.getRange(at, i + 1, rows.length, 1).setNumberFormat('yyyy-mm-dd');
     });
-    target.setValues([row]);
-    return { row: at, item: v.rec.item, desc: v.rec.desc || '', ship: v.rec.shipFrom || '', shelf: v.rec.shelfLife || '', mode: v.rec.priceMode };
+    target.setValues(rows);
+    return { ok: true, added: ok.map(function (rec, i) { return { row: at + i, item: rec.item, desc: rec.desc || '', ship: rec.shipFrom || '', shelf: rec.shelfLife || '', mode: rec.priceMode }; }) };
   } finally {
     lock.releaseLock();
   }
+}
+
+/** 자재 입력용 시트: 머리글은 자재정보와 같은 열 순서 (복사해 사이트 자재 등록 표에 붙여넣기) */
+function apiCreateItemSheet(folderInput) {
+  auth_();
+  var fields = masterFields_(masterValues_()), n = fields.length, ROWS = 300;
+  if (!n) throw new Error('자재정보 머리글을 찾지 못했습니다.');
+  var ss = SpreadsheetApp.create('자재 등록 입력 시트'), folder = targetFolder_(folderInput);
+  var sh = ss.getSheets()[0].setName('자재 등록');
+  sh.getRange(1, 1, 1, n).setValues([fields.map(function (f) { return f.header; })])
+    .setFontWeight('bold').setBackground('#c9daf8').setHorizontalAlignment('center').setVerticalAlignment('middle').setWrap(true);
+  var list = function (col, items) { sh.getRange(2, col, ROWS, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(items, true).setAllowInvalid(true).build()); };
+  fields.forEach(function (f, i) {
+    var c = i + 1, w = { item: 120, priceMode: 80, supplier: 110, desc: 320, product: 140, material: 110, qpl: 160, start: 95, end: 95 }[f.key] || 90;
+    sh.setColumnWidth(c, w);
+    sh.getRange(2, c, ROWS, 1).setNumberFormat(f.key === 'start' || f.key === 'end' ? 'yyyy-mm-dd' : f.key === 'price' ? '#,##0.####' : '@');
+    if (f.key === 'priceMode') { list(c, ['SPOT', 'LTA', '3PP']); sh.getRange(1, c).setFontColor('#1c3d8f'); }
+    if (f.key === 'item') sh.getRange(1, c).setFontColor('#1c3d8f');
+    if (f.key === 'cur') list(c, ['USD', 'EUR', 'JPY', 'SGD', 'KRW']);
+    if (f.key === 'shipFrom') list(c, ['Air', 'Ocean']);
+  });
+  sh.getRange(1, 1, ROWS + 1, n).setBorder(true, true, true, true, true, true, '#d0d7e2', SpreadsheetApp.BorderStyle.SOLID);
+  sh.setRowHeight(1, 36); sh.setFrozenRows(1);
+  if (sh.getMaxColumns() > n) sh.deleteColumns(n + 1, sh.getMaxColumns() - n);
+  var g = ss.insertSheet('사용 방법');
+  g.getRange(1, 1, 7, 1).setValues([['자재 등록 입력 시트 사용 방법'],
+    ['1. "자재 등록" 탭 2행부터 한 줄에 한 자재씩 적습니다. 열 순서는 자재정보(DB)와 같으니 바꾸지 마세요.'],
+    ['2. 꼭 필요한 칸: Item, 계약 구분(SPOT·LTA·3PP). LTA·3PP 는 업체명·단가·CUR·계약시작·계약종료도 필요합니다.'],
+    ['3. 2행부터 마지막 줄까지 복사(Ctrl+C) → 웹앱 왼쪽 "자재 등록" 표의 첫 칸을 누르고 붙여넣기(Ctrl+V). 머리글을 같이 복사해도 됩니다.'],
+    ['4. "자재정보에 등록" 을 누르면 모두 검사한 뒤 자재정보 맨 아래에 한 번에 추가합니다. 틀린 줄이 있으면 아무것도 쓰지 않고 그 줄을 알려 줍니다.'],
+    ['5. 이미 있는 자재의 값을 고치는 것은 자재정보 시트에서 직접 합니다.'],
+    ['날짜는 2027-12-31 처럼 적습니다.']]);
+  g.getRange(1, 1).setFontWeight('bold').setFontSize(13);
+  g.setColumnWidth(1, 900);
+  ss.setActiveSheet(sh);
+  if (folder) DriveApp.getFileById(ss.getId()).moveTo(folder);
+  return { url: ss.getUrl(), name: ss.getName(), folder: folder ? folder.getName() : '내 드라이브' };
 }
 
 /**
@@ -730,7 +787,8 @@ function apiVendors() {
   auth_();
   var sh = vendorSheet_();
   if (!sh) return { vendors: [], missing: true };
-  return { vendors: parseVendors_(sh.getDataRange().getValues()), missing: false };
+  var values = sh.getDataRange().getValues(), info = vendorInfo_(values);
+  return { vendors: parseVendors_(values).map(function (v) { var x = vendorOf_(info, v.name); v.supplier = x.supplier; v.site = x.site; return v; }), missing: false };
 }
 
 /** 메일 서명: Gmail 설정의 서명(고급 서비스 Gmail API 추가 시) → 없으면 사이트에 저장한 서명 */

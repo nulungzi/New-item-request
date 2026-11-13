@@ -65,6 +65,7 @@ main { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px }
 .side { position: sticky; top: env(safe-area-inset-top, 0px); display: grid; gap: 4px; padding-top: 4px }
 .side-btn { border: 0; background: transparent; color: var(--muted); text-align: left; padding: 10px 12px; border-radius: 8px; font-weight: 600; display: flex; justify-content: space-between; align-items: center }
 .side-btn:hover { background: var(--surface-2); color: var(--ink) }
+.side-sep { height: 1px; background: var(--line); margin: 6px 12px }
 .side-btn.on { background: var(--surface); color: var(--accent); box-shadow: inset 3px 0 0 var(--accent) }
 .side-count { font: 600 .75rem var(--font-data); background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: 1px 8px }
 .side-count:empty { display: none }
@@ -240,6 +241,22 @@ main { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px }
 .rec-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; grid-row: 1 / span 2; grid-column: 2 }
 .rec-actions .btn-ghost { padding: 6px 12px; font-size: .84rem }
 a.btn-ghost { display: inline-block; text-decoration: none; border-radius: 6px }
+.it-wrap { max-height: 62vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px }
+.it-table th { position: sticky; top: 0; background: var(--surface); z-index: 1 }
+.it-table td { padding: 3px 4px; vertical-align: top }
+.it-table td.no { color: var(--muted); font: .78rem var(--font-data); padding-top: 10px; text-align: right }
+.it-table input, .it-table select { width: 100%; min-width: 80px; padding: 6px 7px; font: .84rem var(--font-data); text-align: left }
+.it-table .k-desc input { min-width: 260px; font-family: var(--font-body) }
+.it-table .k-item input { min-width: 130px; text-transform: uppercase }
+.it-table .k-start input, .it-table .k-end input { min-width: 108px }
+.it-table tr.bad td { background: var(--spot-soft) }
+.it-table .row-err { color: var(--warn); font-size: .78rem; padding: 0 4px 6px }
+.it-x { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 1rem; padding: 6px }
+.vn-form .field input, .vn-form .field select { width: 100%; text-align: left; font-family: var(--font-body) }
+.vn-find { max-width: 240px; padding: 6px 10px }
+#vnTbl td { vertical-align: top }
+#vnTbl .mails { font: .8rem var(--font-data); display: grid; gap: 2px }
+#vnTbl .mails small { font-family: var(--font-body); color: var(--muted) }
 .rec-group { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2) }
 .rec-ghead { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; padding: 2px 4px }
 .rec-gtitle { font-weight: 700 }
@@ -523,6 +540,9 @@ table.list td.nw { white-space: nowrap }
 <nav class="side" aria-label="화면">
   <button type="button" class="side-btn on" data-view="new">새 소요제기</button>
   <button type="button" class="side-btn" data-view="records">진행 중 <span class="side-count" id="recCount"></span></button>
+  <div class="side-sep" role="presentation"></div>
+  <button type="button" class="side-btn" data-view="items">자재 등록</button>
+  <button type="button" class="side-btn" data-view="vendors">업체 등록</button>
 </nav>
 <div class="views">
 <div id="viewNew" class="stack">
@@ -680,6 +700,46 @@ table.list td.nw { white-space: nowrap }
 </section>
 
 </div>
+</div>
+
+<div id="viewItems" class="stack" hidden>
+  <div class="panel">
+    <div class="panel-head"><h2>자재 등록</h2><span class="muted">자재정보(DB)에 새 자재를 추가합니다 · 이미 있는 자재의 값 수정은 자재정보 시트에서</span></div>
+    <p class="muted lead">한 줄에 한 자재입니다. 열은 자재정보와 같은 순서라 <b>입력용 시트</b>나 엑셀에서 여러 줄을 복사해 아무 칸에 붙여넣으면 그 칸부터 채워집니다 (머리글 줄은 건너뜀).
+      필수: <b>Item</b>, <b>계약 구분</b>(SPOT·LTA·3PP) · LTA·3PP 는 업체명·단가·CUR·계약시작·계약종료도.</p>
+    <div class="scroll it-wrap"><table class="list it-table" id="itTbl"></table></div>
+    <div class="row spread">
+      <div class="row"><button class="btn-ghost" id="itAdd" type="button">+ 행 추가</button><button class="btn-ghost" id="itClear" type="button">모두 지우기</button><button class="btn-ghost" id="itSheet" type="button">입력용 시트 만들기</button></div>
+      <button class="btn" id="itSave" type="button">자재정보에 등록</button>
+    </div>
+    <div id="itMsg"></div>
+  </div>
+</div>
+
+<div id="viewVendors" class="stack" hidden>
+  <div class="panel">
+    <div class="panel-head"><h2>업체 등록</h2><div class="row"><span class="muted" id="vnCount"></span><button class="btn-ghost" id="vnReload" type="button">새로고침</button></div></div>
+    <p class="muted lead">자재정보 스프레드시트의 <b>업체정보</b> 탭입니다. 여기서 추가하면 그 탭에 한 줄이 생기고, 시트에서 직접 고친 내용은 <b>새로고침</b>으로 불러옵니다. 메일 초안 창에도 바로 나옵니다.</p>
+    <div class="sub first vn-form">
+      <div class="row">
+        <label class="inline"><input type="radio" name="vnMode" value="old" checked> 기존 업체에 연락처 추가</label>
+        <label class="inline"><input type="radio" name="vnMode" value="new"> 새 업체 등록</label>
+      </div>
+      <div class="fields">
+        <label class="field" id="vnOldF" for="vnVendor">업체<select id="vnVendor"></select></label>
+        <label class="field" id="vnNameF" for="vnName" hidden>업체명<input id="vnName" type="text" maxlength="60" autocomplete="off" placeholder="예: Aerovac"></label>
+        <label class="field" for="vnEmail">이메일<input id="vnEmail" type="email" maxlength="120" autocomplete="off" spellcheck="false" placeholder="name@company.com"></label>
+        <label class="field" for="vnContact">담당자 (CONTACT · 선택)<input id="vnContact" type="text" maxlength="60" autocomplete="off"></label>
+        <label class="field" id="vnSupF" for="vnSup" hidden>SUPPLIER (정식 이름 · 선택)<input id="vnSup" type="text" maxlength="120" autocomplete="off"></label>
+        <label class="field" id="vnSiteF" for="vnSite" hidden>SITE (선택)<input id="vnSite" type="text" maxlength="60" autocomplete="off"></label>
+      </div>
+      <div class="row"><button class="btn" id="vnSave" type="button">업체정보에 저장</button><span id="vnMsg"></span></div>
+    </div>
+    <div class="sub">
+      <div class="sub-title"><h3>등록된 업체</h3><input id="vnFind" type="search" placeholder="업체·이메일 찾기" autocomplete="off" class="vn-find"></div>
+      <div class="scroll"><table class="list" id="vnTbl"></table></div>
+    </div>
+  </div>
 </div>
 
 <div id="viewRecords" class="stack" hidden>
@@ -1960,8 +2020,136 @@ function showView(v) {
   document.querySelectorAll('.side-btn').forEach(function (b) { b.classList.toggle('on', b.dataset.view === v); });
   $('viewNew').hidden = v !== 'new';
   $('viewRecords').hidden = v !== 'records';
+  $('viewItems').hidden = v !== 'items';
+  $('viewVendors').hidden = v !== 'vendors';
   if (v === 'records') loadRecords();
+  if (v === 'items') renderItemTable();
+  if (v === 'vendors') loadVendorView();
 }
+
+/* ---------- 자재 등록: 자재정보와 같은 열, 여러 줄, 시트에서 붙여넣기 ---------- */
+state.itRows = [{}, {}, {}];
+function itFields() { return state.fields && state.fields.length ? state.fields : [{ key: 'item', header: 'Item' }, { key: 'priceMode', header: '계약 구분' }, { key: 'desc', header: 'Description' }]; }
+var IT_LISTS = { priceMode: ['', 'SPOT', 'LTA', '3PP'], cur: ['', 'USD', 'EUR', 'JPY', 'SGD', 'KRW'], shipFrom: ['', 'Air', 'Ocean'] };
+function renderItemTable(errs) {
+  var f = itFields(), em = {};
+  (errs || []).forEach(function (e) { em[e.i] = e.messages; });
+  $('itTbl').innerHTML = '<thead><tr><th></th>' + f.map(function (x) { return '<th>' + esc(x.header) + (x.key === 'item' || x.key === 'priceMode' ? ' *' : '') + '</th>'; }).join('') + '<th></th></tr></thead><tbody>' +
+    state.itRows.map(function (r, i) {
+      return '<tr' + (em[i] ? ' class="bad"' : '') + ' data-r="' + i + '"><td class="no">' + (i + 1) + '</td>' + f.map(function (x, c) {
+        var v = r[x.key] == null ? '' : String(r[x.key]), key = esc(x.key);
+        var ctl = IT_LISTS[x.key] ? '<select data-k="' + key + '" data-c="' + c + '" aria-label="' + (i + 1) + '행 ' + esc(x.header) + '">' + IT_LISTS[x.key].concat(IT_LISTS[x.key].indexOf(v) < 0 ? [v] : []).map(function (o) { return '<option' + (o === v ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select>'
+          : '<input data-k="' + key + '" data-c="' + c + '" value="' + esc(v) + '"' + (x.key === 'start' || x.key === 'end' ? ' placeholder="2027-12-31"' : '') + ' aria-label="' + (i + 1) + '행 ' + esc(x.header) + '">';
+        return '<td class="k-' + key.replace(/[^a-z]/gi, '') + '">' + ctl + '</td>';
+      }).join('') + '<td><button type="button" class="it-x" data-del="' + i + '" aria-label="' + (i + 1) + '행 지우기">✕</button></td></tr>' +
+        (em[i] ? '<tr class="bad"><td></td><td colspan="' + (f.length + 1) + '" class="row-err">⚠ ' + esc(em[i].join(' · ')) + '</td></tr>' : '');
+    }).join('') + '</tbody>';
+  $('itTbl').querySelectorAll('[data-k]').forEach(function (el) {
+    var h = function () { state.itRows[+el.closest('tr').dataset.r][el.dataset.k] = el.value; };
+    el.oninput = h; el.onchange = h;
+  });
+  $('itTbl').querySelectorAll('[data-del]').forEach(function (b) { b.onclick = function () { state.itRows.splice(+b.dataset.del, 1); if (!state.itRows.length) state.itRows.push({}); renderItemTable(); }; });
+}
+$('itTbl').addEventListener('paste', function (e) {
+  var el = e.target.closest('[data-c]'), tr = e.target.closest('tr[data-r]');
+  var text = (e.clipboardData || window.clipboardData).getData('text');
+  if (!el || !tr || !/[\t\n]/.test(String(text).replace(/\n$/, ''))) return;
+  e.preventDefault();
+  var f = itFields(), grid = parseTsv(text), r0 = +tr.dataset.r, c0 = +el.dataset.c;
+  var hk = function (x) { return String(x || '').replace(/[\s_-]/g, '').toLowerCase(); };
+  if (grid.length && f.some(function (x) { return hk(x.header) === hk(grid[0][0]) || hk(x.header) === hk(grid[0][1]); })) grid.shift();   // 머리글 줄
+  grid.forEach(function (row, ri) {
+    var r = r0 + ri;
+    while (state.itRows.length <= r) state.itRows.push({});
+    row.forEach(function (val, ci) {
+      var x = f[c0 + ci];
+      if (!x) return;
+      val = String(val == null ? '' : val).trim();
+      if (x.key === 'priceMode' || x.key === 'cur') val = val.toUpperCase();
+      if (x.key === 'shipFrom') val = /^air$/i.test(val) ? 'Air' : /^ocean$/i.test(val) ? 'Ocean' : val;
+      if ((x.key === 'start' || x.key === 'end') && val) val = normDate(val) || val;
+      state.itRows[r][x.key] = val;
+    });
+  });
+  renderItemTable();
+  $('itMsg').innerHTML = '<span class="ok-msg">' + grid.length + '줄을 붙여넣었습니다. 확인 후 "자재정보에 등록"을 누르세요.</span>';
+});
+$('itAdd').onclick = function () { for (var k = 0; k < 3; k++) state.itRows.push({}); renderItemTable(); };
+$('itClear').onclick = function () { state.itRows = [{}, {}, {}]; $('itMsg').innerHTML = ''; renderItemTable(); };
+$('itSheet').onclick = function () {
+  var b = this;
+  pickFolder('자재 입력용 시트').then(function (folder) {
+    if (!folder) return;
+    b.disabled = true; b.textContent = '만드는 중…';
+    return call('apiCreateItemSheet', folder.id).then(function (d) {
+      $('itMsg').innerHTML = '<span class="ok-msg">자재 입력용 시트를 ' + esc(d.folder) + '에 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.name) + ' 열기 ↗</a> — "사용 방법" 탭을 참고하세요.</span>';
+    });
+  }).catch(function (e) { $('itMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; })
+    .finally(function () { b.disabled = false; b.textContent = '입력용 시트 만들기'; });
+};
+$('itSave').onclick = function () {
+  var b = this, rows = state.itRows;
+  if (!rows.some(function (r) { return Object.keys(r).some(function (k) { return String(r[k] || '').trim(); }); })) { $('itMsg').innerHTML = '<span class="err">등록할 자재를 입력해 주세요.</span>'; return; }
+  b.disabled = true; b.textContent = '검사·등록 중…'; $('itMsg').innerHTML = '';
+  call('apiRegisterItems', rows).then(function (d) {
+    if (!d.ok) {
+      renderItemTable(d.errors);
+      $('itMsg').innerHTML = '<span class="err">' + d.errors.length + '줄을 확인해 주세요 (주황색 줄). 아무것도 등록하지 않았습니다.</span>';
+      return;
+    }
+    state.itRows = [{}, {}, {}];
+    renderItemTable();
+    $('itMsg').innerHTML = '<span class="ok-msg">자재정보에 ' + d.added.length + '개를 등록했습니다 (' + d.added.map(function (a) { return esc(a.item) + ' · ' + a.row + '행'; }).join(', ') + '). 소요제기 판정에 바로 쓰입니다.</span>';
+    loadDb(false).catch(function () {});
+  }).catch(function (e) { $('itMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; })
+    .finally(function () { b.disabled = false; b.textContent = '자재정보에 등록'; });
+};
+
+/* ---------- 업체 등록: 업체정보 탭 목록 + 연락처 추가 / 새 업체 ---------- */
+function loadVendorView() {
+  $('vnTbl').innerHTML = '<tr><td class="muted">업체정보 불러오는 중…</td></tr>';
+  return call('apiVendors').then(renderVendorView).catch(function (e) { $('vnMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; });
+}
+function renderVendorView(d) {
+  state.vendorList = d.vendors || [];
+  var keepSel = $('vnVendor').value;
+  $('vnVendor').innerHTML = state.vendorList.map(function (v) { return '<option>' + esc(v.name) + '</option>'; }).join('');
+  if (keepSel) $('vnVendor').value = keepSel;
+  $('vnCount').textContent = '업체 ' + state.vendorList.length + '곳';
+  var q = $('vnFind').value.trim().toLowerCase();
+  var list = state.vendorList.filter(function (v) { return !q || (v.name + ' ' + v.emails.join(' ') + ' ' + (v.supplier || '')).toLowerCase().indexOf(q) >= 0; });
+  $('vnTbl').innerHTML = '<tr><th>업체명</th><th>담당자 이메일</th><th>SUPPLIER</th><th>SITE</th><th></th></tr>' + (list.length ? list.map(function (v) {
+    var people = v.people || v.emails.map(function (m) { return { email: m, contact: '' }; });
+    return '<tr><td><b>' + esc(v.name) + '</b></td><td><div class="mails">' + people.map(function (p) { return '<span>' + esc(p.email) + (p.contact ? ' <small>' + esc(p.contact) + '</small>' : '') + '</span>'; }).join('') + '</div></td>' +
+      '<td>' + esc(v.supplier || '') + '</td><td>' + esc(v.site || '') + '</td><td><button type="button" class="link-btn" data-addto="' + esc(v.name) + '">+ 연락처</button></td></tr>';
+  }).join('') : '<tr><td colspan="5" class="muted">' + (d.missing ? '업체정보 탭이 없습니다. 위에서 새 업체를 등록하면 만들어집니다.' : '찾는 업체가 없습니다.') + '</td></tr>');
+  $('vnTbl').querySelectorAll('[data-addto]').forEach(function (b) {
+    b.onclick = function () { document.querySelector('input[name="vnMode"][value="old"]').checked = true; vnMode(); $('vnVendor').value = b.dataset.addto; $('vnEmail').focus(); $('vnEmail').scrollIntoView({ block: 'center' }); };
+  });
+}
+function vnMode() {
+  var nw = document.querySelector('input[name="vnMode"]:checked').value === 'new';
+  $('vnOldF').hidden = nw; $('vnNameF').hidden = !nw; $('vnSupF').hidden = !nw; $('vnSiteF').hidden = !nw;
+  $('vnMsg').innerHTML = '';
+  return nw;
+}
+document.querySelectorAll('input[name="vnMode"]').forEach(function (r) { r.onchange = vnMode; });
+$('vnFind').addEventListener('input', function () { if (state.vendorList) renderVendorView({ vendors: state.vendorList }); });
+$('vnReload').onclick = loadVendorView;
+$('vnSave').onclick = function () {
+  var b = this, nw = document.querySelector('input[name="vnMode"]:checked').value === 'new', email = $('vnEmail').value.trim();
+  var o = { isNew: nw, name: nw ? $('vnName').value.trim() : $('vnVendor').value, email: email, contact: $('vnContact').value.trim(),
+    supplier: nw ? $('vnSup').value.trim() : '', site: nw ? $('vnSite').value.trim() : '' };
+  if (!o.name) { $('vnMsg').innerHTML = '<span class="err">업체명을 적어 주세요.</span>'; return; }
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { $('vnMsg').innerHTML = '<span class="err">이메일 주소를 확인해 주세요.</span>'; $('vnEmail').focus(); return; }
+  b.disabled = true; b.textContent = '저장 중…';
+  call('apiAddVendor', o).then(function (d) {
+    renderVendorView(d);
+    ['vnName', 'vnEmail', 'vnContact', 'vnSup', 'vnSite'].forEach(function (id) { $(id).value = ''; });
+    $('vnMsg').innerHTML = '<span class="ok-msg">' + esc(o.name) + ' · ' + esc(email) + ' 를 업체정보에 저장했습니다.</span>';
+  }).catch(function (e) { $('vnMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; })
+    .finally(function () { b.disabled = false; b.textContent = '업체정보에 저장'; });
+};
 document.querySelectorAll('.side-btn').forEach(function (b) { b.onclick = function () { showView(b.dataset.view); }; });
 $('btnRecReload').onclick = function () { loadRecords(); };
 /*
