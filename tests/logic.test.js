@@ -621,3 +621,15 @@ test('통화: 쓴 통화만 — KRW·JPY 만 쓰면 그 둘만, 원화만이면 
   const g2 = (r, c) => (krwOnly.filter(o => o.op === 'set' && o.s === '구매세부내역' && o.r === r && o.c === c).pop() || {}).v;
   assert.deepStrictEqual([g2(3, 10), g2(4, 10), g2(6, 2)], ['TTL(KRW)', 'Total', 'L/I']);
 });
+
+test('소요제기 일자 전달 · 진행 중 같은 자재 찾기', () => {
+  const p = L.parseRows_([{ item: 'kerc00064', qty: '5', needBy: '2027-01-01', reqDate: '2026/11/10', reqMemo: ' 사업부A ' }, { item: 'A', qty: 1 }]);
+  assert.deepStrictEqual([p.requests[0].reqDate, p.requests[0].reqMemo, p.requests[1].reqDate], ['2026-11-10', '사업부A', '']);
+  const res = L.classify_(p.requests, [], L.toDate_('2026-11-13'));
+  assert.strictEqual(res[0].reqDate, '2026-11-10');
+  const idx = L.openItemIndex_([
+    { title: 'RFQ 1', owner: 'me@ke.com', created: '2026-11-12', kind: '견적요청서', items: [{ item: 'KERC00064' }, { item: 'kerc00064' }], fixed: [{ item: 'KERN1' }] },
+    { title: '구매내역서', owner: 'lee@ke.com', created: '2026-11-11', kind: '계약 구매내역서', items: [{ item: 'KERC00064' }] }], 'me@ke.com');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(idx.KERC00064.map(x => [x.title, x.mine]))), [['RFQ 1', true], ['구매내역서', false]]);
+  assert.strictEqual(idx.KERN1.length, 1);
+});

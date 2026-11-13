@@ -476,6 +476,16 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-size: .
 .req-row .f-qty { font-family: var(--font-data); text-align: right }
 .req-no { padding-top: 9px; text-align: right; color: var(--muted); font: .78rem var(--font-data) }
 .req-desc { grid-column: 2 / -1; font: .74rem var(--font-data); color: var(--muted); margin-top: -2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.req-src { grid-column: 2 / span 3; display: flex; gap: 6px; align-items: center; font-size: .74rem; color: var(--muted); margin-top: -2px }
+.req-src select { width: auto; max-width: 240px; padding: 3px 6px; font-size: .78rem }
+.rq-dates { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2) }
+.rq-list { display: flex; flex-wrap: wrap; gap: 8px }
+.rq-item { display: flex; gap: 6px; align-items: center; padding: 4px 6px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line) }
+.rq-item input[type="date"] { width: 150px; padding: 5px 6px }
+.rq-item input[type="text"] { width: 190px; padding: 5px 6px; text-align: left; font-family: var(--font-body) }
+.rq-no { font: 700 .74rem var(--font-data); color: var(--accent); width: 16px; text-align: center }
+.rq-add { padding: 5px 12px; font-size: .84rem }
+.rq-tip { font-size: .8rem }
 .req-desc.bad { color: var(--spot); font-family: var(--font-body) }
 .btn-x { border: 1px solid transparent; background: transparent; color: var(--muted); height: 36px }
 .btn-x:hover { border-color: var(--line); color: var(--warn) }
@@ -687,6 +697,12 @@ table.list td.nw { white-space: nowrap }
     </div>
     <p class="muted lead">Item · 수량 · Need-by는 필수입니다. 엑셀에서 여러 줄을 복사해 아무 칸에나 붙여넣으면 그 칸부터 채워집니다.
       Shelf Life·Ship을 비우거나 <b>기본</b>으로 두면 자재정보 값을 쓰고, 비운 Program은 시트에 노란 칸으로 남습니다.</p>
+    <div class="rq-dates">
+      <b>소요제기 일자</b>
+      <div class="rq-list" id="rqList"></div>
+      <button class="btn-ghost rq-add" id="rqAdd" type="button">+ 소요제기 추가</button>
+      <span class="muted rq-tip" id="rqTip">여러 소요제기를 한 번에 판정하면 줄마다 어느 소요제기인지 고릅니다.</span>
+    </div>
     <div>
       <div class="req-head"><span></span><span>ITEM</span><span>수량</span><span>NEED-BY</span><span>PROGRAM</span><span>SHELF LIFE</span><span>SHIP</span><span>TAX</span><span></span></div>
       <div id="reqRows"></div>
@@ -1172,11 +1188,13 @@ function addRow(v) {
     '<select class="f-ship" id="ship-' + id + '" aria-label="Ship"><option value="">기본</option><option>Air</option><option>Ocean</option></select>' +
     '<input class="f-tax data" id="tax-' + id + '" placeholder="Tax" inputmode="numeric" aria-label="Tax Code">' +
     '<button class="btn-x" type="button" title="행 삭제" aria-label="행 삭제">✕</button>' +
-    '<div class="req-desc"></div>';
+    '<div class="req-desc"></div>' +
+    '<label class="req-src" hidden><span>소요제기</span><select class="f-req" aria-label="소요제기"></select></label>';
   $('reqRows').appendChild(row);
   var q = function (c) { return row.querySelector('.' + c); };
   q('f-item').value = v.item || ''; q('f-qty').value = v.qty || ''; q('f-need').value = v.need || '';
   q('f-prog').value = v.program || ''; q('f-shelf').value = v.shelf || ''; q('f-ship').value = v.ship || ''; q('f-tax').value = v.tax || '';
+  fillReqSelect(row, v.req || 0);
   q('btn-x').onclick = function () { row.remove(); if (!rows().length) addRow(); renumber(); };
   q('f-item').oninput = function () { showDesc(row); };
   row.querySelectorAll('input,select').forEach(function (inp) { inp.addEventListener('paste', onPaste); });
@@ -1233,12 +1251,46 @@ function onPaste(e) {
 function requestRows() {
   var q = function (r, c) { return r.querySelector('.' + c).value.trim(); };
   return rows().map(function (r) {
-    return { item: q(r, 'f-item'), qty: q(r, 'f-qty'), needBy: q(r, 'f-need'), program: q(r, 'f-prog'), shelfLife: q(r, 'f-shelf'), shipFrom: q(r, 'f-ship'), taxCode: q(r, 'f-tax') };
+    var rq = state.reqDates[+r.querySelector('.f-req').value || 0] || state.reqDates[0] || {};
+    return { item: q(r, 'f-item'), qty: q(r, 'f-qty'), needBy: q(r, 'f-need'), program: q(r, 'f-prog'), shelfLife: q(r, 'f-shelf'), shipFrom: q(r, 'f-ship'), taxCode: q(r, 'f-tax'),
+      reqDate: rq.date || '', reqMemo: rq.memo || '' };
   });
 }
+/* 소요제기 일자: 기본 한 칸, 여러 소요제기를 한 번에 판정할 때 추가 (줄마다 어느 소요제기인지) */
+state.reqDates = [{ date: '', memo: '' }];
+function reqDateList() { return state.reqDates.filter(function (d) { return d.date; }).map(function (d) { return d.date + (d.memo ? ' ' + d.memo : ''); }); }
+function reqLabel(i) { var d = state.reqDates[i] || {}; return (i + 1) + ' · ' + (d.date || '날짜 없음') + (d.memo ? ' ' + d.memo : ''); }
+function fillReqSelect(row, keep) {
+  var sel = row.querySelector('.f-req'), cur = keep != null ? keep : +sel.value || 0, multi = state.reqDates.length > 1;
+  sel.innerHTML = state.reqDates.map(function (d, i) { return '<option value="' + i + '">' + esc(reqLabel(i)) + '</option>'; }).join('');
+  sel.value = String(Math.min(cur, state.reqDates.length - 1));
+  row.querySelector('.req-src').hidden = !multi;
+}
+function renderReqDates() {
+  $('rqList').innerHTML = state.reqDates.map(function (d, i) {
+    return '<div class="rq-item"><span class="rq-no">' + (i + 1) + '</span><input type="date" class="data" data-rq="' + i + '" data-f="date" value="' + esc(d.date) + '" aria-label="소요제기 ' + (i + 1) + ' 일자">' +
+      '<input type="text" data-rq="' + i + '" data-f="memo" value="' + esc(d.memo) + '" maxlength="40" placeholder="메모 (선택, 사업부·요청 번호)" aria-label="소요제기 ' + (i + 1) + ' 메모">' +
+      (state.reqDates.length > 1 ? '<button type="button" class="btn-x" data-rqdel="' + i + '" aria-label="소요제기 ' + (i + 1) + ' 빼기">✕</button>' : '') + '</div>';
+  }).join('');
+  $('rqList').querySelectorAll('[data-rq]').forEach(function (el) {
+    el.oninput = el.onchange = function () { state.reqDates[+el.dataset.rq][el.dataset.f] = el.value; rows().forEach(function (r) { fillReqSelect(r); }); };
+  });
+  $('rqList').querySelectorAll('[data-rqdel]').forEach(function (b) {
+    b.onclick = function () {
+      var k = +b.dataset.rqdel;
+      state.reqDates.splice(k, 1);
+      rows().forEach(function (r) { var v = +r.querySelector('.f-req').value || 0; fillReqSelect(r, v === k ? 0 : v > k ? v - 1 : v); });
+      renderReqDates();
+    };
+  });
+  $('rqTip').hidden = state.reqDates.length < 2;
+  rows().forEach(function (r) { fillReqSelect(r); });
+}
+$('rqAdd').onclick = function () { state.reqDates.push({ date: $('base').value || '', memo: '' }); renderReqDates(); var last = $('rqList').querySelector('.rq-item:last-child input[type="date"]'); if (last) last.focus(); };
 $('btnAdd').onclick = function () { addRow().querySelector('.f-item').focus(); };
 $('btnClear').onclick = function () { $('reqRows').innerHTML = ''; for (var i = 0; i < 3; i++) addRow(); };
 for (var i = 0; i < 3; i++) addRow();
+renderReqDates();
 
 /* ---------- 폴더 선택 창: 저장 버튼을 누르면 내 드라이브에서 폴더를 고른다 ---------- */
 var FOLDER_KEY = 'sojeongi.folder';
@@ -1425,7 +1477,9 @@ function render() {
           (r.program ? '<div class="muted">' + esc(r.program) + '</div>' : '') + '</td>' +
         '<td class="n data">' + fmt(r.qty) + '</td><td class="data nw">' + esc(r.needBy) + '</td><td class="nw">' + sup + '</td>' +
         '<td class="data muted nw">' + (c0.start ? esc(c0.start) + '<br>~ ' + esc(c0.end) : '') + '</td>' +
-        '<td class="muted">' + esc(r.reason) + (r.warnings && r.warnings.length ? '<div class="warn">⚠ ' + esc(r.warnings.join(' · ')) + '</div>' : '') + '</td></tr>';
+        '<td class="muted">' + esc(r.reason) + (r.warnings && r.warnings.length ? '<div class="warn">⚠ ' + esc(r.warnings.join(' · ')) + '</div>' : '') +
+          (r.dups && r.dups.length ? '<div class="warn dup">⚠ 진행 중인 다른 소요제기에 같은 자재: ' + r.dups.map(function (x) { return esc(x.title) + ' (' + (x.mine ? '내 기록' : esc(x.owner)) + ')'; }).join(', ') + '</div>' : '') +
+          (state.reqDates.length > 1 && r.reqDate ? '<div class="muted rq-of">소요제기 ' + esc(r.reqDate) + (r.reqMemo ? ' ' + esc(r.reqMemo) : '') + '</div>' : '') + '</td></tr>';
     }).join('');
   document.querySelectorAll('#tbl [data-pick]').forEach(function (sel) {
     sel.onchange = function () { var r = rs.filter(function (x) { return String(x.line) === sel.dataset.pick; })[0]; setPick(r, sel.value === 'rfq' ? 'rfq' : +sel.value); };
@@ -1535,7 +1589,7 @@ function rfqItems() {
     var r = g.first, e = state.rfqEdit[g.key];
     return { item: r.item, registered: !!(r.registered || itemDesc[r.item]), name: e.name.trim(), desc: e.desc.trim(), qpl: e.qpl.trim(), uom: e.uom.trim(), remark: e.remark.trim(), material: r.material || '',
       qty: g.qty, needBy: g.rows[0].needBy, program: r.program, shelfLife: r.shelfLife, shipFrom: r.shipFrom, taxCode: r.taxCode,
-      parts: g.rows.map(function (x) { return { qty: x.qty, needBy: x.needBy || '', program: x.program || '' }; }) };
+      reqDate: g.rows[0].reqDate || '', parts: g.rows.map(function (x) { return { qty: x.qty, needBy: x.needBy || '', program: x.program || '', reqDate: x.reqDate || '' }; }) };
   });
 }
 
@@ -1614,9 +1668,9 @@ function createRfq(tpl, title) {
     if (!folder) return;
     b.disabled = true; b.textContent = '만드는 중…';
     var fixed = state.mode === 'one' ? fixedLines().map(function (r) {
-      return { item: r.item, qty: r.qty, needBy: r.needBy, program: r.program, shelfLife: r.shelfLife, shipFrom: r.shipFrom, taxCode: r.taxCode, contractRow: chosen(r).row };
+      return { item: r.item, qty: r.qty, needBy: r.needBy, program: r.program, shelfLife: r.shelfLife, shipFrom: r.shipFrom, taxCode: r.taxCode, contractRow: chosen(r).row, reqDate: r.reqDate || '' };
     }) : [];
-    return call('apiCreateRfq', { template: tpl, baseDate: $('base').value, title: title, due: $('rfqDue').value, folder: folder.id, items: items, group: state.group, fixed: fixed }).then(function (d) {
+    return call('apiCreateRfq', { template: tpl, baseDate: $('base').value, title: title, due: $('rfqDue').value, folder: folder.id, items: items, group: state.group, fixed: fixed, reqDates: reqDateList() }).then(function (d) {
       $('rfqMsg').innerHTML = '<span class="rfq-done ok-msg">견적요청서(' + (tpl === 'list' ? '양식 2' : '양식 1') + ')를 ' + esc(folder.name) + '에 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">열어서 검토 ↗</a>' +
         '<button class="btn" type="button" id="btnRfqDraft">검토했으면 메일 초안 만들기</button></span>';
       $('btnRfqDraft').onclick = function () { openDraft(d.recordId, d.name); };
@@ -2332,8 +2386,9 @@ function recGroups(recs) {
   var groups = [], at = {};
   recs.forEach(function (r) {
     var k = keyOf(r), g = groups[at[k]];
-    if (!g) { at[k] = groups.length; groups.push(g = { key: k, recs: [], created: r.created }); }
+    if (!g) { at[k] = groups.length; groups.push(g = { key: k, recs: [], created: r.created, reqDates: [] }); }
     g.recs.push(r);
+    (r.reqDates || []).forEach(function (d) { if (g.reqDates.indexOf(d) < 0) g.reqDates.push(d); });
     if (r.created < g.created) g.created = r.created;
   });
   // 묶음 안 순서: 견적요청서 → 그 견적 구매내역서(들여쓰기) → 나머지(계약·Spot 구매내역서)
@@ -2372,7 +2427,7 @@ function loadRecords() {
     $('recList').innerHTML = d.records.length ? recGroups(d.records).map(function (g) {
       if (g.recs.length === 1) return recCard(g.recs[0]);
       var kinds = {}; g.recs.forEach(function (r) { kinds[r.kind] = (kinds[r.kind] || 0) + 1; });
-      return '<div class="rec-group"><div class="rec-ghead"><div><span class="rec-gtitle">소요제기 · ' + esc(g.created) + '</span><span class="muted"> 파일 ' + g.recs.length + '개 · ' +
+      return '<div class="rec-group"><div class="rec-ghead"><div><span class="rec-gtitle">소요제기 · ' + esc(g.reqDates.length ? g.reqDates.join(' · ') : g.created) + '</span><span class="muted"> 파일 ' + g.recs.length + '개 · ' +
           esc(Object.keys(kinds).map(function (k) { return k + (kinds[k] > 1 ? ' ' + kinds[k] : ''); }).join(' / ')) + '</span></div>' +
           '<button class="btn-ghost" type="button" data-gdone="' + esc(g.recs.map(function (r) { return r.id; }).join(',')) + '">모두 완료</button></div>' +
         g.recs.map(function (r) { return recCard(r, r._child); }).join('') + '</div>';
@@ -2717,10 +2772,10 @@ function createPurchase(b, folder) {
   var rates = {};
   document.querySelectorAll('[data-rate]').forEach(function (el) { rates[el.dataset.rate] = el.value; });
   var lines = docLines(key).map(function (r) {
-    return { item: r.item, qty: r.qty, needBy: r.needBy, program: r.program, shelfLife: r.shelfLife, shipFrom: r.shipFrom, taxCode: r.taxCode, contractRow: chosen(r).row };
+    return { item: r.item, qty: r.qty, needBy: r.needBy, program: r.program, shelfLife: r.shelfLife, shipFrom: r.shipFrom, taxCode: r.taxCode, contractRow: chosen(r).row, reqDate: r.reqDate || '' };
   });
   call('apiCreatePurchase', { baseDate: $('base').value, rates: rates, remarks: doc.remarks, lines: lines, schedule: { months: doc.months || 12, bars: doc.sched }, name: $('fileName').value, confirmer: doc.confirmer, folder: folder.id,
-    group: state.group, split: key !== 'all' }).then(function (d) {
+    group: state.group, split: key !== 'all', reqDates: reqDateList() }).then(function (d) {
     state.rates = Object.assign(state.rates, rates);
     doc.done = (d.files || [d]).map(function (f) { f.folder = folder.name; return f; });
     var keys = Object.keys(state.docs).filter(function (k) { return docLines(k).length; });

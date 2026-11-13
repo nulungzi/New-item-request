@@ -172,7 +172,8 @@ function parseRows_(rows) {
       program: String(r.program || '').trim(),
       shipFrom: String(r.shipFrom || '').trim(),
       shelfLife: String(r.shelfLife || '').trim(),
-      taxCode: String(r.taxCode == null ? '' : r.taxCode).trim()
+      taxCode: String(r.taxCode == null ? '' : r.taxCode).trim(),
+      reqDate: toDate_(r.reqDate) ? fmtDate_(toDate_(r.reqDate)) : '', reqMemo: String(r.reqMemo || '').trim()   // 소요제기 일자
     });
   });
   return { requests: out, skipped: skipped };
@@ -246,7 +247,8 @@ function classify_(requests, contracts, today) {
     var valid = deals.filter(inPeriod).sort(byPrice);
     var spotPriced = spots.filter(function (c) { return c.price !== null && c.price !== '' && inPeriod(c); }).sort(byPrice);
     var res = { line: q.line, item: q.item, qty: q.qty, needBy: q.needBy, program: q.program,
-      shipFrom: q.shipFrom || '', shelfLife: q.shelfLife || '', taxCode: q.taxCode || '', candidates: valid, warnings: [], registered: all.length > 0 };
+      shipFrom: q.shipFrom || '', shelfLife: q.shelfLife || '', taxCode: q.taxCode || '', candidates: valid, warnings: [], registered: all.length > 0,
+      reqDate: q.reqDate || '', reqMemo: q.reqMemo || '' };
     // 고를 수 있는 DB 단가 전부 (계약 + Spot 단가, 기본값이 맨 앞). 화면에서 다른 업체나 '견적 요청'으로 바꿀 수 있음
     res.alts = valid.concat(spotPriced);
     var ref0 = all[0];
@@ -571,6 +573,24 @@ function rateNote_(curs, rates, base) {
     var v = Number(rates[c]);
     return 'KRW ' + v.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '/' + c;
   }).join(', ') + ' (' + fmtDate_(base).replace(/-/g, '/') + ' 기준)';
+}
+
+/**
+ * 중복 소요제기: 진행 중 기록(모든 담당자)에 같은 Item 이 있으면 {item: [{title, owner, created, mine}]}
+ * records: rowToRecord_ 결과 목록, me: 내 이메일
+ */
+function openItemIndex_(records, me) {
+  var out = {};
+  (records || []).forEach(function (r) {
+    var seen = {};
+    (r.items || []).concat(r.fixed || []).forEach(function (it) {
+      var k = itemKey_(it && it.item);
+      if (!k || seen[k]) return;
+      seen[k] = 1;
+      (out[k] = out[k] || []).push({ title: r.title, owner: r.owner, created: r.created, mine: r.owner === me, kind: r.kind });
+    });
+  });
+  return out;
 }
 
 /** 1234.5 → '1,234.5' */
