@@ -654,3 +654,72 @@ test('구매 이력: 줄 만들기 · 견적종합 선정 줄 읽기 · 직전 �
     { item: 'E', supplier: 'S', priceMode: 'LTA', price: 1, cur: 'USD', end: L.toDate_('2026-11-01') }], today, 90);
   assert.deepStrictEqual(ex.map(x => [x.item, x.mode, x.days]), [['B', '3PP', 7], ['A', 'LTA', 48]]);
 });
+
+test('발주 마감일: Need-by − 리드타임 − 운송·통관 (Air 14 · Ocean 42 · 기본 21), 비고에 표시', () => {
+  assert.deepStrictEqual(['10-12wks', '20Wks', '3M', '45 days', '6주', '4~6', 'ASAP'].map(x => L.leadDays_(x)), [84, 140, 90, 45, 42, null, null]);
+  assert.strictEqual(L.leadDays_('4~6', true), 42);
+  const today = L.toDate_('2026-11-13');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(L.poDeadline_('2027-06-10', '10-12wks', 'Ocean', today))), { date: '2027-02-04', leadDays: 84, shipDays: 42, days: 83 });
+  assert.strictEqual(L.poDeadline_('2027-06-10', '10-12wks', 'Air').date, '2027-03-04');
+  assert.strictEqual(L.poDeadline_('2027-06-10', '10-12wks', '').date, '2027-02-25');
+  assert.strictEqual(L.poDeadline_('2027-06-10', '', 'Air'), null);
+  assert.strictEqual(L.poDeadline_('2026-12-01', '20wks', 'Air', today).days < 0, true);   // 이미 지남
+  const c = [{ item: 'A', priceMode: 'LTA', supplier: 'S', price: 1, cur: 'USD', start: L.toDate_('2026-01-01'), end: L.toDate_('2028-12-31'), leadtime: '10wks', shipFrom: 'Ocean' }];
+  const r = L.classify_([{ line: 1, item: 'A', qty: 1, needBy: L.toDate_('2027-06-10'), shipFrom: 'Air' }], c, today);
+  assert.strictEqual(r[0].alts[0].deadline.date, '2027-03-18');   // 화면에서 Air 로 바꾸면 Air 기준
+  const ops = L.buildPurchasePlan_([{ item: 'A', qty: 1, needBy: L.toDate_('2027-06-10'), supplier: 'S', cur: 'USD', price: 1, priceMode: 'LTA', leadtime: '10wks', shipFrom: 'Ocean', remark: '분납 가능' }], ['USD'], { USD: 1 }, today);
+  const remark = ops.filter(o => o.op === 'set' && o.s === '구매세부내역' && o.c === 19).pop().v;
+  assert.strictEqual(remark, '분납 가능\n발주 마감 2027-02-18');
+  assert.ok(ops.some(o => o.op === 'wrap' && o.c === 19));
+});
+
+test('진행 중 알림: 회신 기한(미회신 업체 있을 때) · 발주 마감(PO 발행 전)', () => {
+  const today = L.toDate_('2026-11-13');
+  const rfq = { kind: '견적요청서', draft: 'D', due: '2026-11-14', vendors: ['OMI', 'CBOL', 'AERO'],
+    quote: { noReply: { AERO: true }, items: [{ quotes: { CBOL: { price: '11' }, OMI: { price: '' } } }] } };
+  assert.deepStrictEqual(L.pendingVendors_(rfq), ['OMI']);
+  const a = L.recordAlert_(rfq, today);
+  assert.strictEqual(JSON.stringify(a), JSON.stringify({ level: 'soon', due: { date: '2026-11-14', days: 1, pending: ['OMI'], level: 'soon' } }));
+  assert.strictEqual(L.recordAlert_(Object.assign({}, rfq, { due: '2026-11-10' }), today).level, 'late');
+  assert.strictEqual(L.recordAlert_(Object.assign({}, rfq, { due: '2026-11-30' }), today).level, '');      // 아직 여유 → 배지만
+  assert.strictEqual(L.recordAlert_(Object.assign({}, rfq, { draft: '' }), today).due, undefined);          // 메일 전
+  assert.strictEqual(L.recordAlert_(Object.assign({}, rfq, { spotFile: 'u' }), today).due, undefined);      // 구매내역서까지 만듦
+  const buy = { kind: '계약 구매내역서', status: '작성', items: [{ deadline: '2026-12-20' }, { deadline: '2026-11-20' }, { deadline: '2026-11-20' }, {}] };
+  assert.strictEqual(JSON.stringify(L.recordAlert_(buy, today).po), JSON.stringify({ date: '2026-11-20', days: 7, count: 2, level: 'soon' }));
+  assert.strictEqual(L.recordAlert_(Object.assign({}, buy, { po: { stage: 'PO 발행' } }), today).po, undefined);
+  // 견적 구매내역서: 선정 업체 L/T (숫자만이면 주)
+  assert.strictEqual(L.spotDeadline_({ needBy: L.toDate_('2027-06-10'), quotes: { A: { lt: '8', sel: true }, B: { lt: '2' } } }).date, '2027-03-25');
+  assert.strictEqual(L.spotDeadline_({ needBy: L.toDate_('2027-06-10'), quotes: { A: { lt: '8' } } }), null);
+});
+
+test('아침 요약 메일: 급한 것만, 없으면 null', () => {
+  const today = L.toDate_('2026-11-13');
+  const recs = [
+    { title: 'RFQ A', kind: '견적요청서', draft: 'D', due: '2026-11-12', vendors: ['OMI'], quote: {} },
+    { title: 'RFQ B', kind: '견적요청서', draft: 'D', due: '2026-12-30', vendors: ['OMI'], quote: {} },
+    { title: '구매 <C>', kind: '계약 구매내역서', status: '품의 중', items: [{ deadline: '2026-11-20' }] }];
+  const d = L.digest_(recs, [{ item: 'KERC1', mode: 'LTA', supplier: 'AKZO', end: '2026-11-30', days: 17 }, { item: 'K2', days: 60 }], today, 'https://x');
+  assert.strictEqual(d.count, 3);
+  assert.strictEqual(d.subject, '[소요제기] 2026-11-13 확인할 일 3건');
+  assert.ok(/D\+1 RFQ A · 회신 기한 2026-11-12 · 미회신 OMI/.test(d.text));
+  assert.ok(!/RFQ B/.test(d.text));
+  assert.ok(/구매 &lt;C&gt;/.test(d.html) && /D-7/.test(d.text) && /KERC1 LTA · AKZO/.test(d.text));
+  assert.strictEqual(L.digest_([recs[1]], [], today), null);
+});
+
+test('단가 이상 경고: 직전 구매 같은 통화 ±30% 초과', () => {
+  assert.strictEqual(JSON.stringify(L.priceJump_('13.5', 'usd', { price: 10, cur: 'USD', year: 2026 })), JSON.stringify({ pct: 35, prev: 10, cur: 'USD', year: 2026 }));
+  assert.strictEqual(L.priceJump_('6', 'USD', { price: 10, cur: 'USD' }).pct, -40);
+  assert.strictEqual(L.priceJump_('12.9', 'USD', { price: 10, cur: 'USD' }), null);
+  assert.strictEqual(L.priceJump_('20', 'EUR', { price: 10, cur: 'USD' }), null);
+  assert.strictEqual(L.priceJump_('20', 'USD', { price: '', cur: 'USD' }), null);
+});
+
+test('사업부 확인 요청 메일: 인사 · 본문 · 제목 링크 · 감사합니다 · 서명', () => {
+  const m = L.confirmMail_({ title: "261113 화공자재 구매내역서('26-21차)", url: 'https://docs.google.com/x', name: '김민형' }, '<b>서명</b>');
+  assert.ok(m.html.indexOf('안녕하십니까 자재구매 김민형입니다') > 0);
+  assert.ok(m.html.indexOf('<a href="https://docs.google.com/x">261113 화공자재 구매내역서(\'26-21차)</a>') > 0);
+  assert.ok(m.html.indexOf('해당 건 구매내역서 검토 후 날인 부탁드립니다') < m.html.indexOf('<a href') && m.html.indexOf('감사합니다') > m.html.indexOf('<a href'));
+  assert.ok(m.html.endsWith('<div><b>서명</b></div></div>'));
+  assert.ok(/^안녕하십니까 자재구매 김민형입니다\n\n해당 건/.test(m.text));
+});

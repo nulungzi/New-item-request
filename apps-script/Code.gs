@@ -366,7 +366,8 @@ function apiCreatePurchase(payload) {
     var rec = addRecord_({ kind: g.spot ? 'Spot 구매내역서' : '계약 구매내역서', title: name, url: ss.getUrl(), fileId: ss.getId(), status: '작성', group: payload.group || '',
       reqDates: payload.reqDates || [],
       items: g.lines.map(function (l) { return { item: l.item, qty: l.qty, needBy: fmtDate_(toDate_(l.needBy)), supplier: l.supplier, price: l.price, cur: l.cur,
-        desc: l.desc || '', uom: l.uom || '', mfg: l.product || l.qpl || '', priceMode: l.priceMode || '', leadtime: l.leadtime || '', program: l.program || '', reqDate: l.reqDate || '' }; }) });
+        desc: l.desc || '', uom: l.uom || '', mfg: l.product || l.qpl || '', priceMode: l.priceMode || '', leadtime: l.leadtime || '', program: l.program || '', reqDate: l.reqDate || '',
+        deadline: (poDeadline_(l.needs && l.needs.length ? l.needs[0].needBy : l.needBy, l.leadtime, l.shipFrom) || {}).date || '' }; }) });
     return { url: ss.getUrl(), name: name, id: ss.getId(), recordId: rec.id, spot: g.spot };
   });
   return { files: files, url: files[0].url, name: files[0].name, id: files[0].id, recordId: files[0].recordId };
@@ -929,6 +930,7 @@ function rowToRecord_(r) {
     items: extra ? extra.items : items, due: extra ? extra.due : '', vendors: extra && extra.vendors || [], quote: extra && extra.quote || null,
     group: extra && extra.group || '', parent: extra && extra.parent || '', fixed: extra && extra.fixed || [], quoteSheet: extra && extra.quoteSheet || '',
     spotFile: extra && extra.spotFile || '', reqDates: extra && extra.reqDates || [], po: extra && extra.po || null, mails: extra && extra.mails || [],
+    confirmMail: extra && extra.confirmMail || null,
     updated: r[11] instanceof Date ? r[11].toISOString() : String(r[11] || '')
   };
 }
@@ -991,7 +993,9 @@ function apiMyRecords() {
   var list = recordSheet_().getDataRange().getValues().slice(1).map(rowToRecord_)
     .filter(function (r) { return r.id && r.owner === who; });
   list.sort(function (a, b) { return String(b.id).localeCompare(String(a.id)); });
-  return { me: who, records: list, archiveReady: !!prop_('ARCHIVE_SHEET_ID') };
+  var today = toDate_(new Date());
+  list.forEach(function (r) { r.alert = recordAlert_(r, today); });
+  return { me: who, records: list, archiveReady: !!prop_('ARCHIVE_SHEET_ID'), today: fmtDate_(today) };
 }
 
 /** 완료: 진행기록에서 보관 파일로 옮긴다 (본인 기록만) */
@@ -1106,6 +1110,91 @@ function apiExpiring(days) {
   return { days: days || 90, list: expiringContracts_(loadContracts_(), toDate_(new Date()), days || 90) };
 }
 
+/* ================================================================
+ * 아침 요약 메일 — 각자 켜고 끔 (본인 계정의 시간 트리거, 평일 아침 본인에게만)
+ * ================================================================ */
+var DIGEST_HANDLER = 'dailyDigest';
+function digestTriggers_() {
+  return ScriptApp.getProjectTriggers().filter(function (t) { return t.getHandlerFunction() === DIGEST_HANDLER; });
+}
+function apiDigestState() {
+  auth_();
+  var up = PropertiesService.getUserProperties();
+  return { on: digestTriggers_().length > 0, hour: Number(up.getProperty('DIGEST_HOUR')) || 8 };
+}
+function apiSetDigest(on, hour) {
+  auth_();
+  var h = Math.min(10, Math.max(6, Math.round(Number(hour) || 8)));
+  digestTriggers_().forEach(function (t) { ScriptApp.deleteTrigger(t); });
+  var up = PropertiesService.getUserProperties();
+  if (on) {
+    ScriptApp.newTrigger(DIGEST_HANDLER).timeBased().everyDays(1).atHour(h).inTimezone('Asia/Seoul').create();
+    up.setProperty('DIGEST_HOUR', String(h));
+    try { up.setProperty('DIGEST_URL', ScriptApp.getService().getUrl() || ''); } catch (e) {}
+  }
+  return { on: !!on, hour: h };
+}
+/** 오늘 요약 (메일과 같은 내용) — 사이트에서 미리 보기 */
+function apiDigestPreview() {
+  auth_();
+  return digestFor_(me_()) || { count: 0 };
+}
+function digestFor_(who) {
+  var today = toDate_(new Date());
+  var recs = recordSheet_().getDataRange().getValues().slice(1).map(rowToRecord_)
+    .filter(function (r) { return r.id && r.owner === who; });
+  recs.forEach(function (r) { r.alert = recordAlert_(r, today); });
+  var url = PropertiesService.getUserProperties().getProperty('DIGEST_URL') || '';
+  return digest_(recs, expiringContracts_(loadContracts_(), today, 30), today, url);
+}
+/** 시간 트리거: 평일만, 확인할 일이 있을 때만 본인에게 보냄 */
+function dailyDigest() {
+  var dow = Number(Utilities.formatDate(new Date(), 'Asia/Seoul', 'u'));   // 1=월 … 7=일
+  if (dow > 5) return;
+  var who = me_();
+  if (!who) return;
+  var d = digestFor_(who);
+  if (!d) return;
+  MailApp.sendEmail({ to: who, subject: d.subject, body: d.text, htmlBody: d.html, name: '소요제기' });
+}
+
+/* ================================================================
+ * 사업부 확인 요청 메일 — 검토가 끝난 구매내역서 링크를 넣어 날인 요청
+ *   mode 'draft' 는 Gmail 임시보관함, 'send' 는 바로 보냄 (화면에서 한 번 더 확인)
+ * ================================================================ */
+function splitEmails_(s) {
+  return uniq_(String(s || '').split(/[,;\s]+/).map(normEmail_).filter(String));
+}
+function apiConfirmDefaults() {
+  auth_();
+  var up = PropertiesService.getUserProperties();
+  return { to: up.getProperty('CONFIRM_TO') || '', cc: up.getProperty('CONFIRM_CC') || '', name: up.getProperty('CONFIRM_NAME') || '',
+    body: up.getProperty('CONFIRM_BODY') || '', signature: signature_().html };
+}
+function apiConfirmMail(p) {
+  auth_();
+  p = p || {};
+  var found = findRecord_(p.recordId, true), rec = found.rec;
+  if (!/구매내역서/.test(rec.kind)) throw new Error('구매내역서 기록에서만 보낼 수 있습니다.');
+  var to = splitEmails_(p.to), cc = splitEmails_(p.cc);
+  if (!to.length) throw new Error('받는 사람 이메일을 적어 주세요.');
+  var bad = to.concat(cc).filter(function (x) { return !isEmail_(x); });
+  if (bad.length) throw new Error('이메일 형식이 아닙니다: ' + bad.join(', '));
+  var subject = String(p.subject || '').trim() || rec.title;
+  var mail = confirmMail_({ title: rec.title, url: rec.url, name: p.name, body: p.body }, signature_().html);
+  var opt = { htmlBody: mail.html };
+  if (cc.length) opt.cc = cc.join(',');
+  var send = p.mode === 'send', link = 'https://mail.google.com/mail/#drafts';
+  if (send) { GmailApp.sendEmail(to.join(','), subject, mail.text, opt); link = 'https://mail.google.com/mail/#sent'; }
+  else GmailApp.createDraft(to.join(','), subject, mail.text, opt);
+  var up = PropertiesService.getUserProperties();
+  up.setProperties({ CONFIRM_TO: to.join(', '), CONFIRM_CC: cc.join(', '), CONFIRM_NAME: String(p.name || '').trim(), CONFIRM_BODY: String(p.body || '').trim() });
+  var at = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
+  var log = { at: at, to: to, cc: cc, mode: send ? 'send' : 'draft', subject: subject };
+  updateRecord_(found, { status: send ? '사업부 확인 요청' : '사업부 확인 초안', data: { confirmMail: log } });
+  return { ok: true, sent: send, link: link, at: at, to: to };
+}
+
 /** 완료 보관 파일에서 내 기록 (최근 순, 최대 300건). 화면의 '완료 기록 보기' */
 function apiArchivedRecords() {
   auth_();
@@ -1214,6 +1303,6 @@ function apiCreateSpotPurchase(payload) {
   ss.setActiveSheet(ss.getSheetByName(SPOT.SUMMARY));
   updateRecord_(found, { status: '견적 구매내역서 작성', data: { quote: { vendors: vendors, items: payload.items, rates: payload.rates }, spotFile: ss.getUrl() } });
   var rec = addRecord_({ kind: '견적 구매내역서', title: name, url: ss.getUrl(), fileId: ss.getId(), status: '작성', parent: found.rec.id, group: found.rec.group || found.rec.id,
-    items: items.map(function (it) { return { item: it.item, qty: it.qty, needBy: fmtDate_(it.needBy) }; }) });
+    items: items.map(function (it) { return { item: it.item, qty: it.qty, needBy: fmtDate_(it.needBy), supplier: it.fixed ? it.fixed.vendor : selectedVendor_(it), deadline: (spotDeadline_(it) || {}).date || '' }; }) });
   return { url: ss.getUrl(), name: name, id: ss.getId(), recordId: rec.id };
 }

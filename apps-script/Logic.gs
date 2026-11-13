@@ -180,11 +180,33 @@ function parseRows_(rows) {
 }
 
 /** "10-12wks", "8 weeks", "30 days" → 최대 일수. 모르면 null */
-function leadDays_(s) {
-  var m = String(s || '').toLowerCase().match(/(\d+)(?:\s*[-~]\s*(\d+))?\s*(wk|week|w\b|day|d\b|주|일)/);
-  if (!m) return null;
-  var n = +(m[2] || m[1]);
-  return /^(day|d|일)/.test(m[3]) ? n : n * 7;
+/**
+ * 리드타임 글자 → 일수 (범위면 긴 쪽). '10-12wks' 70, '20Wks' 140, '3M' 90, '45 days' 45.
+ * bareWeeks: 단위가 없으면 주로 봄 (견적의 L/T (WKS) 칸: '4~6' → 42)
+ */
+function leadDays_(s, bareWeeks) {
+  var t = String(s == null ? '' : s).toLowerCase();
+  var m = t.match(/(\d+(?:\.\d+)?)(?:\s*[-~]\s*(\d+(?:\.\d+)?))?\s*(wk|week|w\b|day|d\b|주|일|month|mon|m\b|개월|달)/);
+  if (m) {
+    var n = +(m[2] || m[1]);
+    return Math.round(/^(day|d|일)/.test(m[3]) ? n : /^(month|mon|m|개월|달)/.test(m[3]) ? n * 30 : n * 7);
+  }
+  if (bareWeeks) { var b = t.match(/^\s*(\d+(?:\.\d+)?)(?:\s*[-~]\s*(\d+(?:\.\d+)?))?\s*$/); if (b) return Math.round(+(b[2] || b[1]) * 7); }
+  return null;
+}
+/**
+ * 발주 마감일 = 가장 이른 Need-by − 업체 리드타임 − 운송·통관·검사 기간 (Air 14일 · Ocean 42일 · 모르면 21일)
+ * 리드타임을 모르면 null. today 를 주면 남은 날(days, 음수면 지남)도
+ */
+var SHIP_DAYS = { air: 14, ocean: 42, '': 21 };
+function poDeadline_(needBy, leadtime, shipFrom, today, bareWeeks) {
+  var nb = toDate_(needBy), ld = leadDays_(leadtime, bareWeeks);
+  if (!nb || ld === null) return null;
+  var sk = String(shipFrom || '').trim().toLowerCase(), ship = SHIP_DAYS[sk] !== undefined ? SHIP_DAYS[sk] : SHIP_DAYS[''];
+  var d = new Date(nb.getFullYear(), nb.getMonth(), nb.getDate() - ld - ship);
+  var out = { date: fmtDate_(d), leadDays: ld, shipDays: ship };
+  if (today) out.days = Math.round((d - toDate_(today)) / 86400000);
+  return out;
 }
 
 /**
@@ -250,7 +272,11 @@ function classify_(requests, contracts, today) {
       shipFrom: q.shipFrom || '', shelfLife: q.shelfLife || '', taxCode: q.taxCode || '', candidates: valid, warnings: [], registered: all.length > 0,
       reqDate: q.reqDate || '', reqMemo: q.reqMemo || '' };
     // 고를 수 있는 DB 단가 전부 (계약 + Spot 단가, 기본값이 맨 앞). 화면에서 다른 업체나 '견적 요청'으로 바꿀 수 있음
-    res.alts = valid.concat(spotPriced);
+    res.alts = valid.concat(spotPriced).map(function (c) {
+      var o = {}; Object.keys(c).forEach(function (k) { o[k] = c[k]; });
+      o.deadline = poDeadline_(q.needBy, c.leadtime, q.shipFrom || c.shipFrom, today);   // 발주 마감일
+      return o;
+    });
     var ref0 = all[0];
     if (ref0) { res.desc = ref0.desc; res.qpl = ref0.qpl; res.uom = ref0.uom; res.material = ref0.material; }
     if (valid.length) {
@@ -260,7 +286,7 @@ function classify_(requests, contracts, today) {
       res.warnings = needByWarnings_(q, valid[0], today);
     } else if (spotPriced.length) {
       // SPOT 인데 DB에 단가가 있음 → 견적 없이 Spot 구매내역서
-      res.status = 'Spot'; res.route = 'spotPriced'; res.candidates = spotPriced; res.alts = spotPriced;
+      res.status = 'Spot'; res.route = 'spotPriced'; res.candidates = spotPriced;
       res.reason = 'Spot · DB 단가 있음' + (spotPriced.length > 1 ? ' (' + spotPriced.length + '건 — 업체 선택 필요)' : '');
       res.warnings = needByWarnings_(q, spotPriced[0], today);
     } else {
@@ -615,6 +641,12 @@ function needsText_(needs) {
   return needs.map(function (x) { var d = toDate_(x.needBy); return (d ? fmtDate_(d) : 'ASAP') + '(' + qtyText_(x.qty) + ')'; }).join('\n');
 }
 
+/** 구매세부내역 비고: 업체별 비고 + '발주 마감 yyyy-mm-dd' (가장 이른 Need-by 기준, 리드타임을 알 때) */
+function remarkWithDeadline_(l) {
+  var need = (l.needs && l.needs.length ? l.needs[0].needBy : l.needBy), d = poDeadline_(need, l.leadtime, l.shipFrom);
+  return [String(l.remark || '').trim(), d ? '발주 마감 ' + d.date : ''].filter(String).join('\n');
+}
+
 /**
  * 계약 구매내역서: 같은 자재·같은 계약 단가(자재정보 같은 행)는 Need-by 가 달라도 한 줄로.
  * qty 합계, needBy 가장 이른 날, needs [{needBy, qty}] 날짜순, Program 은 겹치지 않게 이어 붙임.
@@ -648,11 +680,135 @@ function mergePurchaseLines_(lines) {
  * 하나로 만들기: 견적요청서 기록에 붙여 둔 계약·Spot 단가 줄(mergePurchaseLines_ 결과) → Spot 견적 구매내역서 품목.
  * 견적종합에 계약 업체 한 줄로 미리 선정 (업체선정사유 LTA·3PP, Spot 단가는 Sole source)
  */
+/** 견적에서 선정한 업체 (없으면 '') */
+function selectedVendor_(it) {
+  var qs = it.quotes || {};
+  return Object.keys(qs).filter(function (k) { return qs[k] && qs[k].sel; })[0] || '';
+}
+/** 견적 구매내역서 품목의 발주 마감일: 선정한 업체의 L/T(숫자만이면 주) 기준, 계약 품목은 계약 L/T */
+function spotDeadline_(it) {
+  var nb = (it.parts && it.parts.length ? it.parts[0].needBy : it.needBy);
+  if (it.fixed) return poDeadline_(nb, it.fixed.lt, it.shipFrom);
+  var v = selectedVendor_(it);
+  return v ? poDeadline_(nb, it.quotes[v].lt, it.shipFrom, null, true) : null;
+}
+
+/* ------------------------------------------------------------------
+ * 진행 중 알림: 견적 회신 기한 · 발주 마감일
+ *   rfq : 회신 기한(due)이 있고 아직 견적이 하나도 안 들어온 업체가 있을 때
+ *   po  : PO 발행·입고 전인 구매내역서의 가장 이른 발주 마감일
+ *   level: late(지남) · soon(회신 1일 · 발주 14일 이내) · ''
+ * ------------------------------------------------------------------ */
+var ALERT = { DUE_SOON: 1, PO_SOON: 14, DONE_STAGES: ['PO 발행', '입고'] };
+function pendingVendors_(rec) {
+  var q = rec.quote || {}, noReply = q.noReply || {}, items = q.items || [];
+  return (rec.vendors || []).filter(function (v) {
+    if (noReply[v]) return false;
+    return !items.some(function (x) { var p = x && x.quotes && x.quotes[v]; return p && !p.noReply && String(p.price == null ? '' : p.price).trim(); });
+  });
+}
+function recordAlert_(rec, today) {
+  var t = toDate_(today), out = { level: '' };
+  var days = function (d) { d = toDate_(d); return d && t ? Math.round((d - t) / 86400000) : null; };
+  var lv = function (n, soon) { return n === null ? '' : n < 0 ? 'late' : n <= soon ? 'soon' : ''; };
+  if (rec.kind === '견적요청서') {
+    var pend = rec.draft ? pendingVendors_(rec) : [], due = toDate_(rec.due);
+    if (due && pend.length && !rec.spotFile) {
+      var n = days(due);
+      out.due = { date: fmtDate_(due), days: n, pending: pend, level: lv(n, ALERT.DUE_SOON) };
+      out.level = out.due.level;
+    }
+  } else {
+    var stage = (rec.po && rec.po.stage) || rec.status;
+    if (ALERT.DONE_STAGES.indexOf(stage) < 0) {
+      var ds = (rec.items || []).map(function (it) { return it && toDate_(it.deadline); }).filter(Boolean).sort(function (a, b) { return a - b; });
+      if (ds.length) {
+        var m = days(ds[0]), cnt = ds.filter(function (d) { return d - ds[0] === 0; }).length;
+        out.po = { date: fmtDate_(ds[0]), days: m, count: cnt, level: lv(m, ALERT.PO_SOON) };
+        out.level = out.po.level;
+      }
+    }
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------
+ * 아침 요약 메일 (본인에게만, 평일 아침) — 급한 것이 없으면 보내지 않음
+ *   records: 본인 진행 중 기록(alert 포함), expiring: expiringContracts_ 결과(30일)
+ * ------------------------------------------------------------------ */
+function digest_(records, expiring, today, url) {
+  var e = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var dd = function (n) { return n === 0 ? 'D-day' : n > 0 ? 'D-' + n : 'D+' + (-n); };
+  var rfq = [], po = [];
+  (records || []).forEach(function (r) {
+    var a = r.alert || recordAlert_(r, today);
+    if (a.due && a.due.level) rfq.push({ r: r, a: a.due });
+    if (a.po && a.po.level) po.push({ r: r, a: a.po });
+  });
+  var exp = (expiring || []).filter(function (c) { return c.days <= 30; });
+  rfq.sort(function (x, y) { return x.a.days - y.a.days; });
+  po.sort(function (x, y) { return x.a.days - y.a.days; });
+  var count = rfq.length + po.length + exp.length;
+  if (!count) return null;
+  var sec = [], text = [];
+  var li = 'margin:2px 0;font-family:Arial,sans-serif;font-size:10pt;';
+  var block = function (title, rows, txt) {
+    if (!rows.length) return;
+    sec.push('<h3 style="font-family:Arial,sans-serif;font-size:11pt;margin:14px 0 4px">' + e(title) + ' (' + rows.length + ')</h3><ul style="margin:0;padding-left:18px">' +
+      rows.map(function (h) { return '<li style="' + li + '">' + h + '</li>'; }).join('') + '</ul>');
+    text.push('■ ' + title + ' (' + rows.length + ')');
+    txt.forEach(function (s) { text.push(' - ' + s); });
+    text.push('');
+  };
+  block('견적 회신 기한', rfq.map(function (x) {
+    return '<b>' + e(dd(x.a.days)) + '</b> ' + e(x.r.title) + ' · 회신 기한 ' + e(x.a.date) + ' · 미회신 ' + e(x.a.pending.join(', '));
+  }), rfq.map(function (x) { return dd(x.a.days) + ' ' + x.r.title + ' · 회신 기한 ' + x.a.date + ' · 미회신 ' + x.a.pending.join(', '); }));
+  block('발주 마감', po.map(function (x) {
+    return '<b>' + e(dd(x.a.days)) + '</b> ' + e(x.r.title) + ' · 발주 마감 ' + e(x.a.date) + (x.a.count > 1 ? ' (' + x.a.count + '품목)' : '') + ' · 상태 ' + e((x.r.po && x.r.po.stage) || x.r.status);
+  }), po.map(function (x) { return dd(x.a.days) + ' ' + x.r.title + ' · 발주 마감 ' + x.a.date; }));
+  block('계약 만료 30일 이내', exp.map(function (c) {
+    return '<b>' + e(dd(c.days)) + '</b> ' + e(c.item) + ' ' + e(c.mode) + ' · ' + e(c.supplier) + ' · ' + e(c.end) + ' 종료';
+  }), exp.map(function (c) { return dd(c.days) + ' ' + c.item + ' ' + c.mode + ' · ' + c.supplier + ' · ' + c.end + ' 종료'; }));
+  var subject = '[소요제기] ' + fmtDate_(toDate_(today)) + ' 확인할 일 ' + count + '건';
+  var foot = url ? '<p style="' + li + 'margin-top:14px"><a href="' + e(url) + '">소요제기 사이트 열기</a> · 이 메일은 사이트 홈에서 끌 수 있습니다.</p>' : '';
+  return { subject: subject, count: count, html: '<div>' + sec.join('') + foot + '</div>', text: text.join('\n') + (url ? '\n' + url : '') };
+}
+
+/* ------------------------------------------------------------------
+ * 단가 이상 경고: 직전 구매(같은 통화)보다 ±30% 넘게 다르면
+ * ------------------------------------------------------------------ */
+var PRICE_JUMP = 0.3;
+function priceJump_(price, cur, prev) {
+  var p = toNumber_(price), q = prev ? toNumber_(prev.price) : null;
+  if (p === null || q === null || q <= 0) return null;
+  if (String(cur || '').trim().toUpperCase() !== String(prev.cur || '').trim().toUpperCase()) return null;
+  var r = p / q - 1;
+  return Math.abs(r) > PRICE_JUMP ? { pct: Math.round(r * 100), prev: q, cur: String(prev.cur).toUpperCase(), year: prev.year || '' } : null;
+}
+
+/* ------------------------------------------------------------------
+ * 사업부 확인 요청 메일: 검토가 끝난 구매내역서를 사업부에 보내 날인을 부탁
+ *   o: {title, url, name(보내는 사람), greeting?, body?}
+ * ------------------------------------------------------------------ */
+function confirmMail_(o, signatureHtml) {
+  var e = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var name = String(o.name || '').trim();
+  var hello = '안녕하십니까' + (name ? ' 자재구매 ' + name + '입니다' : '');
+  var body = String(o.body || '해당 건 구매내역서 검토 후 날인 부탁드립니다').trim();
+  var p = 'margin:0 0 14px;font-family:Arial,sans-serif;font-size:10pt;';
+  var html = '<div><p style="' + p + '">' + e(hello) + '</p>' +
+    body.split(/\n/).map(function (l) { return '<p style="' + p + '">' + (e(l) || '&nbsp;') + '</p>'; }).join('') +
+    '<p style="' + p + '"><a href="' + e(o.url) + '">' + e(o.title) + '</a></p>' +
+    '<p style="' + p + '">감사합니다</p>' + (signatureHtml ? '<div>' + signatureHtml + '</div>' : '') + '</div>';
+  var text = [hello, '', body, '', o.title + ' (' + o.url + ')', '', '감사합니다'].join('\n');
+  return { html: html, text: text };
+}
+
 function fixedSpotItem_(l) {
   var needs = (l.needs || [{ needBy: l.needBy, qty: l.qty }]).map(function (x) { return { qty: x.qty, needBy: x.needBy }; });
   return {
     item: l.item, name: l.product || l.desc || l.item, desc: l.desc || '', material: l.material || '', qpl: l.qpl || '', uom: l.uom || '',
-    remark: '', qty: Number(l.qty) || 0, needBy: toDate_(needs[0] && needs[0].needBy), parts: needs, program: l.program || '', prev: {},
+    remark: '', qty: Number(l.qty) || 0, needBy: toDate_(needs[0] && needs[0].needBy), parts: needs, program: l.program || '', prev: {}, shipFrom: l.shipFrom || '',
     fixed: { vendor: l.supplier, price: l.price, cur: l.cur, lt: l.leadtime || '', mfg: l.product || '', reason: isSpotMode_(l.priceMode) ? 'Sole source' : (l.priceMode || '') }
   };
 }
@@ -731,13 +887,14 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule, extra) {
     add({ op: 'height', s: D, r: n, pt: 15 * (multi ? needs.length : 1) });
     // Need-by 가 여러 건이면 '날짜(수량)' 을 줄마다 (언제 발주할지 한눈에)
     var row = [i + 1, l.program || '', l.item, l.material, l.desc, l.product, l.qty, l.cur, l.price, '=J' + n + '*H' + n,
-      l.shipFrom, l.leadtime, l.uom, l.shelfLife, l.supplier, l.taxCode, l.priceMode, l.remark || '',
+      l.shipFrom, l.leadtime, l.uom, l.shelfLife, l.supplier, l.taxCode, l.priceMode, remarkWithDeadline_(l),
       multi ? needsText_(needs) : (l.needBy ? { date: fmtDate_(toDate_(l.needBy)) } : ''), l.supplierName || '', l.site || ''];
     row.forEach(function (v, j) { if (v !== '' && v !== null && v !== undefined) set(D, n, 2 + j, v); });
     nf(D, n, 10, curFmt_(l.cur));
     nf(D, n, 11, curFmt_(l.cur));
     nf(D, n, 20, 'yyyy-mm-dd');
     if (multi) add({ op: 'wrap', s: D, r: n, c: 20 });
+    if (/\n/.test(row[17])) add({ op: 'wrap', s: D, r: n, c: 19 });   // 비고 + 발주 마감 두 줄
     // 담당자 입력 칸
     if (!l.program) add({ op: 'bg', s: D, r: n, c: 3, color: TPL.FILL });
     if (!l.shipFrom) add({ op: 'bg', s: D, r: n, c: 12, color: TPL.FILL });

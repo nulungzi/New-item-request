@@ -25,6 +25,7 @@
   --spot: #b05314;
   --spot-soft: #fbe9dc;
   --warn: #b42318;
+  --warn-soft: #fde4e1;
   --priced: #7a4d00;
   --fill-priced: #fbefc9;
   --bar-stock: #aeb6c4;
@@ -40,14 +41,14 @@
   :root:not([data-theme="light"]) {
     --bg: #11151f; --surface: #181e2b; --surface-2: #1f2737; --ink: #e6eaf2; --muted: #9aa5bb; --line: #2c3548;
     --accent: #7b9cff; --accent-ink: #0d1324; --accent-soft: #24345f; --ok: #5fd39a; --ok-soft: #173426;
-    --spot: #f0a066; --spot-soft: #3a2616; --warn: #ff8a80; --priced: #f3cf73; --fill-priced: #3a3016; --bar-stock: #5d6678; --bar-stock-ink: #eef1f6;
+    --spot: #f0a066; --spot-soft: #3a2616; --warn: #ff8a80; --warn-soft: #3d1c1a; --priced: #f3cf73; --fill-priced: #3a3016; --bar-stock: #5d6678; --bar-stock-ink: #eef1f6;
     --bar-plan: #c9a43c; --bar-plan-edge: #f1cf6a; --bar-plan-ink: #1b1503; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #11151f; --surface: #181e2b; --surface-2: #1f2737; --ink: #e6eaf2; --muted: #9aa5bb; --line: #2c3548;
   --accent: #7b9cff; --accent-ink: #0d1324; --accent-soft: #24345f; --ok: #5fd39a; --ok-soft: #173426;
-  --spot: #f0a066; --spot-soft: #3a2616; --warn: #ff8a80; --priced: #f3cf73; --fill-priced: #3a3016; --bar-stock: #5d6678; --bar-stock-ink: #eef1f6;
+  --spot: #f0a066; --spot-soft: #3a2616; --warn: #ff8a80; --warn-soft: #3d1c1a; --priced: #f3cf73; --fill-priced: #3a3016; --bar-stock: #5d6678; --bar-stock-ink: #eef1f6;
   --bar-plan: #c9a43c; --bar-plan-edge: #f1cf6a; --bar-plan-ink: #1b1503; color-scheme: dark;
 }
 
@@ -291,6 +292,31 @@ a.btn-ghost { display: inline-block; text-decoration: none; border-radius: 6px }
 .hm-exp h3 { font-size: 1rem }
 .dday { display: inline-block; min-width: 46px; text-align: center; padding: 1px 8px; border-radius: 999px; font: 600 .74rem var(--font-data); background: var(--surface-2); color: var(--muted) }
 .dday.soon { background: var(--spot-soft); color: var(--warn) }
+.dday.late { background: var(--warn-soft); color: var(--warn) }
+.po-dl { margin-top: 3px; font-size: .8rem; color: var(--muted) }
+.al-chip { display: inline-flex; gap: 6px; align-items: center; padding: 1px 9px; border-radius: 999px; font-size: .76rem; font-weight: 600; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line) }
+.al-chip.soon { background: var(--spot-soft); color: var(--spot); border-color: transparent }
+.al-chip.late { background: var(--warn-soft); color: var(--warn); border-color: transparent }
+.side-alert { font: 600 .72rem var(--font-data); background: var(--warn); color: #fff; border-radius: 999px; padding: 1px 7px; margin-left: 4px }
+.side-alert:empty { display: none }
+.digest-bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 8px 12px; border: 1px dashed var(--line); border-radius: 10px; background: var(--surface-2); font-size: .86rem }
+.digest-bar select { padding: 3px 6px }
+.digest-bar .on { color: var(--ok); font-weight: 600 }
+.digest-prev { white-space: pre-wrap; font-size: .82rem; color: var(--muted); margin: 0; width: 100% }
+.cf-sent { color: var(--ok); font-weight: 600 }
+.modal-box.cf-box { width: min(1000px, 100%); grid-template-rows: auto auto minmax(0, 1fr) auto auto; overflow: auto }
+.cf-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 16px; min-height: 0 }
+.cf-form { display: grid; gap: 10px; align-content: start }
+.cf-form textarea { min-height: 70px; resize: vertical; padding: 8px 10px; font: inherit }
+.cf-form input { padding: 7px 10px; text-align: left; font-family: var(--font-body) }
+.cf-prev { border: 1px solid var(--line); border-radius: 10px; background: #fff; min-height: 300px; width: 100%; height: 100% }
+.cf-prev-wrap { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 6px; min-height: 300px }
+@media (max-width: 760px) { .cf-grid { grid-template-columns: 1fr } }
+.jump { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 999px; font: 600 .7rem var(--font-data); background: var(--warn-soft); color: var(--warn) }
+.lt-dl { display: block; font-size: .72rem; color: var(--muted); white-space: nowrap }
+.lt-dl.late { color: var(--warn); font-weight: 600 }
+.po-dl b { font: 600 .8rem var(--font-data); color: var(--ink) }
+.po-dl.late, .po-dl.late b { color: var(--warn) }
 .rec-group { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2) }
 .rec-ghead { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; padding: 2px 4px }
 .rec-gtitle { font-weight: 700 }
@@ -679,7 +705,7 @@ table.list td.nw { white-space: nowrap }
 <nav class="side" aria-label="화면">
   <button type="button" class="side-btn" data-view="home">홈 · 사용법</button>
   <button type="button" class="side-btn on" data-view="new">새 소요제기</button>
-  <button type="button" class="side-btn" data-view="records">진행 중 <span class="side-count" id="recCount"></span></button>
+  <button type="button" class="side-btn" data-view="records">진행 중 <span class="side-count" id="recCount"></span><span class="side-alert" id="recAlert"></span></button>
   <div class="side-sep" role="presentation"></div>
   <button type="button" class="side-btn" data-view="items">자재 등록</button>
   <button type="button" class="side-btn" data-view="vendors">업체 등록</button>
@@ -955,10 +981,18 @@ table.list td.nw { white-space: nowrap }
     <div class="rec-tools">
       <input id="recFind" type="search" placeholder="제목 · Item · 업체 · PO 번호 찾기" autocomplete="off" aria-label="진행 중 찾기">
       <div class="seg" role="group" aria-label="종류">
-        <button type="button" data-rk="all" aria-pressed="true">전체</button><button type="button" data-rk="rfq" aria-pressed="false">견적요청서</button><button type="button" data-rk="buy" aria-pressed="false">구매내역서</button>
+        <button type="button" data-rk="all" aria-pressed="true">전체</button><button type="button" data-rk="rfq" aria-pressed="false">견적요청서</button><button type="button" data-rk="buy" aria-pressed="false">구매내역서</button><button type="button" data-rk="alert" aria-pressed="false">기한 임박</button>
       </div>
       <span class="muted" id="recShown"></span>
       <button class="btn-ghost" id="recArchive" type="button" aria-pressed="false">완료 기록 보기</button>
+    </div>
+    <div class="digest-bar" id="digestBar">
+      <span>아침 요약 메일 <span id="dgState" class="muted">확인 중…</span></span>
+      <label class="row">평일<select id="dgHour" aria-label="보내는 시각"><option value="6">6시</option><option value="7">7시</option><option value="8">8시</option><option value="9">9시</option><option value="10">10시</option></select></label>
+      <button class="btn-ghost" id="dgToggle" type="button" disabled>켜기</button>
+      <button class="link-btn" id="dgPreview" type="button">오늘 내용 미리 보기</button>
+      <span class="muted">회신 기한 지남·내일, 발주 마감 14일 이내, 계약 만료 30일 이내를 본인 메일로 · 확인할 일이 없으면 보내지 않음</span>
+      <pre class="digest-prev" id="dgOut" hidden></pre>
     </div>
     <div class="err" id="recMsg"></div>
     <div class="rec-list" id="recList"></div>
@@ -1132,6 +1166,28 @@ table.list td.nw { white-space: nowrap }
   </div>
 </div>
 
+<div class="modal" id="cfModal" hidden role="dialog" aria-modal="true" aria-labelledby="cfTitle">
+  <div class="modal-box cf-box">
+    <div class="panel-head"><h2 id="cfTitle">사업부 확인 요청 메일</h2><span class="muted" id="cfFile"></span></div>
+    <p class="muted">구매내역서 검토가 끝났으면 사업부에 날인을 부탁하는 메일을 만듭니다. 가운데 구매내역서 제목에 파일 링크가 걸립니다. 받는 사람·이름은 다음에도 기억합니다.</p>
+    <div class="cf-grid">
+      <div class="cf-form">
+        <label class="field" for="cfTo">받는 사람 (쉼표로 여러 명)<input id="cfTo" type="text" autocomplete="off" spellcheck="false" placeholder="name@koreanair.com"></label>
+        <label class="field" for="cfCc">참조 CC (선택)<input id="cfCc" type="text" autocomplete="off" spellcheck="false"></label>
+        <label class="field" for="cfName">보내는 사람 이름 (인사말)<input id="cfName" type="text" maxlength="20" placeholder="예: 홍길동"></label>
+        <label class="field" for="cfSubject">메일 제목<input id="cfSubject" type="text"></label>
+        <label class="field" for="cfBody">본문 (제목 링크 위)<textarea id="cfBody"></textarea></label>
+      </div>
+      <div class="cf-prev-wrap"><span class="muted">미리 보기 · 서명은 Gmail 서명</span><iframe class="cf-prev" id="cfPrev" title="메일 미리 보기" sandbox></iframe></div>
+    </div>
+    <div class="pk-foot">
+      <span class="muted" id="cfNote"></span>
+      <div class="row"><button class="btn-ghost" id="cfCancel" type="button">취소</button><button class="btn-ghost" id="cfDraft" type="button">Gmail 임시보관함에 만들기</button><button class="btn" id="cfSend" type="button">보내기</button></div>
+    </div>
+    <div class="err" id="cfMsg"></div>
+  </div>
+</div>
+
 <div class="modal" id="histModal" hidden role="dialog" aria-modal="true" aria-labelledby="hmTitle">
   <div class="modal-box hist-box">
     <div class="panel-head"><h2 id="hmTitle">완료 · 구매 이력</h2><span class="muted">완료하면 기록이 보관 파일로 옮겨집니다</span></div>
@@ -1189,7 +1245,7 @@ function showLogin(msg, st) {
   st = st || auth.st;
   clearTimeout(auth.timer);
   document.body.classList.add('locked');
-  ['vDrawer', 'draftModal', 'picker', 'rfqPick', 'guide', 'histModal'].forEach(function (id) { if ($(id)) $(id).hidden = true; });
+  ['vDrawer', 'draftModal', 'picker', 'rfqPick', 'guide', 'histModal', 'cfModal'].forEach(function (id) { if ($(id)) $(id).hidden = true; });
   $('loginGate').hidden = false;
   $('loginMsg').textContent = msg || '';
   if (st) {
@@ -1454,6 +1510,7 @@ $('btnInputSheet').onclick = function () {
 function loadDb(first) {
   return call('apiInit', !first).then(function (d) {   // DB 새로고침이면 캐시 없이 시트에서
     if (first) $('base').value = d.today;
+    state.today = d.today;
     state.rates = Object.assign({}, d.rates || {}, first ? {} : state.rates);
     itemDesc = {};
     (d.items || []).forEach(function (x) { itemDesc[x[0]] = [x[1], x[2] || '', x[3] || '', x[4] || '']; });
@@ -1505,6 +1562,14 @@ $('btnClassify').onclick = function () {
 /* ---------- 2. 판정 결과 ---------- */
 /* 품목마다 고른 DB 단가(alts 의 번호) 또는 'rfq'(견적 요청). 기본값은 판정 결과 */
 function isSpotMode(m) { return /^spot$/i.test(String(m || '').trim()); }
+/* 발주 마감일 = Need-by − 리드타임 − 운송·통관(Air 14 · Ocean 42 · 그 외 21일) */
+function ddayText(n) { return n === 0 ? 'D-day' : n > 0 ? 'D-' + n : 'D+' + (-n); }
+function deadlineTag(d) {
+  if (!d || !d.date) return '';
+  var cls = d.days < 0 ? 'late' : d.days <= 14 ? 'soon' : '';
+  return '<div class="po-dl ' + cls + '" title="Need-by − L/T ' + d.leadDays + '일 − 운송·통관 ' + d.shipDays + '일">발주 마감 <b>' + esc(d.date) + '</b>' +
+    (d.days != null ? ' <span class="dday ' + cls + '">' + ddayText(d.days) + '</span>' : '') + '</div>';
+}
 function chosen(r) { return (r.alts || r.candidates)[r.pick === 'rfq' || r.pick == null ? 0 : r.pick] || r.candidates[0] || {}; }
 function setPick(r, v) {
   r.pick = v;
@@ -1561,7 +1626,7 @@ function render() {
           (r.program ? '<div class="muted">' + esc(r.program) + '</div>' : '') + '</td>' +
         '<td class="n data">' + fmt(r.qty) + '</td><td class="data nw">' + esc(r.needBy) + '</td><td class="nw">' + sup + '</td>' +
         '<td class="data muted nw">' + (c0.start ? esc(c0.start) + '<br>~ ' + esc(c0.end) : '') + '</td>' +
-        '<td class="muted">' + esc(r.reason) + (r.warnings && r.warnings.length ? '<div class="warn">⚠ ' + esc(r.warnings.join(' · ')) + '</div>' : '') +
+        '<td class="muted">' + esc(r.reason) + deadlineTag(c0.deadline) + (r.warnings && r.warnings.length ? '<div class="warn">⚠ ' + esc(r.warnings.join(' · ')) + '</div>' : '') +
           (r.dups && r.dups.length ? '<div class="warn dup">⚠ 진행 중인 다른 소요제기에 같은 자재: ' + r.dups.map(function (x) { return esc(x.title) + ' (' + (x.mine ? '내 기록' : esc(x.owner)) + ')'; }).join(', ') + '</div>' : '') +
           (state.reqDates.length > 1 && r.reqDate ? '<div class="muted rq-of">소요제기 ' + esc(r.reqDate) + (r.reqMemo ? ' ' + esc(r.reqMemo) : '') + '</div>' : '') + '</td></tr>';
     }).join('');
@@ -2252,8 +2317,8 @@ function renderQSum() {
           var none = !!qs.noReply[v], q = x.quotes[v] || {};
           var price = none ? 'NO BID' : (q.price || '—');
           return '<tr data-v="' + esc(v) + '"' + (none ? ' class="nobid"' : '') + '><td><input type="radio" name="sel-' + i + '"' + (q.sel ? ' checked' : '') + (none ? ' disabled' : '') + ' aria-label="' + esc(v) + ' 선정"></td><td class="nw">' + esc(v) + '</td>' +
-            '<td class="n data">' + esc(price) + '</td><td class="data">' + esc(none ? '' : q.cur || '') + '</td><td class="n data">' + esc(q.qty || '') + '</td>' +
-            '<td class="krw"></td><td class="rank"></td><td class="data">' + esc(none ? '' : q.moq || '') + '</td><td class="data">' + esc(none ? '' : q.lt || '') + '</td>' +
+            '<td class="n data">' + esc(price) + '<span class="jump-slot"></span></td><td class="data">' + esc(none ? '' : q.cur || '') + '</td><td class="n data">' + esc(q.qty || '') + '</td>' +
+            '<td class="krw"></td><td class="rank"></td><td class="data">' + esc(none ? '' : q.moq || '') + '</td><td class="data">' + esc(none ? '' : q.lt || '') + (none ? '' : ltDeadline(it, q.lt)) + '</td>' +
             '<td class="ro">' + esc(none ? '회신 없음' : q.remark || '') + '</td><td><input class="w-rev" data-f="review" value="' + esc(q.review || '') + '" placeholder="선정 시 적기"' + (none ? ' disabled' : '') + '></td></tr>';
         }).join('') + '</table></div>' +
       '<div class="row"><button class="link-btn" type="button" data-clear="' + i + '">선정 비우기 (시트에서 정하기)</button></div></div>';
@@ -2261,7 +2326,7 @@ function renderQSum() {
   $('qItems').querySelectorAll('.q-item').forEach(function (box) {
     var x = qs.items[+box.dataset.i];
     box.querySelectorAll('[data-m]').forEach(function (el) { el.oninput = function () { x.program = el.value; }; });
-    box.querySelectorAll('[data-p]').forEach(function (el) { el.oninput = function () { x.prev[el.dataset.p] = el.value; }; });
+    box.querySelectorAll('[data-p]').forEach(function (el) { el.oninput = function () { x.prev[el.dataset.p] = el.value; updateRanks(); }; });
     box.querySelectorAll('tr[data-v]').forEach(function (tr) {
       var q = qOf(x, tr.dataset.v);
       tr.querySelector('[data-f="review"]').oninput = function () { q.review = this.value; };
@@ -2277,6 +2342,30 @@ function renderQSum() {
     };
   });
   updateRanks();
+}
+/** 단가 이상: 직전 구매(같은 통화)보다 ±30% 넘게 다르면 (Logic.gs priceJump_ 와 같은 계산) */
+function priceJump(price, cur, prev) {
+  var p = qNum(price), q = prev ? qNum(prev.price) : null;
+  if (p === null || q === null || q <= 0) return null;
+  if (String(cur || '').trim().toUpperCase() !== String(prev.cur || '').trim().toUpperCase()) return null;
+  var r = p / q - 1;
+  return Math.abs(r) > 0.3 ? { pct: Math.round(r * 100), prev: q, cur: String(prev.cur).toUpperCase(), year: prev.year || '' } : null;
+}
+/** 업체 L/T(숫자만이면 주)로 본 발주 마감일 · 오늘 기준 (Logic.gs poDeadline_ 와 같은 계산, 운송·통관 기본 21일) */
+function ltDays(s) {   // Logic.gs leadDays_(s, true) 와 같음
+  var t = String(s == null ? '' : s).toLowerCase();
+  var m = t.match(/(\d+(?:\.\d+)?)(?:\s*[-~]\s*(\d+(?:\.\d+)?))?\s*(wk|week|w\b|day|d\b|주|일|month|mon|m\b|개월|달)/);
+  if (m) { var n = +(m[2] || m[1]); return Math.round(/^(day|d|일)/.test(m[3]) ? n : /^(month|mon|m|개월|달)/.test(m[3]) ? n * 30 : n * 7); }
+  var b = t.match(/^\s*(\d+(?:\.\d+)?)(?:\s*[-~]\s*(\d+(?:\.\d+)?))?\s*$/);
+  return b ? Math.round(+(b[2] || b[1]) * 7) : null;
+}
+function ltDeadline(it, lt) {
+  var ld = ltDays(lt), nb = String((it.parts && it.parts.length ? it.parts[0].needBy : it.needBy) || '').match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (ld === null || !nb) return '';
+  var d = new Date(+nb[1], +nb[2] - 1, +nb[3] - ld - 21), t = String(state.today || $('base').value || '').match(/(\d{4})-(\d{2})-(\d{2})/);
+  var ds = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+  var days = t ? Math.round((d - new Date(+t[1], +t[2] - 1, +t[3])) / 86400000) : null;
+  return '<span class="lt-dl' + (days !== null && days < 0 ? ' late' : '') + '" title="Need-by − L/T ' + ld + '일 − 운송·통관 21일">발주 ' + ds.slice(2) + (days !== null ? ' ' + ddayText(days) : '') + (days !== null && days < 0 ? ' · 납기 불가' : '') + '</span>';
 }
 /** 원화 금액·순위 (견적종합 수식과 같은 계산) */
 function updateRanks() {
@@ -2294,6 +2383,8 @@ function updateRanks() {
       tr.querySelector('.krw').textContent = krw[k] === null ? '' : '₩' + Math.round(krw[k]).toLocaleString('ko-KR');
       tr.querySelector('.rank').textContent = krw[k] === null ? '' : sorted.indexOf(krw[k]) + 1;
       tr.classList.toggle('sel', !!q.sel);
+      var j = qs.noReply[tr.dataset.v] ? null : priceJump(q.price, q.cur, x.prev);
+      tr.querySelector('.jump-slot').innerHTML = j ? '<span class="jump" title="직전 구매 ' + esc((j.year ? j.year + '년 ' : '') + fmt(j.prev) + ' ' + j.cur) + ' 대비">' + (j.pct > 0 ? '+' : '') + j.pct + '%</span>' : '';
       tr.classList.toggle('nobid', !!qs.noReply[tr.dataset.v] || /^no\s*bid$/i.test(String(q.price || '').trim()));
     });
   });
@@ -2350,6 +2441,7 @@ function showView(v) {
   $('viewItems').hidden = v !== 'items';
   $('viewVendors').hidden = v !== 'vendors';
   $('viewHistory').hidden = v !== 'history';
+  if (v === 'records' && !dg.hour) loadDigest();
   $('viewExpiring').hidden = v !== 'expiring';
   if (v === 'expiring') loadExpiring();
   if (v === 'history') setTimeout(function () { $('ihItem').focus(); }, 30);
@@ -2529,13 +2621,14 @@ function recCard(r, child) {
   var head = '<div>' + (child ? '<span class="rec-arrow" aria-hidden="true">↳</span>' : '') + '<span class="chip ' + chipCls + '">' + esc(r.kind) + '</span> <span class="rec-title">' + esc(r.title) + '</span></div>' +
     '<div class="rec-meta"><span>' + esc(r.created) + '</span><span>상태: <b>' + esc(r.status) + '</b></span><span>품목 ' + (r.items || []).length + '개</span>' +
       (rfq && (r.fixed || []).length ? '<span>+ 계약 ' + r.fixed.length + '개 같이</span>' : '') +
-      (rfq && (r.vendors || []).length ? '<span>업체 ' + r.vendors.length + '곳</span>' : '') + poMeta(r) + '</div>' +
+      (rfq && (r.vendors || []).length ? '<span>업체 ' + r.vendors.length + '곳</span>' : '') + poMeta(r) + alertChips(r) + cfMeta(r) + '</div>' +
     (rfq ? mailLine(r) : '');
   return '<div class="rec' + (rfq ? ' rfq' : '') + (open ? ' open' : '') + (child ? ' child' : '') + '" data-id="' + esc(r.id) + '">' +
     (rfq ? '<button type="button" class="rec-toggle" data-toggle="' + esc(r.id) + '" aria-expanded="' + !!open + '">' + head + '</button>' : '<div>' + head + '</div>') +
     '<div class="rec-actions"><a class="btn-ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener">파일 열기 ↗</a>' +
       (rfq ? '<button class="' + (r.draft ? 'btn-ghost' : 'btn') + '" type="button" data-draft="' + esc(r.id) + '">' + (r.draft ? '메일 초안 다시 만들기' : '메일 초안 만들기') + '</button>' : '') +
       (rfq && r.draft ? '<button class="btn-ghost" type="button" data-remind="' + esc(r.id) + '" title="아직 견적을 안 보낸 업체에 다시 요청">재요청 메일</button>' : '') +
+      (!rfq ? '<button class="btn-ghost" type="button" data-cf="' + esc(r.id) + '" title="검토가 끝난 구매내역서를 사업부에 날인 요청">사업부 확인 메일</button>' : '') +
       (!rfq ? '<button class="btn-ghost" type="button" data-po="' + esc(r.id) + '" title="품의·PR·PO 번호와 단계 기록">상태</button>' : '') +
       '<button class="btn-ghost" type="button" data-done="' + esc(r.id) + '">완료</button></div>' +
     (rfq ? '<div class="rec-vendors" data-rec="' + esc(r.id) + '"' + (open ? '' : ' hidden') + '>' + (open ? vendorListHtml(r) : '') + '</div>' : '') +
@@ -2545,6 +2638,9 @@ function loadRecords() {
   return call('apiMyRecords').then(function (d) {
     state.records = d.records;
     $('recCount').textContent = d.records.length || '';
+    var urgent = d.records.filter(function (r) { return r.alert && r.alert.level; }).length;
+    $('recAlert').textContent = urgent || '';
+    $('recAlert').title = urgent ? '회신 기한·발주 마감이 가깝거나 지난 기록 ' + urgent + '건' : '';
     $('recMe').textContent = d.me ? d.me + ' 기록' : '';
     if (!d.archiveReady) $('recMsg').innerHTML = '<span class="err">완료 보관 파일이 설정되지 않았습니다 (스크립트 속성 ARCHIVE_SHEET_ID).</span>';
     renderRecords();
@@ -2556,6 +2652,7 @@ function recMatch(r, q) {
   var k = state.recKind;
   if (k === 'rfq' && r.kind !== '견적요청서') return false;
   if (k === 'buy' && !/구매내역서/.test(r.kind)) return false;
+  if (k === 'alert' && !(r.alert && r.alert.level)) return false;
   if (!q) return true;
   var hay = [r.title, r.kind, r.status, (r.vendors || []).join(' '), (r.reqDates || []).join(' '), r.po ? [r.po.po, r.po.pr, r.po.approval].join(' ') : '']
     .concat((r.items || []).concat(r.fixed || []).map(function (it) { return [it && it.item, it && it.name, it && it.supplier].join(' '); })).join(' ').toLowerCase();
@@ -2595,6 +2692,7 @@ function renderRecords() {
     $('recList').querySelectorAll('.rec-vendors:not([hidden])').forEach(bindVendorList);
     $('recList').querySelectorAll('[data-done]').forEach(function (b) { b.onclick = function () { openComplete([b.dataset.done]); }; });
     $('recList').querySelectorAll('[data-po]').forEach(function (b) { b.onclick = function () { togglePoForm(b.dataset.po); }; });
+    $('recList').querySelectorAll('[data-cf]').forEach(function (b) { b.onclick = function () { openConfirm(recById(b.dataset.cf)); }; });
 }
 /* 완료 기록 (보관 파일, 읽기만) */
 function renderArchive() {
@@ -3286,6 +3384,101 @@ document.querySelectorAll('[data-ex]').forEach(function (b) {
 });
 $('expFind').addEventListener('input', renderExpiring);
 $('expDays').onchange = function () { state.expDays = +this.value; loadExpiring(true); };
+
+/* ---------- 진행 중 알림 배지 (서버 recordAlert_ 결과) ---------- */
+function alertChips(r) {
+  var a = r.alert || {}, out = '';
+  if (a.due) out += '<span class="al-chip ' + a.due.level + '" title="견적이 하나도 안 들어온 업체: ' + esc(a.due.pending.join(', ')) + '">회신 기한 ' + esc(a.due.date.slice(5).replace('-', '/')) +
+    ' · ' + ddayText(a.due.days) + ' · 미회신 ' + a.due.pending.length + '곳</span>';
+  if (a.po) out += '<span class="al-chip ' + a.po.level + '" title="Need-by − L/T − 운송·통관 · PO 발행 전까지 보임">발주 마감 ' + esc(a.po.date) + ' · ' + ddayText(a.po.days) +
+    (a.po.count > 1 ? ' · ' + a.po.count + '품목' : '') + '</span>';
+  return out;
+}
+function cfMeta(r) {
+  var m = r.confirmMail;
+  if (!m) return '';
+  return '<span class="' + (m.mode === 'send' ? 'cf-sent' : 'muted') + '" title="' + esc((m.to || []).join(', ')) + '">✉ 사업부 확인 ' + (m.mode === 'send' ? '보냄' : '초안') + ' ' + esc(String(m.at || '').slice(5, 10).replace('-', '/')) + '</span>';
+}
+
+/* ---------- 아침 요약 메일 ---------- */
+var dg = { on: false };
+function renderDigest() {
+  $('dgState').textContent = dg.on ? '켜짐 · 평일 ' + dg.hour + '시쯤' : '꺼짐';
+  $('dgState').className = dg.on ? 'on' : 'muted';
+  $('dgToggle').textContent = dg.on ? '끄기' : '켜기';
+  $('dgHour').value = String(dg.hour || 8);
+  $('dgToggle').disabled = false;
+}
+function loadDigest() {
+  call('apiDigestState').then(function (d) { dg = d; renderDigest(); }).catch(function () { $('dgState').textContent = '상태를 읽지 못했습니다'; });
+}
+$('dgToggle').onclick = function () {
+  var b = this; b.disabled = true;
+  call('apiSetDigest', !dg.on, +$('dgHour').value).then(function (d) { dg = d; renderDigest(); })
+    .catch(function (e) { $('recMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; b.disabled = false; });
+};
+$('dgHour').onchange = function () { if (dg.on) call('apiSetDigest', true, +this.value).then(function (d) { dg = d; renderDigest(); }); };
+$('dgPreview').onclick = function () {
+  var out = $('dgOut');
+  if (!out.hidden) { out.hidden = true; return; }
+  out.hidden = false; out.textContent = '불러오는 중…';
+  call('apiDigestPreview').then(function (d) { out.textContent = d && d.count ? d.subject + '\n\n' + d.text : '오늘은 확인할 일이 없습니다 (메일을 보내지 않습니다).'; })
+    .catch(function (e) { out.textContent = e.message || e; });
+};
+
+/* ---------- 사업부 확인 요청 메일 ---------- */
+var cf = { rec: null, sig: '', loaded: false };
+var CF_BODY = '해당 건 구매내역서 검토 후 날인 부탁드립니다';
+function cfHtml() {
+  var name = $('cfName').value.trim(), body = $('cfBody').value.trim() || CF_BODY, p = 'margin:0 0 14px;font-family:Arial,sans-serif;font-size:10pt;';
+  return '<div><p style="' + p + '">' + esc('안녕하십니까' + (name ? ' 자재구매 ' + name + '입니다' : '')) + '</p>' +
+    body.split(/\n/).map(function (l) { return '<p style="' + p + '">' + (esc(l) || '&nbsp;') + '</p>'; }).join('') +
+    '<p style="' + p + '"><a href="' + esc(cf.rec.url) + '">' + esc(cf.rec.title) + '</a></p><p style="' + p + '">감사합니다</p>' + (cf.sig ? '<div>' + cf.sig + '</div>' : '') + '</div>';
+}
+function cfRender() {
+  $('cfPrev').srcdoc = '<!doctype html><meta charset="utf-8"><body style="margin:14px;background:#fff;color:#111">' + cfHtml() + '</body>';
+  var s = $('cfSend'); delete s.dataset.ok; s.textContent = '보내기';
+}
+function openConfirm(rec) {
+  cf.rec = rec;
+  $('cfModal').hidden = false;
+  $('cfMsg').textContent = ''; $('cfFile').textContent = rec.title;
+  $('cfSubject').value = rec.title;
+  $('cfNote').textContent = rec.confirmMail ? '이전: ' + (rec.confirmMail.mode === 'send' ? '보냄' : '초안') + ' ' + rec.confirmMail.at + ' → ' + (rec.confirmMail.to || []).join(', ') : '';
+  ['cfDraft', 'cfSend'].forEach(function (id) { $(id).disabled = true; });
+  var ready = cf.loaded ? Promise.resolve() : call('apiConfirmDefaults').then(function (d) {
+    cf.loaded = true; cf.sig = d.signature || '';
+    $('cfTo').value = d.to || ''; $('cfCc').value = d.cc || ''; $('cfName').value = d.name || ''; $('cfBody').value = d.body || CF_BODY;
+  });
+  ready.then(function () { cfRender(); ['cfDraft', 'cfSend'].forEach(function (id) { $(id).disabled = false; }); $('cfTo').focus(); })
+    .catch(function (e) { $('cfMsg').textContent = e.message || e; });
+}
+['cfTo', 'cfCc', 'cfName', 'cfSubject', 'cfBody'].forEach(function (id) { $(id).addEventListener('input', cfRender); });
+function cfSubmit(mode) {
+  var to = $('cfTo').value.trim();
+  if (!to) { $('cfMsg').textContent = '받는 사람 이메일을 적어 주세요.'; $('cfTo').focus(); return; }
+  var s = $('cfSend');
+  if (mode === 'send' && !s.dataset.ok) {   // 바로 보내기는 한 번 더 확인
+    s.dataset.ok = '1'; s.textContent = '한 번 더 누르면 보냅니다';
+    $('cfMsg').innerHTML = '<span class="err">받는 사람 ' + esc(to) + ($('cfCc').value.trim() ? ' · 참조 ' + esc($('cfCc').value.trim()) : '') + ' 에게 바로 보냅니다. 미리 보기를 확인했으면 한 번 더 누르세요.</span>';
+    return;
+  }
+  ['cfDraft', 'cfSend'].forEach(function (id) { $(id).disabled = true; });
+  $('cfMsg').textContent = mode === 'send' ? '보내는 중…' : '초안 만드는 중…';
+  call('apiConfirmMail', { recordId: cf.rec.id, to: to, cc: $('cfCc').value, name: $('cfName').value, subject: $('cfSubject').value, body: $('cfBody').value, mode: mode }).then(function (d) {
+    $('cfModal').hidden = true;
+    $('recMsg').innerHTML = '<span class="ok-msg">' + (d.sent ? '사업부 확인 요청 메일을 보냈습니다 (' + esc(d.to.join(', ')) + ').' : 'Gmail 임시보관함에 초안을 만들었습니다.') +
+      ' <a href="' + esc(d.link) + '" target="_blank" rel="noopener">Gmail 열기 ↗</a></span>';
+    loadRecords();
+  }).catch(function (e) { $('cfMsg').textContent = e.message || e; })
+    .finally(function () { ['cfDraft', 'cfSend'].forEach(function (id) { $(id).disabled = false; }); delete s.dataset.ok; s.textContent = '보내기'; });
+}
+$('cfDraft').onclick = function () { cfSubmit('draft'); };
+$('cfSend').onclick = function () { cfSubmit('send'); };
+$('cfCancel').onclick = function () { $('cfModal').hidden = true; };
+$('cfModal').addEventListener('click', function (e) { if (e.target === this) this.hidden = true; });
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('cfModal').hidden) $('cfModal').hidden = true; });
+
 checkAuth();   // 로그인 확인 → 화면 시작
 </script>
 </body>

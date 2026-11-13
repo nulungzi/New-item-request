@@ -458,3 +458,36 @@ test('완료 + 구매 이력: 후보 줄(계약·견적 구매내역서), 뺀 �
   ctx.apiCompleteGroup({ ids: ['C2'], upload: false });
   assert.strictEqual(db.tabs['구매이력'].rows.length, 3);
 });
+
+test('사업부 확인 요청 메일: 초안·보내기, 받는 사람 기억, 기록 상태', () => {
+  const db = fakeBook({ 진행기록: [['ID', '종류', '담당자', '작성일', '제목', 'URL', '파일ID', '상태', '초안', 'BCC', 'JSON', '수정일'],
+    ['P1', '계약 구매내역서', 'me@ke.com', '', '261113 구매내역서', 'https://docs/p1', '', '작성', '', '', '{"items":[]}', ''],
+    ['Q1', '견적요청서', 'me@ke.com', '', 'RFQ', '', '', '메일 초안', '', '', '{"items":[]}', ''],
+    ['X1', '계약 구매내역서', 'lee@ke.com', '', '남의 것', '', '', '작성', '', '', '{"items":[]}', '']] });
+  const up = {}, drafts = [], sent = [];
+  const ctx = inContext({
+    SpreadsheetApp: { getActive: () => db },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }),
+      getUserProperties: () => ({ getProperty: k => up[k] || null, setProperty: (k, v) => { up[k] = v; }, setProperties: o => Object.assign(up, o) }) },
+    LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
+    Session: { getActiveUser: () => ({ getEmail: () => 'me@ke.com' }), getEffectiveUser: () => ({ getEmail: () => 'me@ke.com' }) },
+    Utilities: { formatDate: () => '2026-11-13 09:00' },
+    GmailApp: { createDraft: (to, s, t, o) => { drafts.push({ to, s, o }); }, sendEmail: (to, s, t, o) => { sent.push({ to, s, o }); } },
+  });
+  assert.throws(() => ctx.apiConfirmMail({ recordId: 'Q1', to: 'a@ke.com' }), /구매내역서 기록/);
+  assert.throws(() => ctx.apiConfirmMail({ recordId: 'X1', to: 'a@ke.com' }), /다른 담당자/);
+  assert.throws(() => ctx.apiConfirmMail({ recordId: 'P1', to: '' }), /받는 사람/);
+  assert.throws(() => ctx.apiConfirmMail({ recordId: 'P1', to: 'a@ke.com, nope' }), /이메일 형식/);
+  const r = ctx.apiConfirmMail({ recordId: 'P1', to: 'Biz@KE.com; b@ke.com', cc: 'c@ke.com', name: '김민형', mode: 'draft' });
+  assert.strictEqual(r.sent, false);
+  assert.strictEqual(sent.length, 0);
+  assert.deepStrictEqual([drafts[0].to, drafts[0].s, drafts[0].o.cc], ['biz@ke.com,b@ke.com', '261113 구매내역서', 'c@ke.com']);
+  assert.ok(drafts[0].o.htmlBody.indexOf('<a href="https://docs/p1">261113 구매내역서</a>') > 0);
+  assert.strictEqual(db.tabs['진행기록'].rows[1][7], '사업부 확인 초안');
+  assert.strictEqual(up.CONFIRM_TO, 'biz@ke.com, b@ke.com');
+  ctx.apiConfirmMail({ recordId: 'P1', to: 'biz@ke.com', subject: '날인 요청', mode: 'send' });
+  assert.deepStrictEqual([sent.length, sent[0].s], [1, '날인 요청']);
+  assert.strictEqual(db.tabs['진행기록'].rows[1][7], '사업부 확인 요청');
+  assert.strictEqual(JSON.parse(db.tabs['진행기록'].rows[1][10]).confirmMail.mode, 'send');
+  assert.strictEqual(ctx.apiConfirmDefaults().to, 'biz@ke.com');
+});
