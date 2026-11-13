@@ -741,6 +741,7 @@ function rowToRecord_(r) {
     title: r[4], url: r[5], fileId: r[6], status: r[7], draft: r[8], bcc: r[9],
     items: extra ? extra.items : items, due: extra ? extra.due : '', vendors: extra && extra.vendors || [], quote: extra && extra.quote || null,
     group: extra && extra.group || '', parent: extra && extra.parent || '', fixed: extra && extra.fixed || [], quoteSheet: extra && extra.quoteSheet || '',
+    spotFile: extra && extra.spotFile || '',
     updated: r[11] instanceof Date ? r[11].toISOString() : String(r[11] || '')
   };
 }

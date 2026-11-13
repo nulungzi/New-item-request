@@ -217,6 +217,14 @@ main { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px }
 .rec-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; grid-row: 1 / span 2; grid-column: 2 }
 .rec-actions .btn-ghost { padding: 6px 12px; font-size: .84rem }
 a.btn-ghost { display: inline-block; text-decoration: none; border-radius: 6px }
+.rec-group { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2) }
+.rec-ghead { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; padding: 2px 4px }
+.rec-gtitle { font-weight: 700 }
+.rec-ghead .btn-ghost { padding: 5px 12px; font-size: .82rem }
+.rec.child { margin-left: 28px; position: relative }
+.rec.child::before { content: ""; position: absolute; left: -16px; top: -9px; bottom: 50%; border-left: 2px solid var(--line); border-bottom: 2px solid var(--line); width: 12px; border-bottom-left-radius: 6px }
+.rec-arrow { display: none }
+@media (max-width: 640px) { .rec.child { margin-left: 14px } }
 .rec-empty { padding: 24px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 8px }
 @media (max-width: 640px) { .rec { grid-template-columns: minmax(0, 1fr) } .rec-actions { grid-row: auto; grid-column: 1; justify-content: flex-start } }
 h1, h2, h3 { text-wrap: balance; margin: 0 }
@@ -1772,25 +1780,73 @@ function showView(v) {
 }
 document.querySelectorAll('.side-btn').forEach(function (b) { b.onclick = function () { showView(b.dataset.view); }; });
 $('btnRecReload').onclick = function () { loadRecords(); };
+/*
+ * 진행 중: 같은 소요제기에서 만든 파일을 한 묶음으로 (견적요청서 바로 아래에 그 견적 구매내역서)
+ *   묶음 = 기록의 group, 견적 구매내역서는 parent(견적요청서)의 묶음. 예전 기록은 견적요청서의 spotFile 로 짝을 찾음
+ */
+function recGroups(recs) {
+  var byId = {}, byUrl = {};
+  recs.forEach(function (r) { byId[r.id] = r; if (r.spotFile) byUrl[r.spotFile] = r; r._child = false; });
+  var parentOf = function (r) { return r.parent && byId[r.parent] ? byId[r.parent] : (r.kind === '견적 구매내역서' && byUrl[r.url]) || null; };
+  var keyOf = function (r) { var p = parentOf(r); return p ? (p.group || p.id) : (r.group || r.id); };
+  var groups = [], at = {};
+  recs.forEach(function (r) {
+    var k = keyOf(r), g = groups[at[k]];
+    if (!g) { at[k] = groups.length; groups.push(g = { key: k, recs: [], created: r.created }); }
+    g.recs.push(r);
+    if (r.created < g.created) g.created = r.created;
+  });
+  // 묶음 안 순서: 견적요청서 → 그 견적 구매내역서(들여쓰기) → 나머지(계약·Spot 구매내역서)
+  groups.forEach(function (g) {
+    var out = [], used = {};
+    g.recs.filter(function (r) { return r.kind === '견적요청서'; }).forEach(function (q) {
+      out.push(q); used[q.id] = 1;
+      g.recs.filter(function (c) { return parentOf(c) === q; }).forEach(function (c) { c._child = true; out.push(c); used[c.id] = 1; });
+    });
+    g.recs.forEach(function (r) { if (!used[r.id]) out.push(r); });
+    g.recs = out;
+  });
+  return groups;
+}
+function recCard(r, child) {
+  var rfq = r.kind === '견적요청서', open = rfq && state.recOpen[r.id];
+  var chipCls = rfq ? 'chip-spot' : r.kind === '견적 구매내역서' ? 'chip-priced' : 'chip-ok';
+  var head = '<div>' + (child ? '<span class="rec-arrow" aria-hidden="true">↳</span>' : '') + '<span class="chip ' + chipCls + '">' + esc(r.kind) + '</span> <span class="rec-title">' + esc(r.title) + '</span></div>' +
+    '<div class="rec-meta"><span>' + esc(r.created) + '</span><span>상태: <b>' + esc(r.status) + '</b></span><span>품목 ' + (r.items || []).length + '개</span>' +
+      (rfq && (r.fixed || []).length ? '<span>+ 계약 ' + r.fixed.length + '개 같이</span>' : '') +
+      (rfq && (r.vendors || []).length ? '<span>업체 ' + r.vendors.length + '곳</span>' : '') + '</div>';
+  return '<div class="rec' + (rfq ? ' rfq' : '') + (open ? ' open' : '') + (child ? ' child' : '') + '" data-id="' + esc(r.id) + '">' +
+    (rfq ? '<button type="button" class="rec-toggle" data-toggle="' + esc(r.id) + '" aria-expanded="' + !!open + '">' + head + '</button>' : '<div>' + head + '</div>') +
+    '<div class="rec-actions"><a class="btn-ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener">파일 열기 ↗</a>' +
+      (rfq ? '<button class="' + (r.draft ? 'btn-ghost' : 'btn') + '" type="button" data-draft="' + esc(r.id) + '">' + (r.draft ? '메일 초안 다시 만들기' : '메일 초안 만들기') + '</button>' : '') +
+      '<button class="btn-ghost" type="button" data-done="' + esc(r.id) + '">완료</button></div>' +
+    (rfq ? '<div class="rec-vendors" data-rec="' + esc(r.id) + '"' + (open ? '' : ' hidden') + '>' + (open ? vendorListHtml(r) : '') + '</div>' : '') +
+  '</div>';
+}
 function loadRecords() {
   return call('apiMyRecords').then(function (d) {
     state.records = d.records;
     $('recCount').textContent = d.records.length || '';
     $('recMe').textContent = d.me ? d.me + ' 기록' : '';
     if (!d.archiveReady) $('recMsg').innerHTML = '<span class="err">완료 보관 파일이 설정되지 않았습니다 (스크립트 속성 ARCHIVE_SHEET_ID).</span>';
-    $('recList').innerHTML = d.records.length ? d.records.map(function (r) {
-      var rfq = r.kind === '견적요청서', open = rfq && state.recOpen[r.id];
-      var head = '<div><span class="chip ' + (rfq ? 'chip-spot' : 'chip-ok') + '">' + esc(r.kind) + '</span> <span class="rec-title">' + esc(r.title) + '</span></div>' +
-        '<div class="rec-meta"><span>' + esc(r.created) + '</span><span>상태: <b>' + esc(r.status) + '</b></span><span>품목 ' + (r.items || []).length + '개</span>' +
-          (rfq && (r.vendors || []).length ? '<span>업체 ' + r.vendors.length + '곳</span>' : '') + '</div>';
-      return '<div class="rec' + (rfq ? ' rfq' : '') + (open ? ' open' : '') + '" data-id="' + esc(r.id) + '">' +
-        (rfq ? '<button type="button" class="rec-toggle" data-toggle="' + esc(r.id) + '" aria-expanded="' + !!open + '">' + head + '</button>' : '<div>' + head + '</div>') +
-        '<div class="rec-actions"><a class="btn-ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener">파일 열기 ↗</a>' +
-          (rfq ? '<button class="' + (r.draft ? 'btn-ghost' : 'btn') + '" type="button" data-draft="' + esc(r.id) + '">' + (r.draft ? '메일 초안 다시 만들기' : '메일 초안 만들기') + '</button>' : '') +
-          '<button class="btn-ghost" type="button" data-done="' + esc(r.id) + '">완료</button></div>' +
-        (rfq ? '<div class="rec-vendors" data-rec="' + esc(r.id) + '"' + (open ? '' : ' hidden') + '>' + (open ? vendorListHtml(r) : '') + '</div>' : '') +
-      '</div>';
+    $('recList').innerHTML = d.records.length ? recGroups(d.records).map(function (g) {
+      if (g.recs.length === 1) return recCard(g.recs[0]);
+      var kinds = {}; g.recs.forEach(function (r) { kinds[r.kind] = (kinds[r.kind] || 0) + 1; });
+      return '<div class="rec-group"><div class="rec-ghead"><div><span class="rec-gtitle">소요제기 · ' + esc(g.created) + '</span><span class="muted"> 파일 ' + g.recs.length + '개 · ' +
+          esc(Object.keys(kinds).map(function (k) { return k + (kinds[k] > 1 ? ' ' + kinds[k] : ''); }).join(' / ')) + '</span></div>' +
+          '<button class="btn-ghost" type="button" data-gdone="' + esc(g.recs.map(function (r) { return r.id; }).join(',')) + '">모두 완료</button></div>' +
+        g.recs.map(function (r) { return recCard(r, r._child); }).join('') + '</div>';
     }).join('') : '<div class="rec-empty">진행 중인 기록이 없습니다. 구매내역서나 견적요청서를 만들면 여기에 쌓입니다.</div>';
+    $('recList').querySelectorAll('[data-gdone]').forEach(function (b) {
+      b.onclick = function () {
+        if (!b.dataset.ok) { b.dataset.ok = '1'; b.textContent = '한 번 더 누르면 모두 보관'; return; }
+        b.disabled = true;
+        var ids = b.dataset.gdone.split(',');
+        ids.reduce(function (p, id) { return p.then(function () { return call('apiCompleteRecord', id); }); }, Promise.resolve())
+          .then(function () { $('recMsg').innerHTML = '<span class="ok-msg">묶음 ' + ids.length + '건을 완료 처리해서 보관 파일로 옮겼습니다.</span>'; loadRecords(); })
+          .catch(function (e) { $('recMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; loadRecords(); });
+      };
+    });
     $('recList').querySelectorAll('[data-draft]').forEach(function (b) {
       b.onclick = function () { var r = recById(b.dataset.draft); openDraft(r.id, r.title); };
     });
