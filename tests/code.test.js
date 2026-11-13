@@ -398,3 +398,25 @@ test('자재정보 캐시: 큰 값도 나눠 저장·복원, 날짜는 글자로
   ctx.cacheDrop_('master'); ctx.masterValues_(); assert.strictEqual(reads, 3);   // 자재 등록 뒤
   assert.strictEqual(ctx.parseContracts_(b)[0].start.getFullYear(), 2026);
 });
+
+test('PO 상태 기록 · 완료 기록 보기', () => {
+  const db = fakeBook({ 진행기록: [['ID', '종류', '담당자', '작성일', '제목', 'URL', '파일ID', '상태', '초안', 'BCC', 'JSON', '수정일'],
+    ['P1', '계약 구매내역서', 'me@ke.com', '', '구매', '', '', '작성', '', '', '{"items":[]}', ''],
+    ['Q1', '견적요청서', 'me@ke.com', '', 'RFQ', '', '', '메일 초안', '', '', '{"items":[]}', '']] });
+  const arc = fakeBook({ 완료기록: [['ID', '종류', '담당자', '작성일', '제목', 'URL', '파일ID', '상태', '초안', 'BCC', 'JSON', '수정일', '완료일'],
+    ['A1', '계약 구매내역서', 'me@ke.com', '', '옛 구매', '', '', '완료', '', '', '{"items":[]}', '', new Date(2026, 9, 1)],
+    ['A2', '계약 구매내역서', 'lee@ke.com', '', '남의 것', '', '', '완료', '', '', '{"items":[]}', '', new Date(2026, 9, 2)],
+    ['A3', '견적요청서', 'me@ke.com', '', '최근', '', '', '완료', '', '', '{"items":[]}', '', new Date(2026, 10, 1)]] });
+  const ctx = inContext({
+    SpreadsheetApp: { getActive: () => db, openById: () => arc }, PropertiesService: { getScriptProperties: () => ({ getProperty: k => (k === 'ARCHIVE_SHEET_ID' ? 'arc' : null) }) },
+    LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
+    Session: { getActiveUser: () => ({ getEmail: () => 'me@ke.com' }), getEffectiveUser: () => ({ getEmail: () => 'me@ke.com' }) },
+  });
+  const r = ctx.apiSetPoStatus('P1', { stage: 'PO 발행', po: ' 4500012345 ', poDate: '2026/11/20', memo: '', bogus: 'x' });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(r.po)), { stage: 'PO 발행', po: '4500012345', poDate: '2026-11-20' });
+  const rec = ctx.apiMyRecords().records.find(x => x.id === 'P1');
+  assert.deepStrictEqual([rec.status, rec.po.po], ['PO 발행', '4500012345']);
+  assert.throws(() => ctx.apiSetPoStatus('Q1', { stage: 'PO 발행' }), /견적요청서는/);
+  const a = ctx.apiArchivedRecords();
+  assert.deepStrictEqual(a.records.map(x => [x.id, x.done]), [['A3', '2026-11-01'], ['A1', '2026-10-01']]);
+});

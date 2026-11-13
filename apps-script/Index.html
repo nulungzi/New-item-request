@@ -264,6 +264,19 @@ a.btn-ghost { display: inline-block; text-decoration: none; border-radius: 6px }
 #vnTbl td { vertical-align: top }
 #vnTbl .mails { font: .8rem var(--font-data); display: grid; gap: 2px }
 #vnTbl .mails small { font-family: var(--font-body); color: var(--muted) }
+.rec-tools { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center }
+.rec-tools input[type="search"] { flex: 1 1 240px; max-width: 360px; padding: 7px 10px }
+.rec-tools #recArchive { margin-left: auto }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden }
+.seg button { border: 0; background: var(--surface); color: var(--muted); padding: 6px 12px; font: 600 .82rem var(--font-body); cursor: pointer }
+.seg button + button { border-left: 1px solid var(--line) }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink) }
+.po-chip { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--ok-soft); color: var(--ok); font-weight: 600 }
+.po-form { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; padding-top: 10px; border-top: 1px dashed var(--line) }
+.po-form .row { grid-column: 1 / -1 }
+.po-form .field input, .po-form .field select { width: 100%; text-align: left; font-family: var(--font-body) }
+.chip-done { background: var(--surface-2); color: var(--muted) }
+.rec.done-rec { opacity: .92 }
 .rec-group { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2) }
 .rec-ghead { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; padding: 2px 4px }
 .rec-gtitle { font-weight: 700 }
@@ -902,6 +915,14 @@ table.list td.nw { white-space: nowrap }
       <div class="row"><span class="muted" id="recMe"></span><button class="btn-ghost" id="btnRecReload" type="button">새로고침</button></div>
     </div>
     <p class="muted lead">내가 만든 구매내역서와 견적요청서입니다. 다른 담당자의 기록은 보이지 않습니다. 소요제기가 끝나면 <b>완료</b>를 눌러 보관 파일로 옮기세요.</p>
+    <div class="rec-tools">
+      <input id="recFind" type="search" placeholder="제목 · Item · 업체 · PO 번호 찾기" autocomplete="off" aria-label="진행 중 찾기">
+      <div class="seg" role="group" aria-label="종류">
+        <button type="button" data-rk="all" aria-pressed="true">전체</button><button type="button" data-rk="rfq" aria-pressed="false">견적요청서</button><button type="button" data-rk="buy" aria-pressed="false">구매내역서</button>
+      </div>
+      <span class="muted" id="recShown"></span>
+      <button class="btn-ghost" id="recArchive" type="button" aria-pressed="false">완료 기록 보기</button>
+    </div>
     <div class="err" id="recMsg"></div>
     <div class="rec-list" id="recList"></div>
   </div>
@@ -2450,13 +2471,14 @@ function recCard(r, child) {
   var head = '<div>' + (child ? '<span class="rec-arrow" aria-hidden="true">↳</span>' : '') + '<span class="chip ' + chipCls + '">' + esc(r.kind) + '</span> <span class="rec-title">' + esc(r.title) + '</span></div>' +
     '<div class="rec-meta"><span>' + esc(r.created) + '</span><span>상태: <b>' + esc(r.status) + '</b></span><span>품목 ' + (r.items || []).length + '개</span>' +
       (rfq && (r.fixed || []).length ? '<span>+ 계약 ' + r.fixed.length + '개 같이</span>' : '') +
-      (rfq && (r.vendors || []).length ? '<span>업체 ' + r.vendors.length + '곳</span>' : '') + '</div>' +
+      (rfq && (r.vendors || []).length ? '<span>업체 ' + r.vendors.length + '곳</span>' : '') + poMeta(r) + '</div>' +
     (rfq ? mailLine(r) : '');
   return '<div class="rec' + (rfq ? ' rfq' : '') + (open ? ' open' : '') + (child ? ' child' : '') + '" data-id="' + esc(r.id) + '">' +
     (rfq ? '<button type="button" class="rec-toggle" data-toggle="' + esc(r.id) + '" aria-expanded="' + !!open + '">' + head + '</button>' : '<div>' + head + '</div>') +
     '<div class="rec-actions"><a class="btn-ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener">파일 열기 ↗</a>' +
       (rfq ? '<button class="' + (r.draft ? 'btn-ghost' : 'btn') + '" type="button" data-draft="' + esc(r.id) + '">' + (r.draft ? '메일 초안 다시 만들기' : '메일 초안 만들기') + '</button>' : '') +
       (rfq && r.draft ? '<button class="btn-ghost" type="button" data-remind="' + esc(r.id) + '" title="아직 견적을 안 보낸 업체에 다시 요청">재요청 메일</button>' : '') +
+      (!rfq ? '<button class="btn-ghost" type="button" data-po="' + esc(r.id) + '" title="품의·PR·PO 번호와 단계 기록">상태</button>' : '') +
       '<button class="btn-ghost" type="button" data-done="' + esc(r.id) + '">완료</button></div>' +
     (rfq ? '<div class="rec-vendors" data-rec="' + esc(r.id) + '"' + (open ? '' : ' hidden') + '>' + (open ? vendorListHtml(r) : '') + '</div>' : '') +
   '</div>';
@@ -2467,14 +2489,34 @@ function loadRecords() {
     $('recCount').textContent = d.records.length || '';
     $('recMe').textContent = d.me ? d.me + ' 기록' : '';
     if (!d.archiveReady) $('recMsg').innerHTML = '<span class="err">완료 보관 파일이 설정되지 않았습니다 (스크립트 속성 ARCHIVE_SHEET_ID).</span>';
-    $('recList').innerHTML = d.records.length ? recGroups(d.records).map(function (g) {
+    renderRecords();
+  }).catch(function (e) { $('recMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; });
+}
+/* 검색·종류 필터: 묶음 안에 맞는 파일이 하나라도 있으면 묶음째 보임 */
+state.recKind = 'all'; state.recArchive = false;
+function recMatch(r, q) {
+  var k = state.recKind;
+  if (k === 'rfq' && r.kind !== '견적요청서') return false;
+  if (k === 'buy' && !/구매내역서/.test(r.kind)) return false;
+  if (!q) return true;
+  var hay = [r.title, r.kind, r.status, (r.vendors || []).join(' '), (r.reqDates || []).join(' '), r.po ? [r.po.po, r.po.pr, r.po.approval].join(' ') : '']
+    .concat((r.items || []).concat(r.fixed || []).map(function (it) { return [it && it.item, it && it.name, it && it.supplier].join(' '); })).join(' ').toLowerCase();
+  return q.split(/\s+/).every(function (w) { return hay.indexOf(w) >= 0; });
+}
+function renderRecords() {
+  if (state.recArchive) return renderArchive();
+  var q = ($('recFind').value || '').trim().toLowerCase(), all = state.records || [];
+  var groups = recGroups(all).filter(function (g) { return g.recs.some(function (r) { return recMatch(r, q); }); });
+  $('recShown').textContent = (q || state.recKind !== 'all') ? '맞는 묶음 ' + groups.length + '개' : '';
+  $('recList').innerHTML = !all.length ? '<div class="rec-empty">진행 중인 기록이 없습니다. 구매내역서나 견적요청서를 만들면 여기에 쌓입니다.</div>'
+    : !groups.length ? '<div class="rec-empty">찾는 기록이 없습니다.</div>' : groups.map(function (g) {
       if (g.recs.length === 1) return recCard(g.recs[0]);
       var kinds = {}; g.recs.forEach(function (r) { kinds[r.kind] = (kinds[r.kind] || 0) + 1; });
       return '<div class="rec-group"><div class="rec-ghead"><div><span class="rec-gtitle">소요제기 · ' + esc(g.reqDates.length ? g.reqDates.join(' · ') : g.created) + '</span><span class="muted"> 파일 ' + g.recs.length + '개 · ' +
           esc(Object.keys(kinds).map(function (k) { return k + (kinds[k] > 1 ? ' ' + kinds[k] : ''); }).join(' / ')) + '</span></div>' +
           '<button class="btn-ghost" type="button" data-gdone="' + esc(g.recs.map(function (r) { return r.id; }).join(',')) + '">모두 완료</button></div>' +
         g.recs.map(function (r) { return recCard(r, r._child); }).join('') + '</div>';
-    }).join('') : '<div class="rec-empty">진행 중인 기록이 없습니다. 구매내역서나 견적요청서를 만들면 여기에 쌓입니다.</div>';
+    }).join('');
     $('recList').querySelectorAll('[data-gdone]').forEach(function (b) {
       b.onclick = function () {
         if (!b.dataset.ok) { b.dataset.ok = '1'; b.textContent = '한 번 더 누르면 모두 보관'; return; }
@@ -2510,8 +2552,61 @@ function loadRecords() {
           .catch(function (e) { $('recMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; b.disabled = false; });
       };
     });
-  }).catch(function (e) { $('recMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; });
+    $('recList').querySelectorAll('[data-po]').forEach(function (b) { b.onclick = function () { togglePoForm(b.dataset.po); }; });
 }
+/* 완료 기록 (보관 파일, 읽기만) */
+function renderArchive() {
+  var q = ($('recFind').value || '').trim().toLowerCase();
+  if (!state.archived) { $('recList').innerHTML = '<div class="rec-empty">완료 기록을 불러오는 중…</div>'; return; }
+  var list = state.archived.filter(function (r) { return recMatch(r, q); });
+  $('recShown').textContent = '완료 기록 ' + list.length + '건' + (state.archived.length >= 300 ? ' (최근 300건)' : '');
+  $('recList').innerHTML = list.length ? list.map(function (r) {
+    return '<div class="rec done-rec"><div><div><span class="chip chip-done">' + esc(r.kind) + '</span> <span class="rec-title">' + esc(r.title) + '</span></div>' +
+      '<div class="rec-meta"><span>' + esc(r.created) + ' 작성</span><span>완료 <b>' + esc(r.done || '') + '</b></span><span>품목 ' + (r.items || []).length + '개</span>' + poMeta(r) + '</div></div>' +
+      '<div class="rec-actions"><a class="btn-ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener">파일 열기 ↗</a></div></div>';
+  }).join('') : '<div class="rec-empty">' + (state.archived.length ? '찾는 기록이 없습니다.' : '완료한 기록이 없습니다.') + '</div>';
+}
+function poMeta(r) {
+  var p = r.po;
+  if (!p) return '';
+  return '<span class="po-chip">' + esc(p.stage) + (p.approval ? ' · 품의 ' + esc(p.approval) : '') + (p.pr ? ' · PR ' + esc(p.pr) : '') + (p.po ? ' · PO ' + esc(p.po) : '') + (p.poDate ? ' (' + esc(p.poDate) + ')' : '') + '</span>';
+}
+/* PO 이후 상태: 단계 · 품의 · PR · PO 번호 · PO 일자 · 메모 */
+var PO_STAGES = ['작성', '품의 중', '품의 완료', 'PR 발행', 'PO 발행', '입고'];
+function togglePoForm(id) {
+  var card = document.querySelector('.rec[data-id="' + id + '"]'), r = recById(id), box = card.querySelector('.po-form');
+  if (box) { box.remove(); return; }
+  var p = r.po || { stage: PO_STAGES.indexOf(r.status) >= 0 ? r.status : '작성' };
+  box = document.createElement('div');
+  box.className = 'po-form';
+  box.innerHTML = '<label class="field">단계<select data-pk="stage">' + PO_STAGES.map(function (x) { return '<option' + (x === p.stage ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></label>' +
+    [['approval', '품의 번호'], ['pr', 'PR 번호'], ['po', 'PO 번호'], ['poDate', 'PO 일자'], ['memo', '메모']].map(function (f) {
+      return '<label class="field">' + f[1] + '<input data-pk="' + f[0] + '"' + (f[0] === 'poDate' ? ' type="date"' : ' type="text" maxlength="200"') + ' value="' + esc(p[f[0]] || '') + '"></label>';
+    }).join('') + '<div class="row"><button class="btn" type="button" data-posave>저장</button><button class="btn-ghost" type="button" data-pocancel>닫기</button><span class="po-msg"></span></div>';
+  card.appendChild(box);
+  box.querySelector('[data-pocancel]').onclick = function () { box.remove(); };
+  box.querySelector('[data-posave]').onclick = function () {
+    var o = {}, b = this;
+    box.querySelectorAll('[data-pk]').forEach(function (el) { o[el.dataset.pk] = el.value; });
+    b.disabled = true;
+    call('apiSetPoStatus', id, o).then(function (d) { r.po = d.po; r.status = d.po.stage; renderRecords(); $('recMsg').innerHTML = '<span class="ok-msg">상태를 저장했습니다: ' + esc(r.title) + ' · ' + esc(d.po.stage) + '</span>'; })
+      .catch(function (e) { box.querySelector('.po-msg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; b.disabled = false; });
+  };
+}
+$('recFind').addEventListener('input', function () { renderRecords(); });
+document.querySelectorAll('[data-rk]').forEach(function (b) {
+  b.onclick = function () { state.recKind = b.dataset.rk; document.querySelectorAll('[data-rk]').forEach(function (x) { x.setAttribute('aria-pressed', x === b); }); renderRecords(); };
+});
+$('recArchive').onclick = function () {
+  state.recArchive = !state.recArchive;
+  this.setAttribute('aria-pressed', state.recArchive);
+  this.textContent = state.recArchive ? '← 진행 중으로' : '완료 기록 보기';
+  if (state.recArchive) {
+    state.archived = null; renderArchive();
+    call('apiArchivedRecords').then(function (d) { state.archived = d.records || []; if (state.recArchive) renderArchive(); })
+      .catch(function (e) { $('recList').innerHTML = '<div class="rec-empty err">' + esc(e.message || e) + '</div>'; });
+  } else renderRecords();
+};
 
 /* ---------- 1-1. 신규 자재 등록 ---------- */
 var REG_TYPES = {

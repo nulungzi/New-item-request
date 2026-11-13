@@ -995,6 +995,41 @@ function apiMyRecords() {
 }
 
 /** 완료: 진행기록에서 보관 파일로 옮긴다 (본인 기록만) */
+/** 완료 보관 파일에서 내 기록 (최근 순, 최대 300건). 화면의 '완료 기록 보기' */
+function apiArchivedRecords() {
+  auth_();
+  var aid = prop_('ARCHIVE_SHEET_ID');
+  if (!aid) return { records: [], ready: false };
+  var sh = SpreadsheetApp.openById(aid).getSheetByName('완료기록');
+  if (!sh) return { records: [], ready: true };
+  var who = me_();
+  var list = sh.getDataRange().getValues().slice(1).map(function (r) {
+    var rec = rowToRecord_(r), done = r[RECORD_HEADERS.length];
+    rec.done = Object.prototype.toString.call(done) === '[object Date]' ? fmtDate_(done) : String(done || '');
+    return rec;
+  }).filter(function (r) { return r.id && r.owner === who; });
+  list.sort(function (a, b) { return String(b.done || b.id).localeCompare(String(a.done || a.id)); });
+  return { records: list.slice(0, 300), ready: true };
+}
+
+/**
+ * PO 이후 상태 기록 (구매내역서 기록). po = {stage, approval, pr, po, poDate, memo}
+ * 상태 칸에 단계가 보이고, 값은 기록의 품목(JSON)에 po 로 저장
+ */
+var PO_STAGES = ['작성', '품의 중', '품의 완료', 'PR 발행', 'PO 발행', '입고'];
+function apiSetPoStatus(id, po) {
+  auth_();
+  po = po || {};
+  var found = findRecord_(id, true);
+  if (found.rec.kind === '견적요청서') throw new Error('견적요청서는 메일·견적 단계로 관리합니다. 구매내역서에서 상태를 기록하세요.');
+  var stage = PO_STAGES.indexOf(po.stage) >= 0 ? po.stage : '작성';
+  var clean = { stage: stage };
+  ['approval', 'pr', 'po', 'poDate', 'memo'].forEach(function (k) { var v = String(po[k] == null ? '' : po[k]).trim().slice(0, 200); if (v) clean[k] = v; });
+  if (clean.poDate && toDate_(clean.poDate)) clean.poDate = fmtDate_(toDate_(clean.poDate));
+  updateRecord_(found, { status: stage, data: { po: clean } });
+  return { ok: true, po: clean };
+}
+
 function apiCompleteRecord(id) {
   auth_();
   var aid = prop_('ARCHIVE_SHEET_ID');
