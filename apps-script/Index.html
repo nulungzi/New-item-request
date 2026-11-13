@@ -895,7 +895,7 @@ table.list td.nw { white-space: nowrap }
       <div class="sub first">
         <h3>환율</h3>
         <div class="fields" id="qRates"></div>
-        <p class="muted">비우거나 0으로 둔 통화는 전체구매요약 CUR 별 합계·적용환율에 나오지 않습니다 (KRW는 항상 표시).</p>
+        <p class="muted">견적에 나온 통화만 구매내역서 통화 합계·환율 칸과 전체구매요약에 들어갑니다. 처음 값은 DB 환율 탭에서 가져옵니다.</p>
       </div>
       <div class="sub">
         <div id="qFixed"></div>
@@ -2059,7 +2059,12 @@ $('qToInput').onclick = closeSummary;
 $('qName').addEventListener('input', function () { if (qs) qs.name = this.value; });
 $('qConfirmer').addEventListener('input', function () { if (qs) qs.confirmer = this.value; });
 function renderQSum() {
-  $('qRates').innerHTML = ['USD', 'JPY', 'EUR', 'SGD'].map(function (c) {
+  // 견적에 나온 외화만 (구매내역서에도 그 통화만 들어감)
+  var usedQ = {};
+  (qs.rec.fixed || []).forEach(function (l) { if (l.cur) usedQ[String(l.cur).toUpperCase()] = 1; });
+  qs.items.forEach(function (x) { Object.keys(x.quotes || {}).forEach(function (v) { var q = x.quotes[v] || {}; if (q.cur && !qs.noReply[v]) usedQ[String(q.cur).toUpperCase()] = 1; }); });
+  var fx = ['USD', 'EUR', 'JPY', 'SGD'].filter(function (c) { return usedQ[c]; });
+  $('qRates').innerHTML = (fx.length ? '' : '<span class="muted">아직 외화 견적이 없습니다.</span>') + fx.map(function (c) {
     return '<label class="field" for="qr-' + c + '">1 ' + c + ' = KRW<input id="qr-' + c + '" data-qrate="' + c + '" type="number" step="0.01" inputmode="decimal" value="' + esc(qs.rates[c] || '') + '"></label>';
   }).join('');
   $('qRates').querySelectorAll('input').forEach(function (el) { el.oninput = function () { qs.rates[el.dataset.qrate] = el.value; updateRanks(); }; });

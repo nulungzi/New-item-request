@@ -102,15 +102,16 @@ test('구매내역서 계획: 통화 2개, 업체 2개', () => {
   ];
   const ops = L.buildPurchasePlan_(lines, ['USD', 'EUR'], { USD: 1350, EUR: 1500 }, base);
   const get = (s, r, c) => (ops.filter(o => o.op === 'set' && o.s === s && o.r === r && o.c === c).pop() || {}).v;
-  // 세부내역: 통화 2개 → 머리글 8행, 데이터 9~10행
-  assert.strictEqual(get('구매세부내역', 8, 2), 'L/I');
-  assert.strictEqual(get('구매세부내역', 9, 4), 'A');
-  assert.strictEqual(get('구매세부내역', 5, 11), '=SUMIF($I$9:$I$10,"KRW",$K$9:$K$10)');
-  assert.strictEqual(get('구매세부내역', 6, 11), '=K3*$P$2+K4*$Q$2+K5');
-  assert.deepStrictEqual(get('구매세부내역', 9, 20), { date: '2027-06-10' });
+  // 세부내역: 통화 2개(원화 품목 없음 → TTL(KRW) 줄 없음) → 머리글 7행, 데이터 8~9행
+  assert.strictEqual(get('구매세부내역', 7, 2), 'L/I');
+  assert.strictEqual(get('구매세부내역', 8, 4), 'A');
+  assert.deepStrictEqual([get('구매세부내역', 3, 10), get('구매세부내역', 4, 10), get('구매세부내역', 5, 10)], ['TTL(USD)', 'TTL(EUR)', 'Total']);
+  assert.strictEqual(get('구매세부내역', 5, 11), '=K3*$P$2+K4*$Q$2');
+  assert.ok(!ops.some(o => o.op === 'set' && o.v === 'TTL(KRW)'));
+  assert.deepStrictEqual(get('구매세부내역', 8, 20), { date: '2027-06-10' });
   // 비어 있는 Ship From·Leadtime·Program은 노란 칸
   const bg = ops.filter(o => o.op === 'bg' && o.s === '구매세부내역').map(o => o.r + ',' + o.c);
-  assert.deepStrictEqual(bg, ['9,3', '10,3', '10,12', '10,13']);
+  assert.deepStrictEqual(bg, ['8,3', '9,3', '9,12', '9,13']);
   // 요약: 업체 2줄, CUR 합계 2줄, 총합계
   assert.strictEqual(get('구매요약', 3, 8), '구매금액');
   assert.strictEqual(get('구매요약', 6, 2), 'CUR 별 합계');
@@ -365,16 +366,20 @@ test('Spot 견적 구매내역서 계획: 업체 수만큼 줄·비교 칸, 선�
   assert.deepStrictEqual([6, 7, 8, 9].map(c => get('구매내역서', 11, c)), [2026, 24, 'USD', 964.19]);
   assert.strictEqual(get('구매내역서', 12, 14), undefined);       // Program 비면 노란 칸
   assert.ok(ops.some(o => o.op === 'bg' && o.s === '구매내역서' && o.r === 12 && o.c === 14));
-  assert.deepStrictEqual([get('구매내역서', 3, 16), get('구매내역서', 3, 17), get('구매내역서', 3, 18)], [1355.6, undefined, 1740.98]);
+  // 견적에 나온 통화(USD)만: 환율 칸 P(USD)만, JPY·EUR·SGD 는 비움
+  assert.deepStrictEqual([2, 3].map(r => [16, 17, 18, 19].map(c => get('구매내역서', r, c))), [['USD', '', '', ''], [1355.6, '', '', '']]);
+  assert.deepStrictEqual([2, 3, 4].map(r => get('구매내역서', r, 12)), ['USD', '', '']);
+  assert.strictEqual(get('구매내역서', 7, 13), '=M2*$P$3');
+  assert.deepStrictEqual([get('견적종합', 1, 42), get('견적종합', 1, 44), get('견적종합', 2, 44)], ['USD', '', '']);
   // 전체구매요약: K열 L/I → L=K+10 → 구매내역서 행
   assert.deepStrictEqual([get('전체구매요약', 5, 11), get('전체구매요약', 5, 12), get('전체구매요약', 6, 12)], [1, '=K5+10', '=K6+10']);
   assert.strictEqual(get('전체구매요약', 7, 3), 'CUR 별 합계');
-  // CUR 별 합계: 환율 넣은 USD·EUR + KRW 만 (JPY·SGD 줄 없음), 총 합계도 그 통화만
-  assert.deepStrictEqual([7, 8, 9].map(r => get('전체구매요약', r, 8)), ['USD', 'EUR', 'KRW']);
-  assert.strictEqual(get('전체구매요약', 10, 3), '총 합계 (KRW 표기)');
-  assert.strictEqual(get('전체구매요약', 10, 9), "=I7*'구매내역서'!$P$3+I8*'구매내역서'!$R$3+I9");
-  assert.match(get('전체구매요약', 11, 3), /USD "&TEXT\('구매내역서'!\$P\$3,"#,##0\.00"\)&" · EUR "&TEXT\('구매내역서'!\$R\$3,"#,##0\.00"\)$/);
-  assert.ok(!/JPY|SGD/.test(get('전체구매요약', 11, 3)));
+  // CUR 별 합계: 견적종합에 나온 통화(USD)만, 총 합계·적용환율도 그 통화만
+  assert.deepStrictEqual([7, 8].map(r => get('전체구매요약', r, 8)), ['USD', undefined]);
+  assert.strictEqual(get('전체구매요약', 8, 3), '총 합계 (KRW 표기)');
+  assert.strictEqual(get('전체구매요약', 8, 9), "=I7*'구매내역서'!$P$3");
+  assert.match(get('전체구매요약', 9, 3), /USD "&TEXT\('구매내역서'!\$P\$3,"#,##0\.00"\)$/);
+  assert.ok(!/EUR|JPY|SGD/.test(get('전체구매요약', 9, 3)));
   // 테두리: 견적종합 X~AN, 구매내역서 표 전체 (업체 3곳 → V+12 = AH 까지)
   assert.deepStrictEqual(ops.filter(o => o.op === 'border').map(o => [o.s, o.r1, o.c1, o.r2, o.c2, o.edge || '']),
     [['견적종합', 5, 24, 10, 40, ''], ['견적종합', 5, 24, 10, 24, 'left'], ['견적종합', 5, 46, 10, 47, ''], ['구매내역서', 11, 1, 12, 37, '']]);
@@ -531,11 +536,11 @@ test('계약 구매내역서: 같은 자재·같은 계약은 한 줄, Need-by �
   lines[0].supplierName = 'AKZO NOBEL'; lines[0].site = 'US';
   const ops = L.buildPurchasePlan_(lines, ['USD'], { USD: 1350 }, base);
   const get = (r, c2) => (ops.filter(o => o.op === 'set' && o.s === '구매세부내역' && o.r === r && o.c === c2).pop() || {}).v;
-  assert.deepStrictEqual([get(7, 20), get(7, 21), get(7, 22)], ['Need-by\nDate', 'SUPPLIER', 'SITE']);
-  assert.deepStrictEqual([get(8, 8), get(8, 20), get(8, 21), get(8, 22)], [1100, '2027-05-14(500)\n2027-06-20(600)', 'AKZO NOBEL', 'US']);
-  assert.deepStrictEqual(get(9, 20), { date: '2027-03-01' });
-  assert.ok(ops.some(o => o.op === 'wrap' && o.r === 8 && o.c === 20));
-  assert.ok(ops.some(o => o.op === 'height' && o.s === '구매세부내역' && o.r === 8 && o.pt === 30));
+  assert.deepStrictEqual([get(6, 20), get(6, 21), get(6, 22)], ['Need-by\nDate', 'SUPPLIER', 'SITE']);   // USD 만 → 머리글 6행
+  assert.deepStrictEqual([get(7, 8), get(7, 20), get(7, 21), get(7, 22)], [1100, '2027-05-14(500)\n2027-06-20(600)', 'AKZO NOBEL', 'US']);
+  assert.deepStrictEqual(get(8, 20), { date: '2027-03-01' });
+  assert.ok(ops.some(o => o.op === 'wrap' && o.r === 7 && o.c === 20));
+  assert.ok(ops.some(o => o.op === 'height' && o.s === '구매세부내역' && o.r === 7 && o.pt === 30));
   assert.ok(ops.filter(o => o.op === 'fmt' && o.s === '구매세부내역').every(o => o.c2 === 22));
   // 템플릿 예시 모양은 맨 먼저 지우고 다시 그림
   assert.deepStrictEqual(ops.find(o => o.s === '구매세부내역'), { op: 'clear', s: '구매세부내역', r1: 1, c1: 1, r2: 30, c2: 22 });
@@ -600,4 +605,19 @@ test('업체정보: 기존 업체에 연락처 추가 · 새 업체 등록 · �
   assert.throws(() => L.vendorRow_(v, { name: '없는업체', email: 'x@y.com' }), /찾지 못했습니다/);
   assert.throws(() => L.vendorRow_(v, { name: 'CBOL', email: 'JUN.KIM@cbol.com' }), /이미 CBOL 연락처/);
   assert.throws(() => L.vendorRow_(v, { name: 'CBOL', email: 'jun' }), /이메일/);
+});
+
+test('통화: 쓴 통화만 — KRW·JPY 만 쓰면 그 둘만, 원화만이면 환율 없이', () => {
+  const base = L.toDate_('2026-11-13');
+  const items = [{ item: 'A', uom: 'EA', qty: 1, needBy: L.toDate_('2027-03-01'), quotes: { X: { price: 1000, cur: 'jpy' }, Y: { price: 9000, cur: 'KRW' }, Z: { noReply: true, cur: 'EUR' } } }];
+  const ops = L.buildSpotPlan_(items, ['X', 'Y', 'Z'], { USD: 1350, JPY: 9.1 }, base, null, {});
+  const get = (s2, r, c) => (ops.filter(o => o.op === 'set' && o.s === s2 && o.r === r && o.c === c).pop() || {}).v;
+  assert.deepStrictEqual([2, 3, 4, 5, 6].map(r => get('구매내역서', r, 12)), ['JPY', 'KRW', '', '', '']);
+  assert.strictEqual(get('구매내역서', 7, 13), '=M2*$Q$3+M3');
+  assert.deepStrictEqual([16, 17, 18, 19].map(c => get('구매내역서', 2, c)), ['', 'JPY', '', '']);
+  const sumCurs = ops.filter(o => o.op === 'set' && o.s === '전체구매요약' && o.c === 8 && /^[A-Z]{3}$/.test(o.v)).map(o => o.v);
+  assert.deepStrictEqual(sumCurs, ['JPY', 'KRW']);
+  const krwOnly = L.buildPurchasePlan_([{ item: 'K', qty: 1, supplier: 'S', cur: 'KRW', price: 1000, priceMode: 'LTA' }], [], {}, base);
+  const g2 = (r, c) => (krwOnly.filter(o => o.op === 'set' && o.s === '구매세부내역' && o.r === r && o.c === c).pop() || {}).v;
+  assert.deepStrictEqual([g2(3, 10), g2(4, 10), g2(6, 2)], ['TTL(KRW)', 'Total', 'L/I']);
 });

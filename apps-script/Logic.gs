@@ -661,7 +661,8 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule, extra) {
     rateCell[c] = '$' + colA_(16 + i) + '$2';
   });
 
-  var head = 6 + curs.length, first = head + 1, last = head + lines.length;
+  // 쓴 통화만: 외화 TTL 줄 + (원화 품목이 있을 때만) TTL(KRW) + Total
+  var head = 5 + curs.length + (hasKRW ? 1 : 0), first = head + 1, last = head + lines.length;
   var I = '$I$' + first + ':$I$' + last, K = '$K$' + first + ':$K$' + last;
   var r = 3, parts = [];
   curs.forEach(function (c) {
@@ -672,11 +673,13 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule, extra) {
     parts.push('K' + r + '*' + rateCell[c]);
     r++;
   });
-  add({ op: 'fmt', s: D, r: r, from: TPL.P_D_TTLKRW, c1: 2, c2: TPL.D_LAST });
-  set(D, r, 10, 'TTL(KRW)');
-  set(D, r, 11, '=SUMIF(' + I + ',"KRW",' + K + ')');
-  parts.push('K' + r);
-  r++;
+  if (hasKRW) {
+    add({ op: 'fmt', s: D, r: r, from: TPL.P_D_TTLKRW, c1: 2, c2: TPL.D_LAST });
+    set(D, r, 10, 'TTL(KRW)');
+    set(D, r, 11, '=SUMIF(' + I + ',"KRW",' + K + ')');
+    parts.push('K' + r);
+    r++;
+  }
   var note = rateNote_(curs, rates, base);
   add({ op: 'fmt', s: D, r: r, from: TPL.P_D_TOTAL, c1: 2, c2: TPL.D_LAST });
   set(D, r, 10, 'Total');
@@ -1115,6 +1118,15 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
   var A = colA_, QR = "'" + Q + "'!", DR = "'" + D + "'!";
   var num = function (v) { var x = toNumber_(v); return x === null ? (v === undefined || v === null ? '' : String(v).trim()) : x; };
 
+  // 견적종합에 나온 통화 (선정과 상관없이 업체 견적·계약 품목의 CUR), 순서는 USD·EUR·JPY·SGD·KRW
+  var usedSet = {};
+  items.forEach(function (it) {
+    if (it.fixed && it.fixed.cur) usedSet[String(it.fixed.cur).toUpperCase()] = 1;
+    Object.keys(it.quotes || {}).forEach(function (v) { var q = it.quotes[v] || {}; if (q.cur && !q.noReply) usedSet[String(q.cur).toUpperCase()] = 1; });
+  });
+  var usedCurs = SPOT.CURS.filter(function (c) { return usedSet[c]; });
+  if (!usedCurs.length) usedCurs = ['USD'];
+
   /* ---------- 견적종합 ---------- */
   var RANKEND = SPOT.Q_FIRST + items.reduce(function (t, it) { return t + (it.fixed ? 1 : N); }, 0) - 1;
   var m0 = rfqStart_(items, base);   // 견적요청서와 같은 월 칸 (가장 이른 Need-by 달부터 12개월)
@@ -1180,7 +1192,22 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
 
   /* ---------- 구매내역서 ---------- */
   set(D, 2, 15, { date: fmtDate_(base) });
-  ['USD', 'JPY', 'EUR', 'SGD'].forEach(function (c, i) { if (Number(rates[c]) > 0) set(D, 3, 16 + i, Number(rates[c])); });
+  // 통화: 견적종합에 나온 통화만 (구매내역서 통화 합계·환율 칸, 전체구매요약 CUR 별 합계 모두)
+  ['USD', 'JPY', 'EUR', 'SGD'].forEach(function (c, i) {
+    var on = usedCurs.indexOf(c) >= 0;
+    set(D, 2, 16 + i, on ? c : '');
+    set(D, 3, 16 + i, on && Number(rates[c]) > 0 ? Number(rates[c]) : '');
+    set(Q, 1, 42 + i, on ? c : '');
+    if (!on) set(Q, 2, 42 + i, '');
+  });
+  var rateOf = { USD: '$P$3', JPY: '$Q$3', EUR: '$R$3', SGD: '$S$3' };
+  for (var cr = 0; cr < 5; cr++) {   // K2:M6 통화 합계 (템플릿 칸 그대로, 쓴 통화만 위에서부터)
+    var cc = usedCurs[cr];
+    set(D, 2 + cr, 12, cc || '');
+    set(D, 2 + cr, 13, cc ? '=SUMIF($K$' + SPOT.D_FIRST + ':$K$1000,"' + cc + '",$M$' + SPOT.D_FIRST + ':$M$1000)' : '');
+    if (cc) add({ op: 'nf', s: D, r: 2 + cr, c: 13, f: curFmt_(cc) });
+  }
+  set(D, 7, 13, usedCurs.length ? '=' + usedCurs.map(function (c, k2) { return 'M' + (2 + k2) + (c === 'KRW' ? '' : '*' + rateOf[c]); }).join('+') : 0);
   vendors.forEach(function (v, j) { set(D, 8, SPOT.D_V0 + j * 4, v); });
   var dLast = SPOT.D_FIRST + n - 1;
   items.forEach(function (it, i) {
@@ -1244,8 +1271,8 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
     set(S, r, 16, '=INDIRECT("' + DR.replace(/"/g, '""') + 'B" & L' + r + ')');
   });
   var r0 = sLast + 1, rng = function (c) { return '$' + c + '$5:$' + c + '$' + sLast; };
-  // CUR 별 합계: 환율을 넣은(0 보다 큰) 외화 + KRW 만 표시
-  var curs = SPOT.CURS.filter(function (c) { return c === 'KRW' || Number(rates[c]) > 0; });
+  // CUR 별 합계: 견적종합에 나온 통화만 (KRW 도 쓸 때만)
+  var curs = usedCurs;
   var curRow = {};
   curs.forEach(function (c, k4) {
     curRow[c] = r0 + k4;
