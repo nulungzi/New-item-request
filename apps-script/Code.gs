@@ -162,6 +162,12 @@ function doGet() {
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
+/** 사용법 팝업의 예시 사진·누를 곳 위치 (Guide.html, JSON). 파일이 없으면 빈 값 → 글만 보임 */
+function apiGuide() {
+  auth_();
+  try { return HtmlService.createHtmlOutputFromFile('Guide').getContent(); } catch (e) { return '{"img":{},"hot":{}}'; }
+}
+
 /** 화면이 처음 열릴 때: 작성일, 저장된 환율, 구매일정 설정, Item 안내, 신규 등록 양식 */
 function apiInit() {
   auth_();

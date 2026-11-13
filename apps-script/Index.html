@@ -306,6 +306,101 @@ a { color: var(--accent) }
 .rp-name .field input { width: 100%; text-align: left }
 .rp-paper .mth th { font-size: 8.5px; padding: 2px 1px }
 
+/* 홈: 흐름 + 기능 카드, 사용법 팝업 (실제 화면 사진 · 크로스페이드 · 누를 곳 펄스) */
+.hm-hero { display: grid; gap: 18px; padding: 22px 24px; border: 1px solid var(--line); border-radius: 14px;
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface) 55%, var(--accent-soft) 160%) }
+.hm-hero h2 { font-size: 1.45rem; font-weight: 700; text-wrap: balance; margin: 4px 0 8px }
+.hm-hero p { max-width: 72ch; line-height: 1.65 }
+.hm-skip { margin-top: 12px; font-size: .84rem; color: var(--muted) }
+.hm-flow-wrap { overflow-x: auto; padding: 4px 2px 6px }
+.hm-flow { display: flex; align-items: center; min-width: 760px }
+.hm-fork { flex: 1; display: grid; gap: 12px; position: relative; padding-left: 14px }
+.hm-fork::before { content: ""; position: absolute; left: 0; top: 25%; bottom: 25%; width: 2px; background: var(--line); border-radius: 2px }
+.hm-branch { display: flex; align-items: center }
+.hm-node { flex: none; display: grid; gap: 1px; text-align: left; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  font: 600 .86rem var(--font-body); cursor: pointer; animation: hm-in .5s cubic-bezier(.2, .8, .2, 1) both; animation-delay: calc(var(--i) * 90ms); transition: transform .15s, border-color .15s, box-shadow .15s }
+.hm-node small { font: 500 .66rem var(--font-data); color: var(--muted); letter-spacing: .04em }
+.hm-node:hover, .hm-node:focus-visible { transform: translateY(-2px); border-color: var(--accent); box-shadow: 0 6px 18px rgba(0, 0, 0, .08) }
+.hm-node.ok { border-color: var(--ok); background: var(--ok-soft) }
+.hm-node.spot { border-color: var(--spot); background: var(--spot-soft) }
+.hm-link { flex: 1 1 18px; min-width: 14px; max-width: 64px; height: 2px; background: var(--line); position: relative; overflow: hidden; animation: hm-in .4s ease both; animation-delay: calc(var(--i) * 90ms) }
+.hm-fork .hm-branch > .hm-link:first-child { flex: 0 0 18px; margin-left: -14px }
+.hm-link::after { content: ""; position: absolute; inset: 0; width: 40%; background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: hm-run 2.4s linear infinite; animation-delay: calc(var(--i) * 140ms + .8s) }
+@keyframes hm-in { from { opacity: 0; transform: translateY(8px) } }
+@keyframes hm-run { from { transform: translateX(-100%) } to { transform: translateX(260%) } }
+.hm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px }
+.hm-card { display: grid; grid-template-rows: auto auto 1fr auto; gap: 8px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+  animation: hm-in .5s cubic-bezier(.2, .8, .2, 1) both; animation-delay: calc(300ms + var(--i) * 60ms); transition: transform .18s, box-shadow .18s, border-color .18s }
+.hm-card:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(0, 0, 0, .08); border-color: var(--accent) }
+.hm-card-head { display: flex; gap: 10px; align-items: center }
+.hm-ico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); flex: none }
+.hm-ico svg { width: 20px; height: 20px }
+.hm-card h3 { font-size: 1rem; font-weight: 700 }
+.hm-card p { font-size: .86rem; color: var(--muted); line-height: 1.55 }
+.hm-card ul { margin: 0; padding-left: 16px; font-size: .8rem; color: var(--muted); display: grid; gap: 2px }
+.hm-card .row { gap: 6px }
+.hm-card .btn, .hm-card .btn-ghost { padding: 6px 12px; font-size: .84rem }
+.hm-foot { font-size: .82rem }
+@media (prefers-reduced-motion: reduce) { .hm-node, .hm-link, .hm-card { animation: none } .hm-link::after { animation: none; display: none } }
+
+.gd { position: fixed; inset: 0; z-index: 95; display: grid; place-items: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)) }
+.gd-backdrop { position: absolute; inset: 0; background: rgba(10, 16, 32, .55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); opacity: 0; transition: opacity .25s ease }
+.gd-box { position: relative; width: min(1280px, 100%); max-height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden;
+  background: var(--surface); border-radius: 16px; box-shadow: 0 30px 80px rgba(0, 0, 0, .35); opacity: 0; transform: translateY(18px) scale(.96); transition: transform .3s cubic-bezier(.2, .8, .2, 1), opacity .22s ease }
+.gd.open .gd-backdrop { opacity: 1 }
+.gd.open .gd-box { opacity: 1; transform: none }
+.gd-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line) }
+.gd-head-text { display: flex; gap: 12px; align-items: center }
+.gd-head h2 { font-size: 1.2rem; font-weight: 700 }
+.gd-icon { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink) }
+.gd-icon svg { width: 22px; height: 22px }
+.gd-x { font-size: 1.1rem; width: 36px }
+.gd-main { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 0; overflow: auto }
+.gd-steps { list-style: none; margin: 0; padding: 14px; display: grid; gap: 4px; align-content: start; border-right: 1px solid var(--line); background: var(--surface-2) }
+.gd-steps button { width: 100%; display: grid; grid-template-columns: 26px 1fr; gap: 8px; align-items: start; text-align: left; padding: 9px 10px; border: 0; border-radius: 10px;
+  background: transparent; color: var(--muted); font: 600 .86rem var(--font-body); cursor: pointer; transition: background .2s, color .2s }
+.gd-steps button span { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font: 700 .74rem var(--font-data); background: var(--surface); border: 1px solid var(--line); transition: background .2s, color .2s, border-color .2s }
+.gd-steps button:hover { background: var(--surface) }
+.gd-steps button[aria-current="step"] { background: var(--surface); color: var(--ink); box-shadow: 0 2px 10px rgba(0, 0, 0, .06) }
+.gd-steps button[aria-current="step"] span { background: var(--accent); color: var(--accent-ink); border-color: var(--accent) }
+.gd-steps button.seen span { border-color: var(--accent) }
+.gd-stage { display: grid; gap: 14px; padding: 18px 20px; align-content: start; justify-items: center; min-width: 0 }
+.gd-frame { position: relative; width: 100%; aspect-ratio: 16 / 9; max-width: 100%; border-radius: 10px; overflow: hidden; border: 1px solid var(--line);
+  background: var(--bg); box-shadow: 0 8px 30px rgba(0, 0, 0, .10); transition: width .35s ease }
+.gd-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transform: scale(1.02); transition: opacity .45s ease, transform 1.4s cubic-bezier(.2, .8, .2, 1) }
+.gd-frame img.on { opacity: 1; transform: none }
+.gd-hot { position: absolute; width: var(--hot, 46px); height: var(--hot, 46px); margin: calc(var(--hot, 46px) / -2) 0 0 calc(var(--hot, 46px) / -2); border-radius: 50%; border: 3px solid var(--warn); pointer-events: none;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, .7); transition: left .55s cubic-bezier(.2, .8, .2, 1), top .55s cubic-bezier(.2, .8, .2, 1), opacity .3s; animation: gd-pulse 1.6s ease-out infinite }
+.gd-hot::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 3px solid var(--warn); animation: gd-ring 1.6s ease-out infinite }
+@keyframes gd-pulse { 0%, 100% { transform: scale(1) } 50% { transform: scale(.88) } }
+@keyframes gd-ring { from { transform: scale(1); opacity: .8 } to { transform: scale(2.1); opacity: 0 } }
+.gd-noimg { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; color: var(--muted); font-size: .9rem; line-height: 1.6 }
+.gd-noimg svg { width: 64px; height: 64px; color: var(--accent); opacity: .5; display: block; margin: 0 auto 10px }
+.gd-cap { width: 100%; max-width: 760px; text-align: left; display: grid; gap: 4px }
+.gd-cap b { font-size: 1.02rem }
+.gd-cap p { color: var(--muted); line-height: 1.65; font-size: .92rem }
+.gd-cap.swap { animation: gd-cap .4s cubic-bezier(.2, .8, .2, 1) }
+@keyframes gd-cap { from { opacity: 0; transform: translateY(6px) } }
+.gd-foot { position: relative; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; padding: 12px 20px; border-top: 1px solid var(--line) }
+.gd-prog { position: absolute; left: 0; right: 0; top: -1px; height: 3px; background: transparent }
+.gd-prog i { display: block; height: 100%; width: 0; background: var(--accent) }
+.gd-dots { display: flex; gap: 6px }
+.gd-dots i { width: 8px; height: 8px; border-radius: 4px; background: var(--line); transition: width .3s, background .3s }
+.gd-dots i.on { width: 22px; background: var(--accent) }
+@media (max-width: 760px) {
+  .gd-main { grid-template-columns: minmax(0, 1fr) }
+  .gd-steps { display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line) }
+  .gd-steps li { flex: none }
+  .gd-steps button { grid-template-columns: 24px auto; white-space: nowrap }
+  .gd-stage { padding: 12px }
+  .gd-hot { --hot: 28px; border-width: 2px }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gd-backdrop, .gd-box, .gd-frame img, .gd-hot { transition: none }
+  .gd-hot, .gd-hot::after, .gd-cap.swap { animation: none }
+}
+
 /* 로그인 */
 body.locked { overflow: hidden }
 .login-gate { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; overflow: auto; background: var(--bg);
@@ -538,6 +633,7 @@ table.list td.nw { white-space: nowrap }
 
 <div class="app">
 <nav class="side" aria-label="화면">
+  <button type="button" class="side-btn" data-view="home">홈 · 사용법</button>
   <button type="button" class="side-btn on" data-view="new">새 소요제기</button>
   <button type="button" class="side-btn" data-view="records">진행 중 <span class="side-count" id="recCount"></span></button>
   <div class="side-sep" role="presentation"></div>
@@ -545,6 +641,40 @@ table.list td.nw { white-space: nowrap }
   <button type="button" class="side-btn" data-view="vendors">업체 등록</button>
 </nav>
 <div class="views">
+<div id="viewHome" class="stack" hidden>
+  <section class="hm-hero">
+    <div class="hm-hero-text">
+      <div class="eyebrow">사용 안내</div>
+      <h2>소요제기부터 구매내역서·견적까지</h2>
+      <p class="muted">사업부 소요제기를 Need-by 기준으로 판정해 계약 품목은 구매내역서로, 단가가 없는 품목은 견적요청서와 Gmail 초안으로 보냅니다. 견적을 받으면 종합해서 Spot 견적 구매내역서까지 만듭니다. 각 기능의 <b>사용법</b>을 누르면 실제 화면으로 순서를 보여 줍니다.</p>
+      <label class="inline hm-skip" for="hmSkip"><input type="checkbox" id="hmSkip"> 다음부터 새 소요제기 화면으로 바로 시작</label>
+    </div>
+    <div class="hm-flow-wrap"><div class="hm-flow" aria-label="작업 흐름">
+      <button type="button" class="hm-node" data-guide="new" style="--i:0"><small>1</small>소요제기 입력</button>
+      <span class="hm-link" style="--i:1"></span>
+      <button type="button" class="hm-node" data-guide="new" style="--i:2"><small>2</small>판정</button>
+      <div class="hm-fork">
+        <div class="hm-branch">
+          <span class="hm-link" style="--i:3"></span>
+          <button type="button" class="hm-node ok" data-guide="purchase" style="--i:4"><small>LTA · 3PP · SPOT 단가</small>구매내역서</button>
+        </div>
+        <div class="hm-branch">
+          <span class="hm-link" style="--i:3"></span>
+          <button type="button" class="hm-node spot" data-guide="rfq" style="--i:4"><small>SPOT 견적</small>견적요청서</button>
+          <span class="hm-link" style="--i:5"></span>
+          <button type="button" class="hm-node spot" data-guide="rfq" style="--i:6"><small>Gmail</small>메일 초안</button>
+          <span class="hm-link" style="--i:7"></span>
+          <button type="button" class="hm-node spot" data-guide="quote" style="--i:8"><small>업체별</small>견적 입력</button>
+          <span class="hm-link" style="--i:9"></span>
+          <button type="button" class="hm-node spot" data-guide="quote" style="--i:10"><small>종합</small>견적 구매내역서</button>
+        </div>
+      </div>
+    </div></div>
+  </section>
+  <div class="hm-grid" id="hmGrid"></div>
+  <p class="muted hm-foot">로그인은 4시간 유지됩니다 · 자재정보·업체정보 시트를 직접 고쳤다면 위쪽 <b>DB 새로고침</b> · 만든 파일은 모두 내 드라이브, 메일은 내 Gmail 임시보관함에 생깁니다.</p>
+</div>
+
 <div id="viewNew" class="stack">
 
 
@@ -886,6 +1016,37 @@ table.list td.nw { white-space: nowrap }
   </div>
 </div>
 
+<div class="gd" id="guide" hidden role="dialog" aria-modal="true" aria-labelledby="gdTitle">
+  <div class="gd-backdrop" id="gdBackdrop"></div>
+  <div class="gd-box">
+    <header class="gd-head">
+      <div class="gd-head-text"><span class="gd-icon" id="gdIcon" aria-hidden="true"></span><div><div class="eyebrow">사용법</div><h2 id="gdTitle"></h2></div></div>
+      <button class="btn-x gd-x" id="gdClose" type="button" aria-label="닫기">✕</button>
+    </header>
+    <div class="gd-main">
+      <ol class="gd-steps" id="gdSteps"></ol>
+      <div class="gd-stage">
+        <div class="gd-frame" id="gdFrame">
+          <img id="gdImgA" alt="" decoding="async"><img id="gdImgB" alt="" decoding="async">
+          <span class="gd-hot" id="gdHot" hidden></span>
+          <div class="gd-noimg" id="gdNoImg" hidden></div>
+        </div>
+        <div class="gd-cap" id="gdCap"><b id="gdCapTitle"></b><p id="gdCapText"></p></div>
+      </div>
+    </div>
+    <footer class="gd-foot">
+      <div class="gd-prog" aria-hidden="true"><i id="gdProg"></i></div>
+      <div class="gd-dots" id="gdDots"></div>
+      <div class="row">
+        <button class="btn-ghost" id="gdPlay" type="button" aria-pressed="true">❚❚ 자동 넘김</button>
+        <button class="btn-ghost" id="gdGo" type="button">이 기능으로 가기</button>
+        <button class="btn-ghost" id="gdPrev" type="button">← 이전</button>
+        <button class="btn" id="gdNext" type="button">다음 →</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
 <div class="modal" id="picker" hidden role="dialog" aria-modal="true" aria-labelledby="pkTitle">
   <div class="modal-box">
     <div class="panel-head"><h2 id="pkTitle">저장할 폴더 선택</h2><span class="muted" id="pkFor"></span></div>
@@ -929,7 +1090,7 @@ function showLogin(msg, st) {
   st = st || auth.st;
   clearTimeout(auth.timer);
   document.body.classList.add('locked');
-  ['vDrawer', 'draftModal', 'picker', 'rfqPick'].forEach(function (id) { if ($(id)) $(id).hidden = true; });
+  ['vDrawer', 'draftModal', 'picker', 'rfqPick', 'guide'].forEach(function (id) { if ($(id)) $(id).hidden = true; });
   $('loginGate').hidden = false;
   $('loginMsg').textContent = msg || '';
   if (st) {
@@ -960,6 +1121,7 @@ function startApp() {
   auth.started = true;
   startDb();
   loadRecords();
+  startView();   // 홈(사용법) 또는 새 소요제기
 }
 function checkAuth() {
   call('apiAuthState').then(function (st) {
@@ -2018,6 +2180,7 @@ $('qCreate').onclick = function () {
 /* ---------- 진행 중 (내 기록) ---------- */
 function showView(v) {
   document.querySelectorAll('.side-btn').forEach(function (b) { b.classList.toggle('on', b.dataset.view === v); });
+  $('viewHome').hidden = v !== 'home';
   $('viewNew').hidden = v !== 'new';
   $('viewRecords').hidden = v !== 'records';
   $('viewItems').hidden = v !== 'items';
@@ -2590,6 +2753,172 @@ function loadPreview(d) {
     show(0);
   }).catch(function (e) { $('pvNote').textContent = '미리보기를 불러오지 못했습니다: ' + (e.message || e); });
 }
+/* ---------- 홈 · 사용법 ----------
+ * 기능마다 단계(사진 img · 누를 곳 hot 은 Guide.html 의 JSON 에서). 사진은 처음 사용법을 열 때 한 번만 불러옴
+ */
+var ICONS = {
+  new: '<path d="M4 5h16M4 10h16M4 15h10M4 20h7"/><path d="m15 18 2 2 4-4"/>',
+  purchase: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/>',
+  rfq: '<path d="M3 6h18v12H3z"/><path d="m3 7 9 6 9-6"/>',
+  quote: '<path d="M4 4h16v16H4z"/><path d="M4 10h16M10 4v16"/>',
+  records: '<path d="M4 6h16M4 12h16M4 18h10"/><circle cx="19" cy="18" r="2"/>',
+  items: '<path d="M12 3 3 8l9 5 9-5z"/><path d="m3 13 9 5 9-5"/>',
+  vendors: '<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 4.5a3 3 0 0 1 0 6M21 20c0-2.6-1.7-4.8-4-5.6"/>'
+};
+function icon(k) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[k] || '') + '</svg>'; }
+var GUIDES = [
+  { id: 'new', view: 'new', title: '소요제기 판정', desc: 'Item·수량·Need-by를 넣으면 계약(LTA·3PP) · Spot 단가 · Spot 견적으로 나눕니다.',
+    points: ['엑셀·입력용 시트에서 붙여넣기', 'DB 단가가 있어도 업체 바꾸기·견적 요청', '따로 / 하나로 만들기'],
+    steps: [
+      { id: 'n1', img: 'req', t: '소요제기 입력', d: '표에 Item · 수량 · Need-by(출고일)를 적습니다. 엑셀에서 여러 줄을 복사해 아무 칸에 붙여넣어도 됩니다. Program · Shelf Life · Ship · Tax는 선택입니다. 다 적었으면 판정하기를 누릅니다.' },
+      { id: 'n2', img: 'req', t: '입력용 시트로 받기', d: '입력용 시트 만들기를 누르면 같은 열 순서의 구글 시트가 내 드라이브에 생깁니다. 사업부에서 받은 소요제기를 거기 정리해 두고 복사해 붙여넣습니다.' },
+      { id: 'n3', img: 'result', t: '판정 결과 · 업체 바꾸기', d: 'Need-by 시점의 계약 기간으로 계약 · Spot 단가 · Spot 견적이 나뉩니다. 업체 / 단가 칸에서 다른 계약 업체를 고르거나, 다른 업체 자재가 필요하면 견적 요청으로 돌립니다.' },
+      { id: 'n4', img: 'result', t: '따로 만들기 / 하나로 만들기', d: '계약 품목과 견적 품목이 섞여 있으면 고릅니다. 따로: 계약 구매내역서를 먼저 만들고 견적은 나중에. 하나로: 견적을 받은 뒤 계약 품목까지 한 파일로.' },
+      { id: 'n5', img: 'result', t: '확인 체크', d: '품목별 판정 · 업체 · 단가를 확인하고 체크해야 구매내역서와 견적요청서를 만들 수 있습니다.' }] },
+  { id: 'purchase', view: 'new', title: '구매내역서 작성', desc: '계약 품목과 DB 단가 Spot 품목으로 사업부 확인용 구매내역서를 만듭니다.',
+    points: ['계약 · Spot 단가는 탭으로 따로', '구매일정 끌어서 그리기, 12~36개월', '같은 자재 Need-by는 날짜(수량)'],
+    steps: [
+      { id: 'p1', img: 'ptabs', t: '계약 · Spot 단가 탭', d: 'LTA · 3PP 계약과 DB 단가가 있는 Spot 품목이 같이 있으면 탭 두 개로 나뉩니다. 탭마다 구매일정 · 제목 · 사업부 담당자 · 비고를 따로 정합니다. 환율은 공통입니다.' },
+      { id: 'p2', img: 'gantt', t: '구매일정 그리기', d: '줄마다 시작 칸에서 끝 칸까지 끌어서 기간을 그립니다. 막대 가운데를 끌면 옮기고, 양 끝을 끌면 늘어납니다. 한 칸은 반 달이고 L/T는 자동 계산됩니다.' },
+      { id: 'p3', img: 'gantt', t: '표시 개월 늘리기', d: '리드타임이 40~50주인 Metal · HW는 표시 개월을 + 로 늘립니다 (12~36개월). 시트의 구매일정도 같은 개월로 만들어집니다.' },
+      { id: 'p4', img: 'pfoot', t: '제목 · 담당자 · 만들기', d: '구매내역서 제목과 사업부 담당자(이름 직급)를 적고 만들기를 누르면 저장할 드라이브 폴더를 고릅니다. 만든 뒤 미리보기와 파일 링크가 나옵니다.' }] },
+  { id: 'rfq', view: 'new', title: '견적요청서 · 메일 초안', desc: '단가가 없는 품목으로 견적요청서를 만들고, 고른 업체에 보낼 Gmail 초안을 만듭니다.',
+    points: ['양식 1 월별 수량 / 양식 2 목록형', '업체·담당자별로 숨은 참조', '보내지 않고 임시보관함에 저장'],
+    steps: [
+      { id: 'r1', img: 'rfqbox', t: 'Item name · 제목 · 회신 기한', d: '같은 자재는 Need-by가 달라도 한 줄로 모입니다. Item name은 꼭 적고 Description · QPL · UOM · Remark는 고칠 수 있습니다. 제목과 회신 기한(due)을 정합니다.' },
+      { id: 'r2', img: 'rfqpick', t: '양식 고르기', d: '견적요청서 만들기를 누르면 지금 품목으로 만든 두 양식의 예시가 나옵니다. 양식 1은 월별 수량, 양식 2는 Need-by마다 한 줄인 목록형입니다.' },
+      { id: 'r3', img: 'draft', t: '받는 업체 · 담당자 고르기', d: '진행 중에서 메일 초안 만들기. 업체를 체크하면 담당자 전부, 담당자 n명을 펼치면 특정 담당자만 고릅니다. 모두 숨은 참조로 들어가고 받는 사람은 비워 둡니다.' },
+      { id: 'r4', img: 'draft', t: '임시보관함에 만들기', d: '바로 보내지 않고 Gmail 임시보관함에 초안을 만듭니다. 견적요청서 엑셀이 첨부되고 서명이 붙습니다. Gmail에서 확인한 뒤 직접 보냅니다.' }] },
+  { id: 'quote', view: 'records', title: '견적 입력 · 견적 종합', desc: '업체 회신을 표에 입력하거나 붙여넣고, 비교해서 Spot 견적 구매내역서를 만듭니다.',
+    points: ['업체별 입력 표, 시트에서 붙여넣기', '회신 없음 · NO BID 회색 처리', '원화 비교 · 순위 · 선정'],
+    steps: [
+      { id: 'q1', img: 'vlist', t: '업체 고르기', d: '진행 중에서 견적요청서를 펼치면 메일을 보낸 업체가 나옵니다. 업체를 누르면 입력 창이 열리고, 입력 상태(미입력 · 입력 중 · 입력 완료 · 회신 없음)가 표시됩니다.' },
+      { id: 'q2', img: 'vlist', t: '견적 입력용 시트', d: '업체마다 탭이 있는 구글 시트를 만들 수 있습니다. Item code · 이름 · 요청 수량 · Need-by가 채워져 있고 열 순서가 입력 표와 같습니다.' },
+      { id: 'q3', img: 'qtable', t: '표에 입력 · 붙여넣기', d: '시트의 줄을 통째로 복사해 붙여넣으면 Item code로 맞춰 들어갑니다. 회신 없음 · 모든 품목 NO BID · 통화 일괄도 있고, 다음 업체로 넘기면 자동 저장됩니다.' },
+      { id: 'q4', img: 'qsum', t: '견적 종합 → 구매내역서', d: '품목마다 원화 금액과 순위를 비교하고 업체를 선정한 뒤 Spot 견적 구매내역서를 만듭니다. 선정은 시트의 견적종합에서 나중에 바꿔도 됩니다.' }] },
+  { id: 'records', view: 'records', title: '진행 중', desc: '내가 만든 구매내역서 · 견적요청서를 소요제기 단위로 묶어 보여 줍니다.',
+    points: ['견적요청서 아래에 그 견적 구매내역서', '다른 담당자 기록은 안 보임', '완료하면 보관 파일로'],
+    steps: [
+      { id: 'c1', img: 'records', t: '소요제기 묶음', d: '같은 소요제기에서 만든 파일이 한 묶음입니다. 견적요청서 바로 아래에 그 견적으로 만든 견적 구매내역서가 이어집니다.' },
+      { id: 'c2', img: 'records', t: '완료', d: '소요제기가 끝나면 완료(또는 모두 완료)를 두 번 누릅니다. 기록이 보관 파일로 옮겨지고 목록이 가벼워집니다.' }] },
+  { id: 'items', view: 'items', title: '자재 등록', desc: '자재정보(DB)에 새 자재를 여러 줄 한 번에 추가합니다.',
+    points: ['자재정보와 같은 열 순서', '입력용 시트에서 붙여넣기', '틀린 줄은 이유와 함께 표시'],
+    steps: [
+      { id: 'i1', img: 'items', t: '입력 · 붙여넣기', d: '자재정보와 같은 열의 표입니다. 입력용 시트 만들기로 시트를 받아 정리한 뒤 여러 줄을 복사해 첫 칸에 붙여넣습니다. 머리글 줄은 건너뜁니다.' },
+      { id: 'i2', img: 'items', t: '틀린 줄 확인', d: 'LTA · 3PP인데 단가 · 기간이 없거나, 이미 있는 계약과 겹치면 그 줄이 주황색으로 표시되고 아무것도 등록하지 않습니다.' },
+      { id: 'i3', img: 'items', t: '자재정보에 등록', d: '모두 맞으면 자재정보 맨 아래에 한 번에 추가되고 판정에 바로 쓰입니다. 이미 있는 자재의 값은 자재정보 시트에서 고칩니다.' }] },
+  { id: 'vendors', view: 'vendors', title: '업체 등록', desc: '업체정보 탭의 업체·담당자를 보고, 연락처나 새 업체를 추가합니다.',
+    points: ['기존 업체에 연락처 추가', '새 업체 (SUPPLIER · SITE)', '메일 초안에 바로 반영'],
+    steps: [
+      { id: 'v1', img: 'vendors', t: '새 업체 · 연락처 추가', d: '기존 업체에 연락처 추가 또는 새 업체 등록을 고르고 저장합니다. 업체정보 탭에 한 줄이 생기고 메일 초안 창에 바로 나옵니다.' },
+      { id: 'v2', img: 'vendors', t: '목록에서 + 연락처', d: '등록된 업체 목록에서 + 연락처를 누르면 그 업체가 골라진 채로 입력 칸으로 이동합니다. 시트에서 직접 고쳤다면 새로고침을 누릅니다.' }] }
+];
+function renderHome() {
+  $('hmGrid').innerHTML = GUIDES.map(function (g, i) {
+    return '<article class="hm-card" style="--i:' + i + '"><div class="hm-card-head"><span class="hm-ico">' + icon(g.id) + '</span><h3>' + esc(g.title) + '</h3></div>' +
+      '<p>' + esc(g.desc) + '</p><ul>' + g.points.map(function (p) { return '<li>' + esc(p) + '</li>'; }).join('') + '</ul>' +
+      '<div class="row"><button class="btn" type="button" data-guide="' + g.id + '">사용법 보기</button><button class="btn-ghost" type="button" data-go="' + g.view + '">바로 가기 →</button></div></article>';
+  }).join('');
+  document.querySelectorAll('[data-guide]').forEach(function (b) { b.onclick = function () { openGuide(b.dataset.guide); }; });
+  $('hmGrid').querySelectorAll('[data-go]').forEach(function (b) { b.onclick = function () { showView(b.dataset.go); }; });
+  try { $('hmSkip').checked = localStorage.getItem('skipHome') === '1'; } catch (e) { /* 저장 안 되는 브라우저 */ }
+}
+$('hmSkip').onchange = function () { try { localStorage.setItem('skipHome', this.checked ? '1' : ''); } catch (e) { /* 무시 */ } };
+function startView() { var skip = false; try { skip = localStorage.getItem('skipHome') === '1'; } catch (e) { /* 무시 */ } showView(skip ? 'new' : 'home'); }
+
+var gd = { g: null, i: 0, timer: null, raf: null, play: true, data: null, loading: null, front: 'A', closing: null };
+var GD_MS = 6500;
+function guideData() {   // Guide.html (사진·누를 곳 위치) — 없으면 글만
+  if (gd.data) return Promise.resolve(gd.data);
+  if (!gd.loading) gd.loading = call('apiGuide').then(function (t) { gd.data = typeof t === 'string' ? JSON.parse(t) : (t || {}); return gd.data; })
+    .catch(function () { gd.data = { img: {}, hot: {} }; return gd.data; });
+  return gd.loading;
+}
+function openGuide(id) {
+  var g = GUIDES.filter(function (x) { return x.id === id; })[0];
+  if (!g) return;
+  gd.g = g; gd.i = 0; gd.play = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  $('gdTitle').textContent = g.title; $('gdIcon').innerHTML = icon(g.id);
+  $('gdSteps').innerHTML = g.steps.map(function (s, k) { return '<li><button type="button" data-step="' + k + '"><span>' + (k + 1) + '</span>' + esc(s.t) + '</button></li>'; }).join('');
+  $('gdSteps').querySelectorAll('[data-step]').forEach(function (b) { b.onclick = function () { gdShow(+b.dataset.step, true); }; });
+  $('gdDots').innerHTML = g.steps.map(function () { return '<i></i>'; }).join('');
+  ['gdImgA', 'gdImgB'].forEach(function (id2) { $(id2).classList.remove('on'); $(id2).removeAttribute('src'); });
+  $('gdHot').hidden = true;
+  clearTimeout(gd.closing);
+  $('guide').hidden = false;
+  requestAnimationFrame(function () { requestAnimationFrame(function () { $('guide').classList.add('open'); }); });
+  gdPlayLabel();
+  guideData().then(function () { gdShow(0); });
+  setTimeout(function () { $('gdNext').focus({ preventScroll: true }); }, 60);
+}
+function closeGuide() {
+  if ($('guide').hidden) return;
+  gdStop();
+  $('guide').classList.remove('open');
+  gd.closing = setTimeout(function () { $('guide').hidden = true; }, 280);
+}
+function gdShow(k, manual) {
+  var g = gd.g, s = g.steps[k], data = gd.data || { img: {}, hot: {} }, im = data.img[s.img], hot = data.hot[s.id];
+  gd.i = k;
+  $('gdSteps').querySelectorAll('[data-step]').forEach(function (b, n) { if (n === k) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current'); if (n < k) b.classList.add('seen'); });
+  $('gdDots').querySelectorAll('i').forEach(function (d, n) { d.classList.toggle('on', n === k); });
+  var cap = $('gdCap'); cap.classList.remove('swap'); void cap.offsetWidth; cap.classList.add('swap');
+  $('gdCapTitle').textContent = (k + 1) + '. ' + s.t; $('gdCapText').textContent = s.d;
+  $('gdPrev').disabled = k === 0;
+  $('gdNext').textContent = k === g.steps.length - 1 ? '처음부터 ↺' : '다음 →';
+  var frame = $('gdFrame');
+  if (im) {
+    $('gdNoImg').hidden = true;
+    frame.style.aspectRatio = im.w + ' / ' + im.h;
+    frame.style.width = 'min(100%, calc(52vh * ' + (im.w / im.h).toFixed(4) + '))';
+    var front = $('gdImg' + gd.front), back = $('gdImg' + (gd.front === 'A' ? 'B' : 'A'));
+    var place = function () {
+      if (hot) { $('gdHot').hidden = false; $('gdHot').style.left = hot[0] + '%'; $('gdHot').style.top = hot[1] + '%'; } else $('gdHot').hidden = true;
+    };
+    if (front.getAttribute('src') === im.src && front.classList.contains('on')) place();   // 같은 사진: 누를 곳만 옮김
+    else {
+      $('gdHot').style.opacity = 0;
+      back.onload = function () { back.classList.add('on'); front.classList.remove('on'); gd.front = gd.front === 'A' ? 'B' : 'A'; place(); $('gdHot').style.opacity = 1; };
+      back.src = im.src; back.alt = g.title + ' — ' + s.t;
+      if (back.complete && back.naturalWidth) back.onload();
+    }
+  } else {
+    ['gdImgA', 'gdImgB'].forEach(function (id2) { $(id2).classList.remove('on'); });
+    $('gdHot').hidden = true;
+    frame.style.aspectRatio = '16 / 9'; frame.style.width = '100%';
+    $('gdNoImg').hidden = false;
+    $('gdNoImg').innerHTML = '<div>' + icon(g.id) + (gd.data ? '예시 사진 파일(Guide.html)이 아직 없습니다.<br>Apps Script 편집기에 Guide.html 을 추가하면 실제 화면 사진이 나옵니다.' : '사진을 불러오는 중…') + '</div>';
+  }
+  if (manual) gdStop(true);
+  gdTick();
+}
+function gdTick() {   // 자동 넘김 진행 막대
+  clearTimeout(gd.timer); cancelAnimationFrame(gd.raf);
+  var bar = $('gdProg');
+  bar.style.width = '0';
+  if (!gd.play) return;
+  var t0 = performance.now();
+  var step = function (t) { var p = Math.min(1, (t - t0) / GD_MS); bar.style.width = (p * 100) + '%'; if (p < 1) gd.raf = requestAnimationFrame(step); };
+  gd.raf = requestAnimationFrame(step);
+  gd.timer = setTimeout(function () { gdShow((gd.i + 1) % gd.g.steps.length); }, GD_MS);
+}
+function gdStop(keepLabel) { gd.play = false; clearTimeout(gd.timer); cancelAnimationFrame(gd.raf); $('gdProg').style.width = '0'; gdPlayLabel(); }
+function gdPlayLabel() { $('gdPlay').textContent = gd.play ? '❚❚ 자동 넘김' : '▶ 자동 넘김'; $('gdPlay').setAttribute('aria-pressed', gd.play); }
+$('gdPlay').onclick = function () { if (gd.play) gdStop(); else { gd.play = true; gdPlayLabel(); gdTick(); } };
+$('gdNext').onclick = function () { gdShow(gd.i >= gd.g.steps.length - 1 ? 0 : gd.i + 1, true); };
+$('gdPrev').onclick = function () { if (gd.i > 0) gdShow(gd.i - 1, true); };
+$('gdGo').onclick = function () { var v = gd.g.view; closeGuide(); showView(v); };
+$('gdClose').onclick = closeGuide;
+$('gdBackdrop').onclick = closeGuide;
+$('gdFrame').addEventListener('mouseenter', function () { if (gd.play) { clearTimeout(gd.timer); cancelAnimationFrame(gd.raf); } });
+$('gdFrame').addEventListener('mouseleave', function () { if (gd.play) gdTick(); });
+document.addEventListener('keydown', function (e) {
+  if ($('guide').hidden) return;
+  if (e.key === 'Escape') closeGuide();
+  if (e.key === 'ArrowRight') $('gdNext').click();
+  if (e.key === 'ArrowLeft' && gd.i > 0) $('gdPrev').click();
+});
+renderHome();
 checkAuth();   // 로그인 확인 → 화면 시작
 </script>
 </body>
