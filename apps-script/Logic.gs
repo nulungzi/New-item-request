@@ -575,6 +575,14 @@ function rateNote_(curs, rates, base) {
   }).join(', ') + ' (' + fmtDate_(base).replace(/-/g, '/') + ' 기준)';
 }
 
+/** 재요청 메일 제목: '[Reminder] ' + 원래 제목 (회신 기한을 바꾸면 (due m/d) 도 바꿈) */
+function remindTitle_(title, newDue) {
+  var t = String(title || '').replace(/^\[Reminder\]\s*/i, '');
+  var d = dueText_(newDue);
+  if (d) t = /\(due [^)]*\)/i.test(t) ? t.replace(/\(due [^)]*\)/i, '(due ' + d + ')') : t + ' (due ' + d + ')';
+  return '[Reminder] ' + t;
+}
+
 /**
  * 중복 소요제기: 진행 중 기록(모든 담당자)에 같은 Item 이 있으면 {item: [{title, owner, created, mine}]}
  * records: rowToRecord_ 결과 목록, me: 내 이메일
@@ -987,8 +995,11 @@ function buildRfqPlan_(items, base) {
   return ops;
 }
 
-/** 메일 본문 (HTML + 글자). items 는 견적요청서와 같은 목록, due 'm/d', signature HTML */
-function rfqEmail_(items, due, signatureHtml) {
+/**
+ * 메일 본문 (HTML + 글자). items 는 견적요청서와 같은 목록, due 'm/d', signature HTML
+ * remind: {sentOn: 'm/d'} 이면 재요청(아직 견적을 못 받은 업체에 다시) 문구
+ */
+function rfqEmail_(items, due, signatureHtml, remind) {
   var e = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
   var qty = function (n) { return Number(n).toLocaleString('en-US', { maximumFractionDigits: 4 }); };
   var need = function (d) { d = toDate_(d); return d ? fmtDate_(d) : 'ASAP'; };
@@ -1009,6 +1020,8 @@ function rfqEmail_(items, due, signatureHtml) {
     }).join('') + '</table>';
   var p = function (t) { return '<p style="margin:0 0 14px;font-family:Arial,sans-serif;font-size:10pt">' + t + '</p>'; };
   var dueLine = 'We would like to have a quote on the items as you can find in the below' + (due ? ' due ' + e(due) : ' ASAP') + '.';
+  if (remind) dueLine = 'This is a kind reminder of our RFQ' + (remind.sentOn ? ' sent on ' + e(remind.sentOn) : '') + '. We have not received your quotation yet, ' +
+    'and we would appreciate it if you could send it' + (due ? ' by ' + e(due) : ' as soon as possible') + '.';
   var html = '<div>' + p('Dear Sir/Madam,') + p('Hope you are doing well.') + p(dueLine) +
     p('Please review and let us know the relevant information attached.') + p('Below is the summary of the RFQ') +
     table + p('Thank you') + (signatureHtml ? '<div>' + signatureHtml + '</div>' : '') + '</div>';

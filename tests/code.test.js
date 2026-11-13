@@ -202,8 +202,20 @@ test('견적요청서 → 메일 초안 → 내 기록 → 완료 보관', () =>
   assert.match(drafts[0].opt.htmlBody, /김민형 사원/);
   assert.strictEqual(drafts[0].opt.attachments[0].name, title + '.xlsx');
 
+  // 재요청: 같은 견적요청서에 이어서, 제목 [Reminder] + 새 회신 기한, 업체는 기존에 더함, 메일 기록 2건
+  assert.throws(() => ctx.apiCreateRfqDraft({ recordId: r.recordId, bcc: [] , remind: true }), /한 곳 이상/);
+  ctx.updateRecord_(ctx.findRecord_(r.recordId, true), { data: { vendors: ['Hexcel', '3M'] } });
+  const d2 = ctx.apiCreateRfqDraft({ recordId: r.recordId, bcc: ['q@3m.com', 'new@aero.com'], vendors: ['3M', 'Aerovac'], remind: true, due: '2026-11-25' });
+  assert.strictEqual(d2.subject, '[Reminder] [KE] RFQ // 261110 Boeing Chemical Material Spot (due 11/25)');
+  assert.match(drafts[1].opt.htmlBody, /kind reminder of our RFQ/);
+  assert.match(drafts[1].opt.htmlBody, /by 11\/25\./);
+  assert.strictEqual(drafts[1].opt.bcc, 'q@3m.com,new@aero.com');
+  const rr = ctx.apiMyRecords().records.find(x => x.id === r.recordId);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify([rr.status, rr.vendors, rr.mails.map(m => [m.no, m.kind, m.count]), rr.due])),
+    ['재요청 초안', ['Hexcel', '3M', 'Aerovac'], [[1, '견적 요청', 2], [2, '재요청', 2]], '2026-11-25']);
+
   let mine = ctx.apiMyRecords();
-  assert.deepStrictEqual([mine.records.length, mine.records[0].status, mine.records[0].bcc], [1, '메일 초안', 'a@hexcel.com, q@3m.com']);
+  assert.deepStrictEqual([mine.records.length, mine.records[0].status, mine.records[0].bcc], [1, '재요청 초안', 'q@3m.com, new@aero.com']);
   user = 'other@ke.com';                                          // 다른 담당자: 안 보이고 완료도 못 함
   assert.strictEqual(ctx.apiMyRecords().records.length, 0);
   assert.throws(() => ctx.apiCompleteRecord(r.recordId), /다른 담당자/);

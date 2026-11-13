@@ -96,7 +96,14 @@ main { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px }
 @media (prefers-reduced-motion: reduce) { .doc-panel { animation: none } }
 .rfq-done { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center }
 /* 메일 초안 */
-.modal-box.draft-box { grid-template-rows: auto auto minmax(0, 1fr) auto auto auto auto; width: min(980px, 100%) }
+.modal-box.draft-box { grid-template-rows: auto auto auto minmax(0, 1fr) auto auto auto auto; width: min(980px, 100%) }
+.dm-remind { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 10px 12px; border-radius: 8px; background: var(--spot-soft); font-size: .86rem }
+.dm-remind input { padding: 5px 8px }
+.mail-line { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 4px }
+.mail-chip { display: inline-flex; gap: 6px; align-items: center; padding: 2px 9px; border-radius: 999px; font-size: .74rem; border: 1px solid var(--line); background: var(--surface-2); color: var(--muted) }
+.mail-chip b { color: var(--ink); font-weight: 600 }
+.mail-chip.re { border-color: var(--spot); background: var(--spot-soft) }
+.mail-arrow { color: var(--muted); font-size: .74rem }
 .dm-subject { font: 500 .88rem var(--font-data); padding: 8px 10px; background: var(--surface-2); border-radius: 6px; word-break: break-all }
 .dm-vendors { display: grid; gap: 8px; min-height: 0 }
 .dm-list { max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)) }
@@ -965,6 +972,10 @@ table.list td.nw { white-space: nowrap }
   <div class="modal-box draft-box">
     <div class="panel-head"><h2 id="dmTitle">메일 초안 만들기</h2><span class="muted">바로 보내지 않고 Gmail 임시보관함에 저장합니다</span></div>
     <div class="dm-subject" id="dmSubject"></div>
+    <div class="dm-remind" id="dmRemind" hidden>
+      <span>같은 견적요청서의 <b>재요청</b>입니다. 아직 견적을 입력하지 않은 업체를 미리 골라 두었습니다. 새 업체를 더 고르면 견적 입력 업체에 추가됩니다.</span>
+      <label class="inline" for="dmDue">새 회신 기한<input id="dmDue" type="date" class="data"></label>
+    </div>
     <div class="dm-vendors">
       <div class="row spread"><b>받을 업체 (숨은 참조)</b><label class="inline"><input type="checkbox" id="dmAll"> 전체 선택</label></div>
       <div class="dm-list" id="dmList"></div>
@@ -1681,17 +1692,36 @@ function createRfq(tpl, title) {
 }
 
 /* ---------- 메일 초안 (Gmail 임시보관함) ---------- */
-var draft = { recordId: null, vendors: null };
-function openDraft(recordId, title) {
-  draft.recordId = recordId;
-  $('dmSubject').textContent = title;
+var draft = { recordId: null, vendors: null, remind: false };
+function openDraft(recordId, title, remind) {
+  draft.recordId = recordId; draft.remind = !!remind;
+  var rec = state.records && recById(recordId);
+  $('dmTitle').textContent = remind ? '재요청 메일 만들기' : '메일 초안 만들기';
+  $('dmRemind').hidden = !remind;
+  $('dmOk').textContent = remind ? '재요청 초안 만들기' : '임시보관함에 만들기';
+  if (remind) $('dmDue').value = rec && rec.due ? rec.due : '';
+  draft.title = String(title).replace(/^\[Reminder\]\s*/i, '');
+  $('dmSubject').textContent = remind ? remindSubject() : title;
   $('dmMsg').textContent = ''; $('dmAll').checked = false;
   $('draftModal').hidden = false;
   $('dmList').innerHTML = '<div class="pk-empty">업체정보 불러오는 중…</div>';
   $('dmAddBox').open = false; $('dmAddMsg').textContent = '';
-  call('apiVendors').then(function (d) { renderDraftVendors(d, []); }).catch(function (e) { $('dmMsg').textContent = e.message || e; });
+  call('apiVendors').then(function (d) {
+    var keep = [];
+    if (remind && rec) {   // 아직 견적을 입력하지 않은 업체(회신 없음 제외)의 담당자 전부
+      var c = quoteFor(rec), wait = (rec.vendors || []).filter(function (v) { return vendorStatus(c, v).cls === ''; });
+      d.vendors.forEach(function (v) { if (wait.indexOf(v.name) >= 0) keep = keep.concat(v.emails); });
+    }
+    renderDraftVendors(d, keep);
+  }).catch(function (e) { $('dmMsg').textContent = e.message || e; });
   call('apiSignature').then(showSign);
 }
+function remindSubject() {   // 서버 remindTitle_ 과 같게: 회신 기한을 바꾸면 (due m/d) 도 바꿈
+  var t = draft.title, d = ($('dmDue').value || '').split('-');
+  if (d.length === 3) { var due = '(due ' + (+d[1]) + '/' + (+d[2]) + ')'; t = /\(due [^)]*\)/i.test(t) ? t.replace(/\(due [^)]*\)/i, due) : t + ' ' + due; }
+  return '[Reminder] ' + t;
+}
+$('dmDue').addEventListener('change', function () { if (draft.remind) $('dmSubject').textContent = remindSubject(); });
 function showSign(sg) {
   $('dmSignState').textContent = sg.source === 'gmail' ? '서명: Gmail 설정의 서명을 자동으로 씁니다'
     : sg.source === 'saved' ? '서명: 저장한 서명을 씁니다 (눌러서 고치기)'
@@ -1785,14 +1815,14 @@ $('dmOk').onclick = function () {
   if (!bcc.length) { $('dmMsg').textContent = '메일을 받을 업체를 한 곳 이상 골라 주세요.'; return; }
   b.disabled = true; b.textContent = '만드는 중…';
   var names = chosenVendors();
-  call('apiCreateRfqDraft', { recordId: draft.recordId, bcc: bcc, vendors: names }).then(function (d) {
+  call('apiCreateRfqDraft', { recordId: draft.recordId, bcc: bcc, vendors: names, remind: draft.remind, due: draft.remind ? $('dmDue').value : '' }).then(function (d) {
     $('draftModal').hidden = true;
-    var msg = '<span class="ok-msg">Gmail 임시보관함에 초안을 만들었습니다 (숨은 참조 ' + d.bccCount + '명) · <a href="' + esc(d.link) + '" target="_blank" rel="noopener">임시보관함 열기 ↗</a> — 확인 후 직접 보내세요.</span>';
+    var msg = '<span class="ok-msg">Gmail 임시보관함에 ' + (draft.remind ? '재요청 ' : '') + '초안을 만들었습니다 (숨은 참조 ' + d.bccCount + '명) · <a href="' + esc(d.link) + '" target="_blank" rel="noopener">임시보관함 열기 ↗</a> — 확인 후 직접 보내세요.</span>';
     if ($('btnRfqDraft')) $('rfqMsg').innerHTML = msg;
     $('recMsg').innerHTML = msg;
     loadRecords();
   }).catch(function (e) { $('dmMsg').textContent = e.message || e; })
-    .finally(function () { b.disabled = false; b.textContent = '임시보관함에 만들기'; });
+    .finally(function () { b.disabled = false; b.textContent = draft.remind ? '재요청 초안 만들기' : '임시보관함에 만들기'; });
 };
 
 /* ---------- 견적 입력 → Spot 견적 구매내역서 ----------
@@ -2403,17 +2433,30 @@ function recGroups(recs) {
   });
   return groups;
 }
+/* 견적요청서의 메일 흐름: 메일 1 견적 요청 → 메일 2 재요청 … (같은 견적 입력에 이어짐) */
+function mailLine(r) {
+  var ms = (r.mails || []).slice();
+  if (!ms.length && r.draft) ms = [{ no: 1, kind: '견적 요청', at: r.created, vendors: r.vendors || [] }];
+  if (!ms.length) return '';
+  var md = function (t) { var m = String(t || '').match(/(\d{4})-(\d{2})-(\d{2})/); return m ? (+m[2]) + '/' + (+m[3]) : ''; };
+  return '<div class="mail-line">' + ms.map(function (m) {
+    var n = (m.vendors || []).length;
+    return '<span class="mail-chip' + (m.kind === '재요청' ? ' re' : '') + '">✉ <b>메일 ' + m.no + '</b> ' + esc(m.kind) + ' · ' + esc(md(m.at)) + (n ? ' · ' + n + '곳' : '') + '</span>';
+  }).join('<span class="mail-arrow">→</span>') + '</div>';
+}
 function recCard(r, child) {
   var rfq = r.kind === '견적요청서', open = rfq && state.recOpen[r.id];
   var chipCls = rfq ? 'chip-spot' : r.kind === '견적 구매내역서' ? 'chip-priced' : 'chip-ok';
   var head = '<div>' + (child ? '<span class="rec-arrow" aria-hidden="true">↳</span>' : '') + '<span class="chip ' + chipCls + '">' + esc(r.kind) + '</span> <span class="rec-title">' + esc(r.title) + '</span></div>' +
     '<div class="rec-meta"><span>' + esc(r.created) + '</span><span>상태: <b>' + esc(r.status) + '</b></span><span>품목 ' + (r.items || []).length + '개</span>' +
       (rfq && (r.fixed || []).length ? '<span>+ 계약 ' + r.fixed.length + '개 같이</span>' : '') +
-      (rfq && (r.vendors || []).length ? '<span>업체 ' + r.vendors.length + '곳</span>' : '') + '</div>';
+      (rfq && (r.vendors || []).length ? '<span>업체 ' + r.vendors.length + '곳</span>' : '') + '</div>' +
+    (rfq ? mailLine(r) : '');
   return '<div class="rec' + (rfq ? ' rfq' : '') + (open ? ' open' : '') + (child ? ' child' : '') + '" data-id="' + esc(r.id) + '">' +
     (rfq ? '<button type="button" class="rec-toggle" data-toggle="' + esc(r.id) + '" aria-expanded="' + !!open + '">' + head + '</button>' : '<div>' + head + '</div>') +
     '<div class="rec-actions"><a class="btn-ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener">파일 열기 ↗</a>' +
       (rfq ? '<button class="' + (r.draft ? 'btn-ghost' : 'btn') + '" type="button" data-draft="' + esc(r.id) + '">' + (r.draft ? '메일 초안 다시 만들기' : '메일 초안 만들기') + '</button>' : '') +
+      (rfq && r.draft ? '<button class="btn-ghost" type="button" data-remind="' + esc(r.id) + '" title="아직 견적을 안 보낸 업체에 다시 요청">재요청 메일</button>' : '') +
       '<button class="btn-ghost" type="button" data-done="' + esc(r.id) + '">완료</button></div>' +
     (rfq ? '<div class="rec-vendors" data-rec="' + esc(r.id) + '"' + (open ? '' : ' hidden') + '>' + (open ? vendorListHtml(r) : '') + '</div>' : '') +
   '</div>';
@@ -2444,6 +2487,9 @@ function loadRecords() {
     });
     $('recList').querySelectorAll('[data-draft]').forEach(function (b) {
       b.onclick = function () { var r = recById(b.dataset.draft); openDraft(r.id, r.title); };
+    });
+    $('recList').querySelectorAll('[data-remind]').forEach(function (b) {
+      b.onclick = function () { var r = recById(b.dataset.remind); openDraft(r.id, r.title, true); };
     });
     $('recList').querySelectorAll('[data-toggle]').forEach(function (b) {
       b.onclick = function () {

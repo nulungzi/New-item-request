@@ -868,23 +868,40 @@ function apiSaveSignature(text) {
 }
 
 /** Gmail 임시보관함에 초안 만들기. 받는 사람은 비우고 고른 업체만 숨은 참조. payload = {recordId, bcc:[...]} */
+/**
+ * 메일 초안 (Gmail 임시보관함, 보내지 않음). payload = {recordId, bcc, vendors, remind?, due?}
+ * remind: 같은 견적요청서의 재요청 — 제목 [Reminder], 재요청 문구, 고른 업체는 견적 입력 업체에 합쳐짐.
+ * 보낸 기록은 data.mails 에 [{no, kind, at, vendors, count, due}] 로 쌓여 진행 중에 메일1 → 메일2 → 구매내역서 로 보임
+ */
 function apiCreateRfqDraft(payload) {
   auth_();
   var bcc = uniq_((payload.bcc || []).map(function (m) { return String(m).trim(); }).filter(function (m) { return /@/.test(m); }));
   if (!bcc.length) throw new Error('메일을 받을 업체를 한 곳 이상 골라 주세요.');
   var found = findRecord_(payload.recordId, true);
-  var rec = found.rec;
+  var rec = found.rec, remind = !!payload.remind;
   if (rec.kind !== '견적요청서') throw new Error('견적요청서 기록이 아닙니다.');
+  if (remind && !rec.draft) throw new Error('첫 견적 요청 메일 초안을 먼저 만들어 주세요.');
   var resp = UrlFetchApp.fetch('https://docs.google.com/spreadsheets/d/' + rec.fileId + '/export?format=xlsx', {
     headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true
   });
   if (resp.getResponseCode() !== 200) throw new Error('견적요청서 파일을 엑셀로 내보내지 못했습니다 (HTTP ' + resp.getResponseCode() + ').');
   var blob = resp.getBlob().setName(rec.title + '.xlsx');
-  var mail = rfqEmail_(rec.items, dueText_(rec.due), signature_().html);
-  var draft = GmailApp.createDraft('', rec.title, mail.text, { htmlBody: mail.html, bcc: bcc.join(','), attachments: [blob] });
+  var due = remind && toDate_(payload.due) ? fmtDate_(toDate_(payload.due)) : rec.due;
+  var mails = (rec.mails || []).slice();
+  if (!mails.length && rec.draft) mails.push({ no: 1, kind: '견적 요청', at: rec.created, vendors: rec.vendors || [], count: 0, due: rec.due });
+  var first = mails[0];
+  var mail = rfqEmail_(rec.items, dueText_(due), signature_().html, remind ? { sentOn: first ? dueText_(first.at) : '' } : null);
+  var subject = remind ? remindTitle_(rec.title, payload.due) : rec.title;
+  var draft = GmailApp.createDraft('', subject, mail.text, { htmlBody: mail.html, bcc: bcc.join(','), attachments: [blob] });
   var names = uniq_((payload.vendors || []).map(function (v) { return String(v).trim(); }));
-  updateRecord_(found, { status: '메일 초안', draft: draft.getId(), bcc: bcc.join(', '), data: names.length ? { vendors: names } : null });
-  return { draftId: draft.getId(), link: 'https://mail.google.com/mail/#drafts', bccCount: bcc.length };
+  var now = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
+  mails.push({ no: mails.length + 1, kind: remind ? '재요청' : '견적 요청', at: now, vendors: names, count: bcc.length, due: due || '' });
+  var data = { mails: mails };
+  // 첫 요청은 고른 업체가 견적 입력 업체, 재요청은 기존 업체에 새로 고른 업체를 더함
+  if (names.length) data.vendors = remind ? uniq_((rec.vendors || []).concat(names)) : names;
+  if (remind && due !== rec.due) data.due = due;
+  updateRecord_(found, { status: remind ? '재요청 초안' : '메일 초안', draft: draft.getId(), bcc: bcc.join(', '), data: data });
+  return { draftId: draft.getId(), link: 'https://mail.google.com/mail/#drafts', bccCount: bcc.length, subject: subject };
 }
 
 /* ================================================================
