@@ -440,6 +440,9 @@ table.list td.nw { white-space: nowrap }
 .field textarea { min-height: 44px; resize: vertical }
 
 /* 구매일정 간트 */
+.months-box { gap: 4px }
+.months-box input { width: 56px; text-align: center; font-family: var(--font-data) }
+.mo-btn { padding: 4px 10px !important; min-width: 32px }
 .gantt-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface) }
 .gantt { --label: 180px; display: grid; grid-template-columns: var(--label) repeat(24, minmax(22px, 1fr)); min-width: calc(180px + 24 * 22px); font-size: .8rem; user-select: none; -webkit-user-select: none }
 .g-year, .g-month { background: var(--accent-soft); color: var(--ink); font: 600 .78rem var(--font-data); text-align: center; padding: 4px 0; border-left: 1px solid var(--surface) }
@@ -593,6 +596,7 @@ table.list td.nw { white-space: nowrap }
       <div class="panel-head">
         <h3>구매일정</h3>
         <div class="row">
+          <label class="inline months-box" for="schedMonths">표시 개월<button type="button" class="btn-ghost mo-btn" id="moDown" aria-label="한 달 줄이기">−</button><input id="schedMonths" type="number" min="12" max="36" step="1" value="12" inputmode="numeric"><button type="button" class="btn-ghost mo-btn" id="moUp" aria-label="한 달 늘리기">+</button></label>
           <button class="btn-ghost" id="btnSchedExample" type="button">예시로 채우기</button>
           <button class="btn-ghost" id="btnSchedClear" type="button">모두 지우기</button>
         </div>
@@ -1718,7 +1722,7 @@ function openSummary(rec) {
   $('schedSub').classList.add('first');
   state.schedBack = { owner: state.schedOwner, sched: state.sched };   // 구매내역서 탭 일정과 따로
   if (!c.sched) c.sched = emptySched();
-  state.schedOwner = c; state.sched = c.sched;
+  useSched(c);
   if (state.sched) renderGantt();
   renderQSum();
   $('quoteView').scrollIntoView();
@@ -1729,7 +1733,10 @@ function closeSummary() {
   $('quoteView').hidden = true; $('recPanel').hidden = false;
   if (state.schedHome) state.schedHome.parent.insertBefore($('schedSub'), state.schedHome.next);
   $('schedSub').classList.remove('first');
-  if (state.schedBack) { state.schedOwner = state.schedBack.owner; state.sched = state.schedBack.sched; state.schedBack = null; if (state.sched) renderGantt(); }
+  if (state.schedBack) {
+    if (state.schedBack.owner) useSched(state.schedBack.owner); else { state.schedOwner = null; state.sched = state.schedBack.sched; SLOTS = 24; $('schedMonths').value = 12; }
+    state.schedBack = null; if (state.sched) renderGantt();
+  }
   if (qs) refreshVendorList(qs.rec);
 }
 $('qBack').onclick = closeSummary;
@@ -1846,7 +1853,7 @@ $('qCreate').onclick = function () {
     if (!folder) return;
     b.disabled = true; b.textContent = '만드는 중…';
     return call('apiCreateSpotPurchase', { recordId: qs.rec.id, baseDate: $('base').value, rates: qs.rates, folder: folder.id, name: p.name, confirmer: p.confirmer,
-      schedule: state.sched, vendors: p.vendors, items: items }).then(function (d) {
+      schedule: schedPayload(), vendors: p.vendors, items: items }).then(function (d) {
       qs.rec.quote = p;
       $('qMsg').innerHTML = '<span class="ok-msg">Spot 견적 구매내역서를 ' + esc(folder.name) + '에 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.name) + ' 열기 ↗</a></span>';
       loadRecords();
@@ -2057,7 +2064,7 @@ function renderPurchase() {
   });
   if (keys.indexOf(state.docKey) < 0) state.docKey = keys[0];
   var doc = curDoc(), K = DOC_KINDS[state.docKey], lines = docLines(state.docKey);
-  state.schedOwner = doc; state.sched = doc.sched;
+  useSched(doc);
   $('docTabs').hidden = $('docNote').hidden = keys.length < 2;
   $('docTabs').innerHTML = keys.map(function (k) {
     var n = docLines(k).length, d = state.docs[k];
@@ -2106,18 +2113,42 @@ function slotDate(k, end) {
   var day = end ? (k % 2 ? new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate() : 15) : (k % 2 ? 16 : 1);
   return String(d.getFullYear()).slice(2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2) + '.' + ('0' + day).slice(-2);
 }
+/* 표시 개월 (기본 12, 36까지). 구매내역서 탭·견적 종합마다 따로 */
+function useSched(owner) {
+  state.schedOwner = owner; state.sched = owner.sched;
+  SLOTS = (owner.months || 12) * 2;
+  $('schedMonths').value = SLOTS / 2;
+}
+function schedPayload() { return { months: SLOTS / 2, bars: state.sched }; }
+function setMonths(mo) {
+  mo = Math.max(12, Math.min(36, Math.round(Number(mo)) || 12));
+  SLOTS = mo * 2;
+  $('schedMonths').value = mo;
+  if (state.schedOwner) state.schedOwner.months = mo;
+  (state.sched || []).forEach(function (x) {   // 줄인 만큼 막대도 맞춤
+    if (!x.len) return;
+    if (x.start >= SLOTS) { x.start = 0; x.len = 0; return; }
+    x.len = Math.min(x.len, SLOTS - x.start);
+  });
+  renderGantt();
+}
+$('schedMonths').addEventListener('change', function () { setMonths(this.value); });
+$('moUp').onclick = function () { setMonths(SLOTS / 2 + 1); };
+$('moDown').onclick = function () { setMonths(SLOTS / 2 - 1); };
 function renderGantt() {
   if (!state.sched) return;
-  var b = baseMonth(), m = b.getMonth(), y = b.getFullYear(), runStart = 0;
+  var b = baseMonth(), m = b.getMonth(), y = b.getFullYear(), runStart = 0, M = SLOTS / 2;
+  $('gantt').style.gridTemplateColumns = 'var(--label) repeat(' + SLOTS + ', minmax(22px, 1fr))';
+  $('gantt').style.minWidth = 'calc(180px + ' + SLOTS + ' * 22px)';
   var html = '<div class="g-corner">업무</div>';
-  for (var k = 0; k < 12; k++) {
-    if ((m + k) % 12 === 11 || k === 11) {
+  for (var k = 0; k < M; k++) {
+    if ((m + k) % 12 === 11 || k === M - 1) {
       html += '<div class="g-year" style="grid-column:' + (2 + runStart * 2) + ' / span ' + (k - runStart + 1) * 2 + '">' + (y + Math.floor((m + runStart) / 12)) + '년</div>';
       runStart = k + 1;
     }
   }
   html += '<div class="g-corner">L/T · 기간</div>';
-  for (k = 0; k < 12; k++) html += '<div class="g-month" style="grid-column:span 2">' + ((m + k) % 12 + 1) + '</div>';
+  for (k = 0; k < M; k++) html += '<div class="g-month" style="grid-column:span 2">' + ((m + k) % 12 + 1) + '</div>';
   state.tasks.forEach(function (t, i) {
     html += '<div class="g-label"><b>' + esc(t) + '</b><span id="glt-' + i + '"></span>' +
       '<button type="button" class="g-clear" id="gclr-' + i + '">지우기</button></div>' +
@@ -2239,7 +2270,7 @@ function createPurchase(b, folder) {
   var lines = docLines(key).map(function (r) {
     return { item: r.item, qty: r.qty, needBy: r.needBy, program: r.program, shelfLife: r.shelfLife, shipFrom: r.shipFrom, taxCode: r.taxCode, contractRow: chosen(r).row };
   });
-  call('apiCreatePurchase', { baseDate: $('base').value, rates: rates, remarks: doc.remarks, lines: lines, schedule: doc.sched, name: $('fileName').value, confirmer: doc.confirmer, folder: folder.id,
+  call('apiCreatePurchase', { baseDate: $('base').value, rates: rates, remarks: doc.remarks, lines: lines, schedule: { months: doc.months || 12, bars: doc.sched }, name: $('fileName').value, confirmer: doc.confirmer, folder: folder.id,
     group: state.group, split: key !== 'all' }).then(function (d) {
     state.rates = Object.assign(state.rates, rates);
     doc.done = (d.files || [d]).map(function (f) { f.folder = folder.name; return f; });

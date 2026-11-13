@@ -514,15 +514,23 @@ var SCHEDULE_SLOTS = 24;
 var SCHEDULE_COL_PX = 23;   // 구매일정 반 달 칸 너비(픽셀)
 var SCHEDULE_COLORS = ['#cccccc', '#fff2cc', '#fff2cc', '#fff2cc', '#fff2cc'];
 
-/** 화면에서 받은 막대 값 검사·보정. len 0 = 비어 있음 */
-function normSchedule_(sched) {
+var SCHEDULE_MONTHS = { MIN: 12, MAX: 36 };   // 구매일정 표시 개월 (기본 12, 리드타임이 긴 Metal·HW 는 늘림)
+/** schedule: 막대 배열(예전) 또는 {months, bars} → 표시 개월 수 */
+function schedMonths_(schedule) {
+  var m = Math.round(Number(schedule && !Array.isArray(schedule) ? schedule.months : 0));
+  return m > 0 ? Math.max(SCHEDULE_MONTHS.MIN, Math.min(SCHEDULE_MONTHS.MAX, m)) : SCHEDULE_MONTHS.MIN;
+}
+/** 화면에서 받은 막대 값 검사·보정. len 0 = 비어 있음. slots = 표시 개월 × 2 */
+function normSchedule_(sched, slots) {
+  slots = slots || SCHEDULE_SLOTS;
+  if (sched && !Array.isArray(sched)) sched = sched.bars;
   if (!sched) sched = SCHEDULE_EXAMPLE;
   return SCHEDULE_TASKS.map(function (t, i) {
     var x = sched[i] || {};
     var start = Math.round(Number(x.start)), len = Math.round(Number(x.len));
     if (!(len > 0) || isNaN(start)) return { start: 0, len: 0 };
-    start = Math.max(0, Math.min(SCHEDULE_SLOTS - 1, start));
-    return { start: start, len: Math.max(1, Math.min(SCHEDULE_SLOTS - start, len)) };
+    start = Math.max(0, Math.min(slots - 1, start));
+    return { start: start, len: Math.max(1, Math.min(slots - start, len)) };
   });
 }
 
@@ -740,27 +748,27 @@ function scheduleConfirmOps_(base, schedule, extra) {
   var ops = [];
   var add = function (o) { ops.push(o); };
   var set = function (s, r, c, v) { add({ op: 'set', s: s, r: r, c: c, v: v }); };
-  /* ---------- 구매일정: 작성일 달부터 12개월 머리글 (E~AB열, 달마다 2칸) ---------- */
-  var G = TPL.SCHEDULE;
-  // 일정 칸 24개(E~AB) 너비를 모두 같게 (템플릿에 따라 Y·AA·AB가 넓게 남는 경우가 있음)
-  for (var wc = 5; wc <= 28; wc++) add({ op: 'width', s: G, c: wc, px: SCHEDULE_COL_PX });
+  /* ---------- 구매일정: 작성일 달부터 표시 개월(기본 12) 머리글 (E열부터 달마다 2칸) ---------- */
+  var G = TPL.SCHEDULE, M = schedMonths_(schedule), slots = M * 2, lastCol = 4 + slots, clearTo = Math.max(28, lastCol);
+  // 일정 칸 너비를 모두 같게 (템플릿에 따라 Y·AA·AB가 넓게 남는 경우가 있음)
+  for (var wc = 5; wc <= lastCol; wc++) add({ op: 'width', s: G, c: wc, px: SCHEDULE_COL_PX });
   // 연도(4행)·월(5행) 병합을 먼저 모두 풀어야 서식 복사가 병합 칸과 겹치지 않음
   // (구글 시트: "부분적으로 병합과 교차되는 붙여넣기를 실행할 수 없습니다")
-  add({ op: 'unmerge', s: G, r1: 4, c1: 5, r2: 5, c2: 28 });
-  // 11·12번째 달(Y~AB) 칸 서식이 템플릿에 없을 수 있어 W·X 서식을 복사
+  add({ op: 'unmerge', s: G, r1: 4, c1: 5, r2: 5, c2: clearTo });
+  // 11번째 달(Y)부터는 템플릿에 서식이 없을 수 있어 W·X 서식을 복사 (표시 개월이 늘면 그만큼)
   for (var fr = 4; fr <= 10; fr++) {
-    [25, 27].forEach(function (fc) {
+    for (var fc = 25; fc < lastCol; fc += 2) {
       add({ op: 'cellFmt', s: G, r: fr, c: fc, fs: G, fr: fr, fc: 23 });
       add({ op: 'cellFmt', s: G, r: fr, c: fc + 1, fs: G, fr: fr, fc: 24 });
-    });
+    }
   }
-  for (var mc = 5; mc <= 28; mc += 2) add({ op: 'merge', s: G, r1: 5, c1: mc, r2: 5, c2: mc + 1 });   // 월 칸: 달마다 2칸
-  for (var c = 5; c <= 28; c++) set(G, 4, c, '');
+  for (var mc = 5; mc <= lastCol; mc += 2) add({ op: 'merge', s: G, r1: 5, c1: mc, r2: 5, c2: mc + 1 });   // 월 칸: 달마다 2칸
+  for (var c = 5; c <= clearTo; c++) set(G, 4, c, '');
   var y = base.getFullYear(), m = base.getMonth() + 1, segStart = 5;
-  for (var k = 0; k < 12; k++) {
+  for (var k = 0; k < M; k++) {
     var col = 5 + k * 2;
     set(G, 5, col, m);
-    var endOfYear = m === 12 || k === 11;
+    var endOfYear = m === 12 || k === M - 1;
     if (endOfYear) {
       add({ op: 'cellFmt', s: G, r: 4, c: segStart, fs: G, fr: 4, fc: 5 });
       set(G, 4, segStart, y + '년');
@@ -771,11 +779,11 @@ function scheduleConfirmOps_(base, schedule, extra) {
     if (m > 12) { m = 1; y++; }
   }
 
-  // 막대: 6~10행, E(5)~AB(28)열. L/T(D열)는 막대 길이로 계산
-  normSchedule_(schedule).forEach(function (b, i) {
+  // 막대: 6~10행, E(5)열부터 표시 칸 수만큼. L/T(D열)는 막대 길이로 계산
+  normSchedule_(schedule, slots).forEach(function (b, i) {
     var row = 6 + i;
     set(G, row, 4, b.len ? (b.len / 2).toFixed(1) + 'M' : '');
-    for (var k = 0; k < SCHEDULE_SLOTS; k++) {
+    for (var k = 0; k < slots; k++) {
       add({ op: 'bg', s: G, r: row, c: 5 + k, color: k >= b.start && k < b.start + b.len ? SCHEDULE_COLORS[i] : '#ffffff' });
     }
   });

@@ -570,3 +570,22 @@ test('견적 입력용 시트: 사이트 표와 같은 열, Need-by 여러 건�
   const used = {};
   assert.deepStrictEqual(['A/B:C', 'a/b:c', '사용 방법'].map(n => L.sheetTabName_(n, used)), ['A B C', 'a b c (2)', '사용 방법']);
 });
+
+test('구매일정 표시 개월: 기본 12, 늘리면 그만큼 칸·병합·서식 (예전 배열 형식도 그대로)', () => {
+  const base = L.toDate_('2026-11-13');
+  const ops18 = L.scheduleConfirmOps_(base, { months: 18, bars: [{ start: 0, len: 30 }, { start: 30, len: 6 }] }, {});
+  const set = (r, c) => (ops18.filter(o => o.op === 'set' && o.s === '구매일정' && o.r === r && o.c === c).pop() || {}).v;
+  const w = ops18.filter(o => o.op === 'width');
+  assert.strictEqual(w.length, 36);                                   // 18개월 × 2칸 (E~AN)
+  assert.deepStrictEqual([set(5, 5), set(5, 39), set(4, 5), set(4, 9)], [11, 4, '2026년', '2027년']);
+  assert.deepStrictEqual(ops18.filter(o => o.op === 'merge' && o.r1 === 4).map(o => [o.c1, o.c2]), [[5, 8], [9, 32], [33, 40]]);   // 2026 · 2027 · 2028(1~4월)
+  assert.strictEqual(ops18.filter(o => o.op === 'merge' && o.r1 === 5).length, 18);
+  assert.ok(ops18.some(o => o.op === 'cellFmt' && o.r === 6 && o.c === 39 && o.fc === 23));
+  assert.deepStrictEqual([set(6, 4), set(7, 4)], ['15.0M', '3.0M']);   // 30칸(15개월)도 잘리지 않음
+  const bg = ops18.filter(o => o.op === 'bg' && o.r === 7 && o.color !== '#ffffff').map(o => o.c);
+  assert.deepStrictEqual([bg[0], bg[bg.length - 1]], [35, 40]);
+  // 예전 형식(막대 배열)·범위 밖 값
+  assert.strictEqual(L.scheduleConfirmOps_(base, [{ start: 0, len: 4 }], {}).filter(o => o.op === 'width').length, 24);
+  assert.strictEqual(L.schedMonths_({ months: 99 }), 36);
+  assert.strictEqual(L.schedMonths_({ months: 3 }), 12);
+});
