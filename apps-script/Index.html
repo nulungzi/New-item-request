@@ -64,8 +64,9 @@ body {
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   padding-block: 20px 48px;
 }
-main { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px }
+main { max-width: 1600px; margin: 0 auto; display: grid; gap: 18px }
 .app { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 18px; align-items: start }
+@media (min-width: 1440px) { .app { grid-template-columns: 186px minmax(0, 1fr); gap: 24px } }
 .side { position: sticky; top: env(safe-area-inset-top, 0px); display: grid; gap: 4px; padding-top: 4px }
 .side-btn { border: 0; background: transparent; color: var(--muted); text-align: left; padding: 10px 12px; border-radius: 8px; font-weight: 600; display: flex; justify-content: space-between; align-items: center }
 .side-btn:hover { background: var(--surface-2); color: var(--ink) }
@@ -100,7 +101,7 @@ main { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px }
 @media (prefers-reduced-motion: reduce) { .doc-panel { animation: none } }
 .rfq-done { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center }
 /* 메일 초안 */
-.modal-box.draft-box { grid-template-rows: auto auto auto minmax(0, 1fr) auto auto auto auto; width: min(980px, 100%) }
+.modal-box.draft-box { grid-template-rows: auto auto auto minmax(0, 1fr) auto auto auto auto; width: min(1180px, 100%) }
 .dm-remind { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 10px 12px; border-radius: 8px; background: var(--spot-soft); font-size: .86rem }
 .dm-remind input { padding: 5px 8px }
 .mail-line { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 4px }
@@ -110,7 +111,7 @@ main { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px }
 .mail-arrow { color: var(--muted); font-size: .74rem }
 .dm-subject { font: 500 .88rem var(--font-data); padding: 8px 10px; background: var(--surface-2); border-radius: 6px; word-break: break-all }
 .dm-vendors { display: grid; gap: 8px; min-height: 0 }
-.dm-list { max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)) }
+.dm-list { max-height: 50vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)) }
 .dm-v { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); align-self: stretch; min-width: 0 }
 .dm-v:has(.dm-vhead input:checked), .dm-v:has(.dm-vhead input:indeterminate) { background: var(--accent-soft) }
 .dm-vhead { display: flex; align-items: center; gap: 6px; padding: 7px 8px 7px 12px }
@@ -166,7 +167,7 @@ main { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px }
 .vp-head { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between }
 .vp-head h3 { font-size: 1rem }
 .q-table textarea { width: 100%; min-width: 180px; min-height: 34px; padding: 5px 6px; font: .82rem var(--font-body); resize: vertical }
-.q-table .ro { font-size: .82rem; white-space: pre-wrap; max-width: 220px }
+.q-table .ro { font-size: .82rem; white-space: pre-wrap; max-width: 340px }
 
 /* 업체 견적 입력 창 (화면 가운데 팝업) */
 .drawer-wrap { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
@@ -269,12 +270,18 @@ a.btn-ghost { display: inline-block; text-decoration: none; border-radius: 6px }
 .it-table .row-err { color: var(--warn); font-size: .78rem; padding: 0 4px 6px }
 .it-x { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 1rem; padding: 6px }
 .vn-form .field input, .vn-form .field select { width: 100%; text-align: left; font-family: var(--font-body) }
-.vn-find { max-width: 240px; padding: 6px 10px }
+.vn-find { max-width: 300px; padding: 6px 10px }
 #vnTbl td { vertical-align: top }
 #vnTbl .mails { font: .8rem var(--font-data); display: grid; gap: 2px }
+#vnTbl th:nth-child(1), #vnTbl td:nth-child(1) { width: 12%; min-width: 110px }
+#vnTbl th:nth-child(2), #vnTbl td:nth-child(2) { width: 30% }
+#vnTbl th:nth-child(3), #vnTbl td:nth-child(3) { width: 32% }
+#vnTbl th:nth-child(4), #vnTbl td:nth-child(4) { width: 14% }
+#vnTbl th:nth-child(5), #vnTbl td:nth-child(5) { width: 10% }
+#vnTbl td:last-child { white-space: nowrap; width: 1% }
 #vnTbl .mails small { font-family: var(--font-body); color: var(--muted) }
 .rec-tools { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center }
-.rec-tools input[type="search"] { flex: 1 1 240px; max-width: 360px; padding: 7px 10px }
+.rec-tools input[type="search"] { flex: 1 1 240px; max-width: 440px; padding: 7px 10px }
 .rec-tools #recCompact { margin-left: auto }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden }
 .seg button { border: 0; background: var(--surface); color: var(--muted); padding: 6px 12px; font: 600 .82rem var(--font-body); cursor: pointer }
@@ -326,7 +333,7 @@ a.btn-ghost { display: inline-block; text-decoration: none; border-radius: 6px }
 .btn-ghost.danger { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, var(--line)) }
 .btn-ghost.danger:hover:not(:disabled) { background: var(--warn-soft) }
 .btn-ghost.danger[data-ok], .btn-ghost.danger[data-ok]:hover:not(:disabled) { background: var(--warn); color: var(--surface); border-color: var(--warn) }
-.modal-box.hist-box { width: min(1100px, 100%); grid-template-rows: auto auto minmax(0, 1fr) auto auto auto }
+.modal-box.hist-box { width: min(1240px, 100%); grid-template-rows: auto auto minmax(0, 1fr) auto auto auto }
 .hist-wrap { max-height: 50vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px }
 #hmTbl tr.off td { opacity: .45; text-decoration: line-through }
 #hmTbl td.n, #hmTbl th.n { text-align: right }
@@ -441,6 +448,7 @@ a { color: var(--accent) }
 @keyframes hm-in { from { opacity: 0; transform: translateY(8px) } }
 @keyframes hm-run { from { transform: translateX(-100%) } to { transform: translateX(260%) } }
 .hm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px }
+@media (min-width: 1100px) { .hm-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px } }
 .hm-card { display: grid; grid-template-rows: auto auto 1fr auto; gap: 8px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
   animation: hm-in .5s cubic-bezier(.2, .8, .2, 1) both; animation-delay: calc(300ms + var(--i) * 60ms); transition: transform .18s, box-shadow .18s, border-color .18s }
 .hm-card:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(0, 0, 0, .08); border-color: var(--accent) }
@@ -557,7 +565,8 @@ body.locked { overflow: hidden }
 .sub { display: grid; gap: 10px; padding-top: 14px; border-top: 1px dashed var(--line); min-width: 0 }
 .sub.first { border-top: 0; padding-top: 0 }
 .sub h3 { font-size: .95rem; font-weight: 600 }
-.lead { margin: 0 }
+.lead { margin: 0; max-width: 120ch }
+p, .lead, .tc-sub, .hm-card p { word-break: keep-all; overflow-wrap: break-word }
 @media (max-width: 640px) {
   .step { grid-template-columns: minmax(0, 1fr); gap: 6px }
   .step-no { margin-top: 0; width: 26px; height: 26px; font-size: .8rem }
@@ -581,7 +590,8 @@ button { font: inherit; cursor: pointer; border-radius: 6px }
 label.inline { display: inline-flex; align-items: center; gap: 8px; font-size: .9rem; color: var(--muted) }
 
 /* 소요제기 입력 표 */
-.req-head, .req-row { display: grid; grid-template-columns: 22px 140px 80px 144px minmax(0, 1fr) 112px 118px 60px 34px; gap: 6px; align-items: start }
+.req-head, .req-row { display: grid; grid-template-columns: 22px minmax(140px, 1fr) 80px 144px minmax(0, 1.4fr) 112px 118px 60px 34px; gap: 6px; align-items: start }
+@media (min-width: 1440px) { .req-head, .req-row { grid-template-columns: 22px minmax(150px, 1fr) 96px 150px minmax(0, 1.3fr) 130px 130px 80px 34px; gap: 8px } }
 .req-head { font-size: .72rem; font-weight: 600; letter-spacing: .06em; color: var(--muted); padding-bottom: 4px }
 .req-row input, .req-row select { width: 100%; padding: 7px 8px }
 .req-row .f-item { font-family: var(--font-data); text-transform: uppercase }
@@ -680,7 +690,7 @@ table.list { width: 100%; border-collapse: collapse; font-size: .88rem }
 table.list th { text-align: left; font-size: .72rem; font-weight: 600; letter-spacing: .06em; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap }
 table.list th.n, table.list td.n { text-align: right; white-space: nowrap }
 table.list td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top }
-table.list .desc { font: .76rem var(--font-data); color: var(--muted); max-width: 320px }
+table.list .desc { font: .76rem var(--font-data); color: var(--muted); max-width: 420px }
 table.list td.nw { white-space: nowrap }
 .chip { display: inline-block; padding: 2px 9px; border-radius: 999px; font: 600 .74rem var(--font-data); letter-spacing: .04em; white-space: nowrap }
 .chip-ok { background: var(--ok-soft); color: var(--ok) }
@@ -746,7 +756,7 @@ table.list td.nw { white-space: nowrap }
 .side-btn { transition: background-color .15s ease, color .15s ease }
 
 /* 진행 단계 트랙 (진행 중 카드) */
-.trk { display: flex; align-items: flex-start; margin-top: 10px; max-width: 680px }
+.trk { display: flex; align-items: flex-start; margin-top: 10px; max-width: 760px }
 .trk-s { flex: 1 1 0; min-width: 0; display: grid; justify-items: center; gap: 4px; position: relative; font-size: .7rem; line-height: 1.25; color: var(--muted); text-align: center }
 .trk-s::before { content: ''; position: absolute; top: 6px; right: 50%; width: 100%; height: 2px; background: var(--line); transform-origin: left }
 .trk-s:first-child::before { display: none }
@@ -4092,8 +4102,8 @@ function hintText(h) {
   return h.lowest ? '최저가 ' + h.lowest + '회' : h.bought ? '구매 ' + h.bought + '회' : '견적 ' + h.quoted + '회';
 }
 function hintTitle(h) {
-  return '이 견적요청서 자재 기준 · 견적 ' + h.quoted + '회 · 최저가 ' + h.lowest + '회 · 구매 ' + h.bought + '회' + (h.replyRate !== null ? ' · 회신율 ' + h.replyRate + '%' : '') +
-    (h.ltWeeks !== null ? ' · 평균 L/T ' + h.ltWeeks + '주' : '') + (h.items.length ? ' · 자재: ' + h.items.slice(0, 6).join(', ') + (h.items.length > 6 ? ' …' : '') : '');
+  return '이 견적요청서 자재 기준 · 견적 ' + h.quoted + '회 · 최저가 ' + h.lowest + '회 · 구매 ' + h.bought + '회' + (h.replyRate != null ? ' · 회신율 ' + h.replyRate + '%' : '') +
+    (h.ltWeeks != null ? ' · 평균 L/T ' + h.ltWeeks + '주' : '') + (h.items.length ? ' · 자재: ' + h.items.slice(0, 6).join(', ') + (h.items.length > 6 ? ' …' : '') : '');
 }
 function vkey(n) { return String(n || '').replace(/\s+/g, '').toLowerCase(); }
 function applyHints(d) {
@@ -4121,9 +4131,9 @@ function applyHints(d) {
 /* ---------- 업체 성적표 ---------- */
 function vendorScore(st) {
   if (!st || !st.requested && !st.bought) return '<span class="muted">기록 없음</span>';
-  var rr = st.replyRate, cls = rr === null ? '' : rr >= 70 ? '' : rr >= 40 ? 'mid' : 'low';
+  var rr = st.replyRate, cls = rr == null ? '' : rr >= 70 ? '' : rr >= 40 ? 'mid' : 'low';
   return '<div class="vs">' + (st.requested ? '<span>견적 요청 <b>' + st.requested + '</b></span><span>회신율 <b>' + rr + '%</b></span>' : '') +
-    (st.lowest ? '<span class="best">최저가 <b>' + st.lowest + '</b></span>' : '') + (st.ltWeeks !== null ? '<span>평균 L/T <b>' + st.ltWeeks + '주</b></span>' : '') +
+    (st.lowest ? '<span class="best">최저가 <b>' + st.lowest + '</b></span>' : '') + (st.ltWeeks != null ? '<span>평균 L/T <b>' + st.ltWeeks + '주</b></span>' : '') +
     (st.bought ? '<span>구매 <b>' + st.bought + '</b></span>' : '') + (st.last ? '<span>최근 요청 ' + esc(st.last.slice(2).replace(/-/g, '/')) + '</span>' : '') + '</div>' +
     (st.requested ? '<span class="vs-bar" title="회신율 ' + rr + '%"><i class="' + cls + '" style="width:' + rr + '%"></i></span>' : '');
 }
