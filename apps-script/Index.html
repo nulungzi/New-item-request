@@ -282,6 +282,14 @@ a.btn-ghost { display: inline-block; text-decoration: none; border-radius: 6px }
 .po-form .field input, .po-form .field select { width: 100%; text-align: left; font-family: var(--font-body) }
 .chip-done { background: var(--surface-2); color: var(--muted) }
 .rec.done-rec { opacity: .92 }
+.rec.done-rec.picked { opacity: 1; border-color: var(--warn); background: color-mix(in srgb, var(--warn) 6%, var(--surface)) }
+.arc-bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); font-size: .86rem }
+.arc-bar label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer }
+.arc-note { margin-left: auto; font-size: .78rem }
+.arc-chk { display: inline-flex; margin-right: 8px; vertical-align: -2px; cursor: pointer }
+.btn-ghost.danger { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, var(--line)) }
+.btn-ghost.danger:hover:not(:disabled) { background: var(--warn-soft) }
+.btn-ghost.danger[data-ok], .btn-ghost.danger[data-ok]:hover:not(:disabled) { background: var(--warn); color: var(--surface); border-color: var(--warn) }
 .modal-box.hist-box { width: min(1100px, 100%); grid-template-rows: auto auto minmax(0, 1fr) auto auto auto }
 .hist-wrap { max-height: 50vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px }
 #hmTbl tr.off td { opacity: .45; text-decoration: line-through }
@@ -2911,11 +2919,68 @@ function renderArchive() {
   if (!state.archived) { $('recList').innerHTML = skelCards(3); return; }
   var list = state.archived.filter(function (r) { return recMatch(r, q); });
   $('recShown').textContent = '완료 기록 ' + list.length + '건' + (state.archived.length >= 300 ? ' (최근 300건)' : '');
-  $('recList').innerHTML = list.length ? list.map(function (r) {
-    return '<div class="rec done-rec"><div><div><span class="chip chip-done">' + esc(r.kind) + '</span> <span class="rec-title">' + esc(r.title) + '</span></div>' +
+  state.arcSel = state.arcSel || {};
+  $('recList').innerHTML = list.length ? '<div class="arc-bar"><label class="arc-all"><input type="checkbox" id="arcAll"> 보이는 기록 전체 선택</label><span class="muted" id="arcN"></span>' +
+      '<label class="muted arc-hist"><input type="checkbox" id="arcHist"' + (state.arcHist === false ? '' : ' checked') + '> 구매 이력에 올린 줄도 같이 지우기</label>' +
+      '<button class="btn-ghost danger" id="arcDel" type="button" disabled>선택 삭제</button>' +
+      '<span class="muted arc-note">기록만 지웁니다 · 드라이브의 파일은 그대로 남습니다</span></div>' +
+    list.map(function (r) {
+    return '<div class="rec done-rec' + (state.arcSel[r.id] ? ' picked' : '') + '" data-id="' + esc(r.id) + '"><div><div><label class="arc-chk"><input type="checkbox" data-arc="' + esc(r.id) + '"' + (state.arcSel[r.id] ? ' checked' : '') + ' aria-label="' + esc(r.title) + ' 선택"></label>' +
+      '<span class="chip chip-done">' + esc(r.kind) + '</span> <span class="rec-title">' + esc(r.title) + '</span></div>' +
       '<div class="rec-meta"><span>' + esc(r.created) + ' 작성</span><span>완료 <b>' + esc(r.done || '') + '</b></span><span>품목 ' + (r.items || []).length + '개</span>' + poMeta(r) + '</div></div>' +
-      '<div class="rec-actions"><a class="btn-ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener">파일 열기 ↗</a></div></div>';
+      '<div class="rec-actions"><a class="btn-ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener">파일 열기 ↗</a><button class="btn-ghost danger" type="button" data-arcdel="' + esc(r.id) + '">삭제</button></div></div>';
   }).join('') : (state.archived.length ? emptyHtml('search', '찾는 기록이 없습니다.') : emptyHtml('archive', '완료한 기록이 없습니다.'));
+  if (!list.length) return;
+  var shownIds = list.map(function (r) { return r.id; });
+  var sync = function () {
+    var n = shownIds.filter(function (id) { return state.arcSel[id]; }).length;
+    $('arcN').textContent = n ? n + '건 선택' : '';
+    var del = $('arcDel'); del.disabled = !n; delete del.dataset.ok; del.textContent = n ? '선택 ' + n + '건 삭제' : '선택 삭제';
+    $('arcAll').checked = n === shownIds.length; $('arcAll').indeterminate = n > 0 && n < shownIds.length;
+  };
+  $('recList').querySelectorAll('[data-arc]').forEach(function (c) {
+    c.onchange = function () { if (c.checked) state.arcSel[c.dataset.arc] = 1; else delete state.arcSel[c.dataset.arc]; c.closest('.rec').classList.toggle('picked', c.checked); sync(); };
+  });
+  $('arcAll').onchange = function () {
+    var on = this.checked;
+    $('recList').querySelectorAll('[data-arc]').forEach(function (c) { c.checked = on; if (on) state.arcSel[c.dataset.arc] = 1; else delete state.arcSel[c.dataset.arc]; c.closest('.rec').classList.toggle('picked', on); });
+    sync();
+  };
+  $('arcHist').onchange = function () { state.arcHist = this.checked; };
+  $('arcDel').onclick = function () {
+    var ids = shownIds.filter(function (id) { return state.arcSel[id]; });
+    deleteArchived(ids, this);
+  };
+  $('recList').querySelectorAll('[data-arcdel]').forEach(function (b) { b.onclick = function () { deleteArchived([b.dataset.arcdel], b); }; });
+  sync();
+}
+/* 완료 기록 삭제: 한 번 더 눌러 확인 → 접히며 사라짐 */
+function deleteArchived(ids, btn) {
+  if (!ids.length) return;
+  if (!btn.dataset.ok) {
+    btn.dataset.ok = '1'; btn.textContent = '한 번 더 누르면 ' + ids.length + '건 삭제';
+    clearTimeout(btn._t); btn._t = setTimeout(function () { if (btn.isConnected) { delete btn.dataset.ok; btn.textContent = btn.id === 'arcDel' ? '선택 ' + ids.length + '건 삭제' : '삭제'; } }, 4000);
+    return;
+  }
+  btn.disabled = true; btn.textContent = '지우는 중…';
+  var hist = state.arcHist !== false;
+  call('apiDeleteArchived', ids, hist).then(function (d) {
+    return collapseCards(ids).then(function () {
+      state.archived = state.archived.filter(function (r) { return ids.indexOf(r.id) < 0; });
+      ids.forEach(function (id) { delete state.arcSel[id]; });
+      renderArchive();
+      toast('<b>완료 기록 ' + d.deleted + '건을 지웠습니다</b><span class="muted">' + (hist ? '구매 이력 ' + d.history + '줄도 지움 · ' : '') + '드라이브 파일은 그대로' + (d.skipped ? ' · 다른 담당자 기록 ' + d.skipped + '건은 건너뜀' : '') + '</span>');
+    });
+  }).catch(function (e) { btn.disabled = false; delete btn.dataset.ok; btn.textContent = '삭제'; toast('<b>지우지 못했습니다</b><span class="muted">' + esc(e.message || e) + '</span>', 'err'); });
+}
+function collapseCards(ids) {
+  var cards = ids.map(function (id) { return document.querySelector('.rec[data-id="' + id + '"]'); }).filter(Boolean);
+  if (!cards.length || REDUCE || !document.body.animate) return Promise.resolve();
+  cards.forEach(function (c) {
+    c.style.overflow = 'hidden';
+    c.animate([{ height: c.offsetHeight + 'px', opacity: 1 }, { height: '0px', opacity: 0, paddingTop: '0px', paddingBottom: '0px', borderWidth: '0px' }], { duration: 280, easing: 'ease-in', fill: 'forwards' });
+  });
+  return new Promise(function (ok) { setTimeout(ok, 300); });
 }
 function poMeta(r) {
   var p = r.po;

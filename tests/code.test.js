@@ -491,3 +491,28 @@ test('사업부 확인 요청 메일: 초안·보내기, 받는 사람 기억, �
   assert.strictEqual(JSON.parse(db.tabs['진행기록'].rows[1][10]).confirmMail.mode, 'send');
   assert.strictEqual(ctx.apiConfirmDefaults().to, 'biz@ke.com');
 });
+
+test('완료 기록 삭제: 본인 기록만, 구매 이력 줄도 같이 (선택)', () => {
+  const H = ['ID', '종류', '담당자', '작성일', '제목', 'URL', '파일ID', '상태', '초안', 'BCC', 'JSON', '수정일', '완료일'];
+  const arc = fakeBook({ 완료기록: [H,
+    ['A1', '견적요청서', 'me@ke.com', '', 'T1', '', '', '완료', '', '', '{}', '', ''],
+    ['A2', '계약 구매내역서', 'lee@ke.com', '', '남의 것', '', '', '완료', '', '', '{}', '', ''],
+    ['A3', '계약 구매내역서', 'me@ke.com', '', 'T3', '', '', '완료', '', '', '{}', '', ''],
+    ['A4', '계약 구매내역서', 'me@ke.com', '', '남김', '', '', '완료', '', '', '{}', '', '']] });
+  const L = require('./load.js').load();
+  const hrow = (id, who) => { const r = Array(L.HISTORY.HEAD.length).fill(''); r[L.HISTORY.HEAD.indexOf('기록 ID')] = id; r[L.HISTORY.HEAD.indexOf('담당자')] = who; return r; };
+  const db = fakeBook({ 구매이력: [L.HISTORY.HEAD.slice(), hrow('A3', 'me@ke.com'), hrow('A4', 'me@ke.com'), hrow('A2', 'lee@ke.com'), hrow('A3', 'lee@ke.com')] });
+  const ctx = inContext({
+    SpreadsheetApp: { getActive: () => db, openById: () => arc },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: k => (k === 'ARCHIVE_SHEET_ID' ? 'arc' : null) }) },
+    LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
+    Session: { getActiveUser: () => ({ getEmail: () => 'me@ke.com' }), getEffectiveUser: () => ({ getEmail: () => 'me@ke.com' }) },
+  });
+  assert.throws(() => ctx.apiDeleteArchived([]), /골라/);
+  const r = ctx.apiDeleteArchived(['A1', 'A2', 'A3'], true);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(r)), { deleted: 2, skipped: 1, history: 1 });
+  assert.deepStrictEqual(arc.tabs['완료기록'].rows.slice(1).map(x => x[0]), ['A2', 'A4']);
+  assert.deepStrictEqual(db.tabs['구매이력'].rows.slice(1).map(x => x[L.HISTORY.HEAD.indexOf('기록 ID')]), ['A4', 'A2', 'A3']);
+  assert.strictEqual(ctx.apiDeleteArchived(['A4'], false).history, 0);
+  assert.strictEqual(db.tabs['구매이력'].rows.length, 4);
+});

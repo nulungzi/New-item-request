@@ -1213,6 +1213,43 @@ function apiArchivedRecords() {
 }
 
 /**
+ * 완료 기록 삭제 (본인 기록만). 드라이브 파일은 지우지 않음
+ *   withHistory: 그 기록으로 구매이력 탭에 올린 줄(기록 ID · 담당자 본인)도 같이 지움
+ */
+function apiDeleteArchived(ids, withHistory) {
+  auth_();
+  var want = {};
+  (ids || []).forEach(function (id) { if (String(id || '').trim()) want[String(id)] = 1; });
+  if (!Object.keys(want).length) throw new Error('지울 기록을 골라 주세요.');
+  var aid = prop_('ARCHIVE_SHEET_ID');
+  if (!aid) throw new Error('스크립트 속성 ARCHIVE_SHEET_ID(완료 보관 스프레드시트 ID)를 설정해 주세요.');
+  var who = me_(), lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var deleted = 0, skipped = 0, history = 0;
+    var sh = SpreadsheetApp.openById(aid).getSheetByName('완료기록');
+    if (sh) {
+      var v = sh.getDataRange().getValues();
+      for (var i = v.length - 1; i >= 1; i--) {   // 아래에서부터 지워야 줄 번호가 안 밀림
+        if (!want[String(v[i][0])]) continue;
+        if (String(v[i][2]).toLowerCase() !== who) { skipped++; continue; }
+        sh.deleteRow(i + 1); deleted++;
+      }
+    }
+    if (withHistory) {
+      var hs = db_().getSheetByName(HISTORY.SHEET);
+      if (hs) {
+        var hv = hs.getDataRange().getValues(), idCol = HISTORY.HEAD.indexOf('기록 ID'), whoCol = HISTORY.HEAD.indexOf('담당자');
+        for (var j = hv.length - 1; j >= 1; j--) {
+          if (want[String(hv[j][idCol])] && String(hv[j][whoCol]).toLowerCase() === who) { hs.deleteRow(j + 1); history++; }
+        }
+      }
+    }
+    return { deleted: deleted, skipped: skipped, history: history };
+  } finally { lock.releaseLock(); }
+}
+
+/**
  * PO 이후 상태 기록 (구매내역서 기록). po = {stage, approval, pr, po, poDate, memo}
  * 상태 칸에 단계가 보이고, 값은 기록의 품목(JSON)에 po 로 저장
  */
