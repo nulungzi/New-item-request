@@ -680,6 +680,67 @@ function mergePurchaseLines_(lines) {
  * 하나로 만들기: 견적요청서 기록에 붙여 둔 계약·Spot 단가 줄(mergePurchaseLines_ 결과) → Spot 견적 구매내역서 품목.
  * 견적종합에 계약 업체 한 줄로 미리 선정 (업체선정사유 LTA·3PP, Spot 단가는 Sole source)
  */
+/* ------------------------------------------------------------------
+ * 업체 성적표 · 견적 업체 추천
+ *   records: 견적요청서 기록들(진행 중 + 완료, 모든 담당자) — 업체 이름과 숫자만 내보냄
+ *   history: 구매이력 탭 값(머리글 포함, 선택), onlyItems: 이 자재들만 셈 (추천)
+ *   업체별 {name, requested(견적요청 건), replied(회신 건), quoted(견적 낸 자재 수), lowest(최저가 자재 수, 견적 2곳 이상일 때),
+ *           selected(선정), bought(구매이력), ltWeeks(평균 L/T 주), last(마지막 요청일), items: [자재]}
+ * ------------------------------------------------------------------ */
+function vendorStats_(records, history, onlyItems) {
+  var want = null, st = {};
+  if (onlyItems) { want = {}; onlyItems.forEach(function (i) { if (itemKey_(i)) want[itemKey_(i)] = 1; }); }
+  var get = function (name) {
+    var k = vendorKey_(name);
+    return st[k] || (st[k] = { name: String(name).trim(), requested: 0, replied: 0, quoted: 0, lowest: 0, selected: 0, bought: 0, ltSum: 0, ltN: 0, last: '', items: {} });
+  };
+  var priceOf = function (p) { var n = toNumber_(p && p.price); return p && !p.noReply && n !== null && n > 0 ? n : null; };
+  (records || []).forEach(function (rec) {
+    if (!rec || rec.kind !== '견적요청서' || !(rec.vendors || []).length) return;
+    var q = rec.quote || {}, qi = q.items || [], rates = q.rates || {}, noReply = q.noReply || {};
+    var idx = (rec.items || []).map(function (it, i) { return !want || want[itemKey_(it && it.item)] ? i : -1; }).filter(function (i) { return i >= 0; });
+    if (!idx.length) return;
+    var day = String(rec.created || '').slice(0, 10);
+    rec.vendors.forEach(function (v) {
+      var s = get(v);
+      s.requested++;
+      if (day > s.last) s.last = day;
+      if (!noReply[v] && idx.some(function (i) { var p = qi[i] && qi[i].quotes && qi[i].quotes[v]; return p && !p.noReply && String(p.price == null ? '' : p.price).trim(); })) s.replied++;
+    });
+    idx.forEach(function (i) {
+      var qs = (qi[i] && qi[i].quotes) || {}, code = itemKey_(rec.items[i].item), krw = {};
+      Object.keys(qs).forEach(function (v) {
+        if (noReply[v]) return;
+        var p = qs[v], n = priceOf(p);
+        if (n === null) return;
+        var s = get(v);
+        s.quoted++; s.items[code] = 1;
+        if (p.sel) s.selected++;
+        var ld = leadDays_(p.lt, true);
+        if (ld !== null) { s.ltSum += ld; s.ltN++; }
+        var cur = String(p.cur || 'KRW').toUpperCase(), rate = cur === 'KRW' ? 1 : toNumber_(rates[cur]);
+        if (rate) krw[v] = n * rate;
+      });
+      var vs = Object.keys(krw);
+      if (vs.length < 2) return;
+      var min = Math.min.apply(null, vs.map(function (v) { return krw[v]; }));
+      vs.forEach(function (v) { if (krw[v] === min) get(v).lowest++; });
+    });
+  });
+  (history || []).slice(1).forEach(function (r) {
+    var code = itemKey_(r[2]);
+    if (!code || !String(r[4] || '').trim() || (want && !want[code])) return;
+    var s = get(r[4]);
+    s.bought++; s.items[code] = 1;
+  });
+  return Object.keys(st).map(function (k) {
+    var s = st[k];
+    return { name: s.name, requested: s.requested, replied: s.replied, quoted: s.quoted, lowest: s.lowest, selected: s.selected, bought: s.bought,
+      replyRate: s.requested ? Math.round(s.replied / s.requested * 100) : null, ltWeeks: s.ltN ? Math.round(s.ltSum / s.ltN / 7 * 10) / 10 : null,
+      last: s.last, items: Object.keys(s.items).sort() };
+  }).sort(function (a, b) { return (b.lowest * 3 + b.bought * 2 + b.quoted) - (a.lowest * 3 + a.bought * 2 + a.quoted) || a.name.localeCompare(b.name); });
+}
+
 /** 견적에서 선정한 업체 (없으면 '') */
 function selectedVendor_(it) {
   var qs = it.quotes || {};

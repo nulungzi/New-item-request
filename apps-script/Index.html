@@ -123,6 +123,10 @@ main { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px }
 .dm-people label:hover { background: var(--surface) }
 .dm-people small { grid-column: 2; font: .72rem var(--font-body); color: var(--muted) }
 .dm-add { border: 1px dashed var(--line); border-radius: 8px; padding: 8px 12px }
+.dm-hint { display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 999px; font: 600 .68rem var(--font-body); background: var(--ok-soft); color: var(--ok); vertical-align: 1px; white-space: nowrap }
+.dm-hint.q { background: var(--surface-2); color: var(--muted) }
+.dm-hintbar { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 7px 12px; border-radius: 8px; background: var(--ok-soft); color: var(--ink); font-size: .84rem }
+.dm-hintbar b { color: var(--ok) }
 .dm-add summary { cursor: pointer; font-weight: 600; color: var(--accent); font-size: .88rem }
 .dm-add[open] { display: grid; gap: 10px; background: var(--surface-2) }
 .dm-add .field input, .dm-add .field select { width: 100%; text-align: left; font-family: var(--font-body) }
@@ -271,7 +275,7 @@ a.btn-ghost { display: inline-block; text-decoration: none; border-radius: 6px }
 #vnTbl .mails small { font-family: var(--font-body); color: var(--muted) }
 .rec-tools { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center }
 .rec-tools input[type="search"] { flex: 1 1 240px; max-width: 360px; padding: 7px 10px }
-.rec-tools #recArchive { margin-left: auto }
+.rec-tools #recCompact { margin-left: auto }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden }
 .seg button { border: 0; background: var(--surface); color: var(--muted); padding: 6px 12px; font: 600 .82rem var(--font-body); cursor: pointer }
 .seg button + button { border-left: 1px solid var(--line) }
@@ -282,6 +286,38 @@ a.btn-ghost { display: inline-block; text-decoration: none; border-radius: 6px }
 .po-form .field input, .po-form .field select { width: 100%; text-align: left; font-family: var(--font-body) }
 .chip-done { background: var(--surface-2); color: var(--muted) }
 .rec.done-rec { opacity: .92 }
+/* 진행 중 간단히 보기 */
+.rec-list.compact { gap: 8px }
+.rec-list.compact .rec { padding: 8px 12px; gap: 2px 12px }
+.rec-list.compact .rec-group { gap: 6px; padding: 8px 8px 8px 10px }
+.rec-list.compact .mail-line, .rec-list.compact .trk-l, .rec-list.compact .rec.rfq .rec-toggle::after,
+.rec-list.compact .rec-meta > span:not(.al-chip):not(.po-chip):not(.cf-sent) { display: none }
+.rec-list.compact .rec-meta { display: inline-flex; margin-left: 6px; vertical-align: 1px }
+.rec-list.compact .rec-toggle, .rec-list.compact .rec > div:first-child { display: flex !important; flex-wrap: wrap; align-items: center; gap: 4px 10px }
+.rec-list.compact .trk { margin-top: 0; width: 150px; flex: 0 0 150px }
+.rec-list.compact .rec-actions { grid-row: 1 }
+.rec-list.compact .rec-actions .btn-ghost, .rec-list.compact .rec-actions .btn { padding: 4px 9px; font-size: .78rem }
+.rec-list.compact .rec-title { font-size: .92rem }
+/* 홈: 오늘 할 일 */
+.today { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px }
+.today-card { display: grid; gap: 4px; text-align: left; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; font: inherit;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s }
+.today-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(10, 16, 32, .08); border-color: var(--accent) }
+.today-card small { color: var(--muted); font-size: .8rem }
+.today-card b { font: 700 1.9rem/1.1 var(--font-data) }
+.today-card .tc-sub { font-size: .78rem; color: var(--muted) }
+.today-card.late b { color: var(--warn) } .today-card.soon b { color: var(--spot) } .today-card.ok b { color: var(--ok) }
+.today-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; justify-content: space-between }
+.today-head h2 { font-size: 1.05rem }
+/* 업체 성적표 */
+.vs { display: flex; flex-wrap: wrap; gap: 4px 6px; font-size: .74rem; min-width: 210px }
+.vs span { padding: 1px 7px; border-radius: 999px; background: var(--surface-2); color: var(--muted); white-space: nowrap }
+.vs span b { color: var(--ink); font-family: var(--font-data) }
+.vs .best { background: var(--ok-soft); color: var(--ok) } .vs .best b { color: var(--ok) }
+.vs-bar { display: block; width: 100%; height: 4px; border-radius: 4px; background: var(--surface-2); overflow: hidden }
+.vs-bar i { display: block; height: 100%; background: var(--ok) }
+.vs-bar i.mid { background: var(--spot) } .vs-bar i.low { background: var(--warn) }
+.vn-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
 .rec.done-rec.picked { opacity: 1; border-color: var(--warn); background: color-mix(in srgb, var(--warn) 6%, var(--surface)) }
 .arc-bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); font-size: .86rem }
 .arc-bar label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer }
@@ -631,6 +667,14 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-size: .
 .tally { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 12px; border-radius: 999px; background: var(--surface-2); font-size: .85rem }
 .tally b { font: 600 1rem var(--font-data) }
 .tally.ok { color: var(--ok) } .tally.spot { color: var(--spot) } .tally.priced { color: var(--priced) }
+button.tally { border: 1px solid transparent; cursor: pointer; font-family: inherit; transition: border-color .15s, background-color .15s }
+button.tally:hover { border-color: var(--line) }
+button.tally[aria-pressed="true"] { border-color: currentColor; background: var(--surface) }
+/* 긴 표: 높이 제한 + 머리글 고정 (펼치기로 전체) */
+.tbl-cap { max-height: min(58vh, 600px); overflow: auto; border-bottom: 1px solid var(--line) }
+.tbl-cap.open { max-height: none }
+.tbl-cap table.list th { position: sticky; top: 0; z-index: 2; background: var(--surface); box-shadow: inset 0 -1px 0 var(--line) }
+.tbl-more { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; font-size: .82rem; padding-top: 6px }
 .scroll { overflow-x: auto; min-width: 0 }
 table.list { width: 100%; border-collapse: collapse; font-size: .88rem }
 table.list th { text-align: left; font-size: .72rem; font-weight: 600; letter-spacing: .06em; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap }
@@ -868,6 +912,10 @@ td .empty { border: 0; padding: 18px 8px }
 </nav>
 <div class="views">
 <div id="viewHome" class="stack" hidden>
+  <section class="stack" id="hmTodayBox" style="gap:10px">
+    <div class="today-head"><h2>오늘 할 일</h2><span class="muted" id="hmTodayNote">진행 중 기록과 계약 만료 기준 · 카드를 누르면 그 화면으로</span></div>
+    <div class="today" id="hmToday"></div>
+  </section>
   <section class="hm-hero">
     <div class="hm-hero-text">
       <div class="eyebrow">사용 안내</div>
@@ -964,7 +1012,8 @@ td .empty { border: 0; padding: 18px 8px }
   <div class="panel">
     <div class="panel-head"><h2>판정 결과</h2><div class="summary" id="counts"></div></div>
     <p class="muted lead">DB 단가가 있어도 <b>업체 / 단가</b> 칸에서 다른 계약 업체를 고르거나 <b>견적 요청</b>으로 돌릴 수 있습니다. 확인한 뒤 아래를 체크하세요.</p>
-    <div class="scroll"><table class="list" id="tbl"></table></div>
+    <div class="scroll tbl-cap" id="tblWrap"><table class="list" id="tbl"></table></div>
+    <div class="tbl-more" id="tblMore" hidden><span class="muted" id="tblShown"></span><button class="link-btn" type="button" id="tblOpen">전체 펼치기 ▾</button></div>
     <div class="mode-box" id="modeBox" hidden>
       <b>만드는 방식</b>
       <label class="mode-opt"><input type="radio" name="mode" value="split" checked><span><b>따로 만들기</b><span class="muted" id="modeSplitText">계약 구매내역서는 지금 만들고, 견적 품목은 견적 접수 후 따로 견적 구매내역서로</span></span></label>
@@ -1035,12 +1084,12 @@ td .empty { border: 0; padding: 18px 8px }
     <div class="panel-head"><h2>Spot 품목</h2><span class="muted">계약 구매내역서에는 들어가지 않습니다</span></div>
     <div class="sub first" id="pricedBox">
       <div class="sub-title"><h3>DB 단가 있음 → Spot 구매내역서</h3><span class="muted" id="pricedText">견적요청서에 넣지 않습니다 · 3단계 구매내역서 작성에서 만듭니다 (업체선정사유 Sole source)</span></div>
-      <div class="scroll"><table class="list" id="pricedTbl"></table></div>
+      <div class="scroll tbl-cap"><table class="list" id="pricedTbl"></table></div>
     </div>
     <div class="sub" id="rfqBox">
       <div class="sub-title"><h3>단가 없음 → 견적요청서</h3><span class="muted">Item name은 꼭 적어 주세요 · Description·QPL·UOM·Remark는 고칠 수 있습니다</span></div>
       <div class="fixed-note" id="fixedNote" hidden></div>
-      <div class="scroll"><table class="list rfq-edit" id="spotTbl"></table></div>
+      <div class="scroll tbl-cap"><table class="list rfq-edit" id="spotTbl"></table></div>
       <div class="rfq-title">
         <div class="fields rfq-fields">
           <label class="field" for="rfqBiz">사업 (선택)<input id="rfqBiz" type="text" placeholder="Boeing" autocomplete="off"></label>
@@ -1125,7 +1174,9 @@ td .empty { border: 0; padding: 18px 8px }
       <div class="row"><button class="btn" id="vnSave" type="button">업체정보에 저장</button><span id="vnMsg"></span></div>
     </div>
     <div class="sub">
-      <div class="sub-title"><h3>등록된 업체</h3><input id="vnFind" type="search" placeholder="업체·이메일 찾기" autocomplete="off" class="vn-find"></div>
+      <div class="sub-title"><h3>등록된 업체</h3><div class="vn-tools"><input id="vnFind" type="search" placeholder="업체·이메일 찾기" autocomplete="off" class="vn-find">
+        <select id="vnSort" aria-label="정렬"><option value="name">이름순</option><option value="best">최저가 많은 순</option><option value="reply">회신율 높은 순</option><option value="req">견적 요청 많은 순</option></select></div></div>
+      <p class="muted" style="margin:0">견적 성적: 모든 담당자의 견적요청서(진행 중 · 완료)와 구매 이력에서 셉니다 · 회신율 = 견적을 하나라도 보낸 요청 / 견적 요청 · 최저가 = 견적 2곳 이상 중 원화 최저</p>
       <div class="scroll"><table class="list" id="vnTbl"></table></div>
     </div>
   </div>
@@ -1144,6 +1195,7 @@ td .empty { border: 0; padding: 18px 8px }
         <button type="button" data-rk="all" aria-pressed="true">전체</button><button type="button" data-rk="rfq" aria-pressed="false">견적요청서</button><button type="button" data-rk="buy" aria-pressed="false">구매내역서</button><button type="button" data-rk="alert" aria-pressed="false">기한 임박</button>
       </div>
       <span class="muted" id="recShown"></span>
+      <button class="btn-ghost" id="recCompact" type="button" aria-pressed="false" title="제목 · 기한 배지 · 진행 단계만 한 줄로">간단히 보기</button>
       <button class="btn-ghost" id="recArchive" type="button" aria-pressed="false">완료 기록 보기</button>
     </div>
     <div class="digest-bar" id="digestBar">
@@ -1231,6 +1283,7 @@ td .empty { border: 0; padding: 18px 8px }
     </div>
     <div class="dm-vendors">
       <div class="row spread"><b>받을 업체 (숨은 참조)</b><label class="inline"><input type="checkbox" id="dmAll"> 전체 선택</label></div>
+      <div class="dm-hintbar" id="dmHint" hidden></div>
       <div class="dm-list" id="dmList"></div>
       <span class="muted" id="dmCount"></span>
     </div>
@@ -1788,15 +1841,16 @@ function render() {
   var ok = rs.filter(function (r) { return r.route === 'contract'; }),
     priced = rs.filter(function (r) { return r.route === 'spotPriced'; }),
     rfq = rs.filter(function (r) { return r.route === 'rfq'; });
-  $('counts').innerHTML = '<span class="tally">전체 <b>' + rs.length + '</b></span>' +
-    '<span class="tally ok">계약 <b>' + ok.length + '</b></span>' +
-    '<span class="tally priced">Spot 단가 <b>' + priced.length + '</b></span>' +
-    '<span class="tally spot">Spot 견적 <b>' + rfq.length + '</b></span>';
+  var tf = state.tblFilter || 'all';
+  var tb = function (k, cls, label, n) { return '<button type="button" class="tally' + cls + '" data-tf="' + k + '" aria-pressed="' + (tf === k) + '" title="' + (k === 'all' ? '전체 보기' : label + '만 보기') + '">' + label + ' <b>' + n + '</b></button>'; };
+  $('counts').innerHTML = tb('all', '', '전체', rs.length) + tb('contract', ' ok', '계약', ok.length) + tb('spotPriced', ' priced', 'Spot 단가', priced.length) + tb('rfq', ' spot', 'Spot 견적', rfq.length);
+  $('counts').querySelectorAll('[data-tf]').forEach(function (b) { b.onclick = function () { state.tblFilter = state.tblFilter === b.dataset.tf ? 'all' : b.dataset.tf; render(); }; });
+  var view = tf === 'all' ? rs : rs.filter(function (r) { return r.route === tf; });
 
   var fresh = state.fresh; state.fresh = false;
   if (fresh) countUp($('counts'));
   $('tbl').innerHTML = '<tr><th>판정</th><th>ITEM</th><th class="n">수량</th><th>NEED-BY</th><th>업체 / 단가</th><th>계약기간</th><th>메모</th></tr>' +
-    rs.map(function (r, ri) {
+    view.map(function (r, ri) {
       var c = r.alts || r.candidates, c0 = r.route === 'rfq' ? {} : chosen(r);
       var sup = !c.length ? '<span class="muted">—</span>'
         : '<select class="pick-sel" data-pick="' + r.line + '" aria-label="' + esc(r.item) + ' 업체 / 단가">' + c.map(function (x, i) {
@@ -1816,6 +1870,11 @@ function render() {
           (state.reqDates.length > 1 && r.reqDate ? '<div class="muted rq-of">소요제기 ' + esc(r.reqDate) + (r.reqMemo ? ' ' + esc(r.reqMemo) : '') + '</div>' : '') + '</td></tr>';
     }).join('');
   state.flashLine = null;
+  var many = rs.length > 8;
+  $('tblMore').hidden = !many && tf === 'all';
+  $('tblShown').textContent = (tf === 'all' ? '품목 ' + rs.length + '줄' : view.length + '줄만 보는 중 · 판정 숫자를 다시 누르면 전체') + (many ? ' · 머리글은 위에 고정' : '');
+  $('tblOpen').hidden = !many;
+  $('tblOpen').textContent = $('tblWrap').classList.contains('open') ? '줄여 보기 ▴' : '전체 펼치기 ▾';
   if (fresh) setTimeout(function () { document.querySelectorAll('#tbl .dday.late').forEach(function (x) { x.classList.add('pop'); }); }, 30);
   updateFlow();
   document.querySelectorAll('#tbl [data-ih]').forEach(function (b) { b.onclick = function () { openItemHistory(b.dataset.ih); }; });
@@ -2033,8 +2092,10 @@ function openDraft(recordId, title, remind) {
   $('draftModal').hidden = false;
   $('dmList').innerHTML = '<div class="pk-empty">업체정보 불러오는 중…</div>';
   $('dmAddBox').open = false; $('dmAddMsg').textContent = '';
-  call('apiVendors').then(function (d) {
-    var keep = [];
+  draft.hints = [];
+  Promise.all([call('apiVendors'), call('apiVendorHints', recordId).catch(function () { return []; })]).then(function (res) {
+    var d = res[0], keep = [];
+    draft.hints = res[1] || [];
     if (remind && rec) {   // 아직 견적을 입력하지 않은 업체(회신 없음 제외)의 담당자 전부
       var c = quoteFor(rec), wait = (rec.vendors || []).filter(function (v) { return vendorStatus(c, v).cls === ''; });
       d.vendors.forEach(function (v) { if (wait.indexOf(v.name) >= 0) keep = keep.concat(v.emails); });
@@ -2059,10 +2120,13 @@ function showSign(sg) {
 }
 /* 업체마다 체크 = 그 업체 담당자 전부. '담당자 n명 ▾' 를 펼쳐 특정 담당자만 고를 수 있음 */
 function renderDraftVendors(d, keep) {
+  var rank = applyHints(d);
   draft.vendors = d.vendors;
   $('dmList').innerHTML = d.vendors.length ? d.vendors.map(function (v, i) {
     var people = v.people || v.emails.map(function (m) { return { email: m, contact: '' }; });
-    return '<div class="dm-v" data-v="' + i + '"><div class="dm-vhead"><label><input type="checkbox" data-vall="' + i + '"><span><b>' + esc(v.name) + '</b></span>' +
+    var h = rank[vkey(v.name)] !== undefined ? draft.hints[rank[vkey(v.name)]] : null;
+    return '<div class="dm-v" data-v="' + i + '"><div class="dm-vhead"><label><input type="checkbox" data-vall="' + i + '"><span><b>' + esc(v.name) + '</b>' +
+        (h ? '<span class="dm-hint' + (h.lowest || h.bought ? '' : ' q') + '" title="' + esc(hintTitle(h)) + '">' + esc(hintText(h)) + '</span>' : '') + '</span>' +
         '<small title="' + esc(v.emails.join(', ')) + '">' + esc(v.emails[0] || '') + (v.emails.length > 1 ? ' 외 ' + (v.emails.length - 1) + '개' : '') + '</small></label>' +
         '<button type="button" class="dm-more" data-more="' + i + '" aria-expanded="false">담당자 ' + people.length + '명 ▾</button></div>' +
       '<div class="dm-people" hidden>' + people.map(function (p) {
@@ -2652,6 +2716,7 @@ function showView(v) {
   if (shown) { shown.classList.remove('view-in'); void shown.offsetWidth; shown.classList.add('view-in'); }
   $('viewExpiring').hidden = v !== 'expiring';
   if (v === 'expiring') loadExpiring();
+  if (v === 'home') { loadExpiring(); renderToday(); }
   if (v === 'history') setTimeout(function () { $('ihItem').focus(); }, 30);
   if (v === 'records') loadRecords();
   if (v === 'items') renderItemTable();
@@ -2738,7 +2803,12 @@ $('itSave').onclick = function () {
 
 /* ---------- 업체 등록: 업체정보 탭 목록 + 연락처 추가 / 새 업체 ---------- */
 function loadVendorView() {
-  $('vnTbl').innerHTML = skelRows(4, 5);
+  $('vnTbl').innerHTML = skelRows(5, 5);
+  call('apiVendorStats').then(function (st) {
+    state.vendorStats = {};
+    (st || []).forEach(function (x) { state.vendorStats[vkey(x.name)] = x; });
+    if (state.vendorList) renderVendorView({ vendors: state.vendorList });
+  }).catch(function () { state.vendorStats = {}; });
   return call('apiVendors').then(renderVendorView).catch(function (e) { $('vnMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; });
 }
 function renderVendorView(d) {
@@ -2749,11 +2819,16 @@ function renderVendorView(d) {
   $('vnCount').textContent = '업체 ' + state.vendorList.length + '곳';
   var q = $('vnFind').value.trim().toLowerCase();
   var list = state.vendorList.filter(function (v) { return !q || (v.name + ' ' + v.emails.join(' ') + ' ' + (v.supplier || '')).toLowerCase().indexOf(q) >= 0; });
-  $('vnTbl').innerHTML = '<tr><th>업체명</th><th>담당자 이메일</th><th>SUPPLIER</th><th>SITE</th><th></th></tr>' + (list.length ? list.map(function (v) {
+  var vs = state.vendorStats, sv = function (v) { return vs ? vs[vkey(v.name)] || {} : {}; }, sort = $('vnSort').value;
+  if (sort !== 'name') list = list.slice().sort(function (a, b) {
+    var x = sv(a), y = sv(b), k = sort === 'best' ? 'lowest' : sort === 'reply' ? 'replyRate' : 'requested';
+    return ((y[k] == null ? -1 : y[k]) - (x[k] == null ? -1 : x[k])) || ((y.requested || 0) - (x.requested || 0)) || a.name.localeCompare(b.name);
+  });
+  $('vnTbl').innerHTML = '<tr><th>업체명</th><th>견적 성적</th><th>담당자 이메일</th><th>SUPPLIER</th><th>SITE</th><th></th></tr>' + (list.length ? list.map(function (v) {
     var people = v.people || v.emails.map(function (m) { return { email: m, contact: '' }; });
-    return '<tr><td><b>' + esc(v.name) + '</b></td><td><div class="mails">' + people.map(function (p) { return '<span>' + esc(p.email) + (p.contact ? ' <small>' + esc(p.contact) + '</small>' : '') + '</span>'; }).join('') + '</div></td>' +
+    return '<tr><td><b>' + esc(v.name) + '</b></td><td>' + (vs ? vendorScore(vs[vkey(v.name)]) : '<span class="muted">계산 중…</span>') + '</td><td><div class="mails">' + people.map(function (p) { return '<span>' + esc(p.email) + (p.contact ? ' <small>' + esc(p.contact) + '</small>' : '') + '</span>'; }).join('') + '</div></td>' +
       '<td>' + esc(v.supplier || '') + '</td><td>' + esc(v.site || '') + '</td><td><button type="button" class="link-btn" data-addto="' + esc(v.name) + '">+ 연락처</button></td></tr>';
-  }).join('') : '<tr><td colspan="5" class="muted">' + (d.missing ? '업체정보 탭이 없습니다. 위에서 새 업체를 등록하면 만들어집니다.' : '찾는 업체가 없습니다.') + '</td></tr>');
+  }).join('') : '<tr><td colspan="6" class="muted">' + (d.missing ? '업체정보 탭이 없습니다. 위에서 새 업체를 등록하면 만들어집니다.' : '찾는 업체가 없습니다.') + '</td></tr>');
   $('vnTbl').querySelectorAll('[data-addto]').forEach(function (b) {
     b.onclick = function () { document.querySelector('input[name="vnMode"][value="old"]').checked = true; vnMode(); $('vnVendor').value = b.dataset.addto; $('vnEmail').focus(); $('vnEmail').scrollIntoView({ block: 'center' }); };
   });
@@ -2847,6 +2922,7 @@ function loadRecords() {
   return call('apiMyRecords').then(function (d) {
     state.records = d.records;
     $('recCount').textContent = d.records.length || '';
+    setTimeout(renderToday, 0);
     var urgent = d.records.filter(function (r) { return r.alert && r.alert.level; }).length;
     var prevUrgent = $('recAlert').textContent;
     $('recAlert').textContent = urgent || '';
@@ -2922,13 +2998,13 @@ function renderArchive() {
   state.arcSel = state.arcSel || {};
   $('recList').innerHTML = list.length ? '<div class="arc-bar"><label class="arc-all"><input type="checkbox" id="arcAll"> 보이는 기록 전체 선택</label><span class="muted" id="arcN"></span>' +
       '<label class="muted arc-hist"><input type="checkbox" id="arcHist"' + (state.arcHist === false ? '' : ' checked') + '> 구매 이력에 올린 줄도 같이 지우기</label>' +
-      '<button class="btn-ghost danger" id="arcDel" type="button" disabled>선택 삭제</button>' +
+      '<button class="btn-ghost" id="arcBack" type="button" disabled title="진행 중으로 되돌림">선택 되돌리기</button><button class="btn-ghost danger" id="arcDel" type="button" disabled>선택 삭제</button>' +
       '<span class="muted arc-note">기록만 지웁니다 · 드라이브의 파일은 그대로 남습니다</span></div>' +
     list.map(function (r) {
     return '<div class="rec done-rec' + (state.arcSel[r.id] ? ' picked' : '') + '" data-id="' + esc(r.id) + '"><div><div><label class="arc-chk"><input type="checkbox" data-arc="' + esc(r.id) + '"' + (state.arcSel[r.id] ? ' checked' : '') + ' aria-label="' + esc(r.title) + ' 선택"></label>' +
       '<span class="chip chip-done">' + esc(r.kind) + '</span> <span class="rec-title">' + esc(r.title) + '</span></div>' +
       '<div class="rec-meta"><span>' + esc(r.created) + ' 작성</span><span>완료 <b>' + esc(r.done || '') + '</b></span><span>품목 ' + (r.items || []).length + '개</span>' + poMeta(r) + '</div></div>' +
-      '<div class="rec-actions"><a class="btn-ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener">파일 열기 ↗</a><button class="btn-ghost danger" type="button" data-arcdel="' + esc(r.id) + '">삭제</button></div></div>';
+      '<div class="rec-actions"><a class="btn-ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener">파일 열기 ↗</a><button class="btn-ghost" type="button" data-arcback="' + esc(r.id) + '" title="완료 취소: 진행 중으로 되돌림">되돌리기</button><button class="btn-ghost danger" type="button" data-arcdel="' + esc(r.id) + '">삭제</button></div></div>';
   }).join('') : (state.archived.length ? emptyHtml('search', '찾는 기록이 없습니다.') : emptyHtml('archive', '완료한 기록이 없습니다.'));
   if (!list.length) return;
   var shownIds = list.map(function (r) { return r.id; });
@@ -2936,6 +3012,7 @@ function renderArchive() {
     var n = shownIds.filter(function (id) { return state.arcSel[id]; }).length;
     $('arcN').textContent = n ? n + '건 선택' : '';
     var del = $('arcDel'); del.disabled = !n; delete del.dataset.ok; del.textContent = n ? '선택 ' + n + '건 삭제' : '선택 삭제';
+    $('arcBack').disabled = !n; $('arcBack').textContent = n ? '선택 ' + n + '건 되돌리기' : '선택 되돌리기';
     $('arcAll').checked = n === shownIds.length; $('arcAll').indeterminate = n > 0 && n < shownIds.length;
   };
   $('recList').querySelectorAll('[data-arc]').forEach(function (c) {
@@ -2952,6 +3029,8 @@ function renderArchive() {
     deleteArchived(ids, this);
   };
   $('recList').querySelectorAll('[data-arcdel]').forEach(function (b) { b.onclick = function () { deleteArchived([b.dataset.arcdel], b); }; });
+  $('recList').querySelectorAll('[data-arcback]').forEach(function (b) { b.onclick = function () { restoreArchived([b.dataset.arcback], b); }; });
+  $('arcBack').onclick = function () { restoreArchived(shownIds.filter(function (id) { return state.arcSel[id]; }), this); };
   sync();
 }
 /* 완료 기록 삭제: 한 번 더 눌러 확인 → 접히며 사라짐 */
@@ -3653,7 +3732,7 @@ state.expKind = 'all'; state.expDays = 90;
 function loadExpiring(force) {
   if (state.expiring && !force) return renderExpiring();
   $('hmExpTbl').innerHTML = skelRows(6, 5);
-  return call('apiExpiring', state.expDays).then(function (d) { state.expiring = d.list || []; renderExpiring(); })
+  return call('apiExpiring', state.expDays).then(function (d) { state.expiring = d.list || []; renderExpiring(); renderToday(); })
     .catch(function (e) { $('hmExpTbl').innerHTML = '<tr><td class="err">' + esc(e.message || e) + '</td></tr>'; });
 }
 function renderExpiring() {
@@ -4002,6 +4081,111 @@ function toast(html, kind) {
   el.onmouseenter = function () { clearTimeout(timer); };
   el.onmouseleave = arm;
   arm();
+}
+
+
+/* ---------- 판정 결과 표: 펼치기 ---------- */
+$('tblOpen').onclick = function () { var w = $('tblWrap'); w.classList.toggle('open'); this.textContent = w.classList.contains('open') ? '줄여 보기 ▴' : '전체 펼치기 ▾'; if (!w.classList.contains('open')) w.scrollIntoView({ block: 'nearest' }); };
+
+/* ---------- 메일 초안: 견적 업체 추천 ---------- */
+function hintText(h) {
+  return h.lowest ? '최저가 ' + h.lowest + '회' : h.bought ? '구매 ' + h.bought + '회' : '견적 ' + h.quoted + '회';
+}
+function hintTitle(h) {
+  return '이 견적요청서 자재 기준 · 견적 ' + h.quoted + '회 · 최저가 ' + h.lowest + '회 · 구매 ' + h.bought + '회' + (h.replyRate !== null ? ' · 회신율 ' + h.replyRate + '%' : '') +
+    (h.ltWeeks !== null ? ' · 평균 L/T ' + h.ltWeeks + '주' : '') + (h.items.length ? ' · 자재: ' + h.items.slice(0, 6).join(', ') + (h.items.length > 6 ? ' …' : '') : '');
+}
+function vkey(n) { return String(n || '').replace(/\s+/g, '').toLowerCase(); }
+function applyHints(d) {
+  var hints = draft.hints || [], rank = {};
+  hints.forEach(function (h, i) { rank[vkey(h.name)] = i; });
+  d.vendors = d.vendors.map(function (v, i) { return { v: v, i: i, r: rank[vkey(v.name)] }; })
+    .sort(function (a, b) { var ra = a.r === undefined ? 1e6 : a.r, rb = b.r === undefined ? 1e6 : b.r; return ra - rb || a.i - b.i; })
+    .map(function (x) { return x.v; });
+  var shown = hints.filter(function (h) { return d.vendors.some(function (v) { return vkey(v.name) === vkey(h.name); }); });
+  $('dmHint').hidden = !shown.length;
+  if (shown.length) {
+    $('dmHint').innerHTML = '<span>이 자재를 예전에 <b>견적 · 구매</b>했던 업체 ' + shown.length + '곳을 맨 위에 올렸습니다 (마우스를 올리면 자세히)</span>' +
+      '<button class="link-btn" type="button" id="dmHintAll">추천 업체 모두 선택</button>';
+    $('dmHintAll').onclick = function () {
+      draft.vendors.forEach(function (v, i) {
+        if (rank[vkey(v.name)] === undefined) return;
+        $('dmList').querySelectorAll('[data-e][data-v="' + i + '"]').forEach(function (c) { c.checked = true; });
+      });
+      syncDraft();
+    };
+  }
+  return rank;
+}
+
+/* ---------- 업체 성적표 ---------- */
+function vendorScore(st) {
+  if (!st || !st.requested && !st.bought) return '<span class="muted">기록 없음</span>';
+  var rr = st.replyRate, cls = rr === null ? '' : rr >= 70 ? '' : rr >= 40 ? 'mid' : 'low';
+  return '<div class="vs">' + (st.requested ? '<span>견적 요청 <b>' + st.requested + '</b></span><span>회신율 <b>' + rr + '%</b></span>' : '') +
+    (st.lowest ? '<span class="best">최저가 <b>' + st.lowest + '</b></span>' : '') + (st.ltWeeks !== null ? '<span>평균 L/T <b>' + st.ltWeeks + '주</b></span>' : '') +
+    (st.bought ? '<span>구매 <b>' + st.bought + '</b></span>' : '') + (st.last ? '<span>최근 요청 ' + esc(st.last.slice(2).replace(/-/g, '/')) + '</span>' : '') + '</div>' +
+    (st.requested ? '<span class="vs-bar" title="회신율 ' + rr + '%"><i class="' + cls + '" style="width:' + rr + '%"></i></span>' : '');
+}
+$('vnSort').onchange = function () { if (state.vendorList) renderVendorView({ vendors: state.vendorList }); };
+
+/* ---------- 완료 취소 (진행 중으로 되돌리기) ---------- */
+function restoreArchived(ids, btn) {
+  if (!ids.length) return;
+  btn.disabled = true; btn.textContent = '되돌리는 중…';
+  call('apiRestoreArchived', ids).then(function (d) {
+    return collapseCards(ids).then(function () {
+      state.archived = state.archived.filter(function (r) { return ids.indexOf(r.id) < 0; });
+      ids.forEach(function (id) { delete state.arcSel[id]; });
+      renderArchive();
+      loadRecords();
+      toast('<b>' + d.restored + '건을 진행 중으로 되돌렸습니다</b><span class="muted">' + (d.history ? '그 기록으로 올린 구매 이력 ' + d.history + '줄은 지웠습니다 (다시 완료할 때 다시 올림)' : '진행 중 화면에서 이어서 하세요') +
+        (d.skipped ? ' · 다른 담당자 기록 ' + d.skipped + '건은 건너뜀' : '') + '</span>');
+    });
+  }).catch(function (e) { btn.disabled = false; btn.textContent = '되돌리기'; toast('<b>되돌리지 못했습니다</b><span class="muted">' + esc(e.message || e) + '</span>', 'err'); });
+}
+
+/* ---------- 진행 중 간단히 보기 ---------- */
+function applyCompact(on) {
+  $('recList').classList.toggle('compact', on);
+  $('recCompact').setAttribute('aria-pressed', on);
+  $('recCompact').textContent = on ? '자세히 보기' : '간단히 보기';
+}
+(function () { var on = false; try { on = localStorage.getItem('recCompact') === '1'; } catch (e) {} applyCompact(on); })();
+$('recCompact').onclick = function () {
+  var on = !$('recList').classList.contains('compact');
+  applyCompact(on);
+  try { localStorage.setItem('recCompact', on ? '1' : ''); } catch (e) {}
+};
+
+/* ---------- 홈: 오늘 할 일 ---------- */
+function renderToday() {
+  var recs = state.records, exp = state.expiring;
+  var cnt = function (f) { return (recs || []).filter(f).length; };
+  var dueLate = cnt(function (r) { return r.alert && r.alert.due && r.alert.due.level === 'late'; }), dueSoon = cnt(function (r) { return r.alert && r.alert.due && r.alert.due.level === 'soon'; });
+  var dueAll = cnt(function (r) { return r.alert && r.alert.due; });
+  var poLate = cnt(function (r) { return r.alert && r.alert.po && r.alert.po.level === 'late'; }), poSoon = cnt(function (r) { return r.alert && r.alert.po && r.alert.po.level === 'soon'; });
+  var exp30 = exp ? exp.filter(function (x) { return x.days <= 30; }).length : null, exp7 = exp ? exp.filter(function (x) { return x.days <= 7; }).length : 0;
+  var rfqN = cnt(function (r) { return r.kind === '견적요청서'; }), buyN = recs ? recs.length - rfqN : 0;
+  var card = function (go, cls, label, n, sub) {
+    return '<button type="button" class="today-card ' + cls + '" data-today="' + go + '"><small>' + label + '</small><b>' + (n === null ? '…' : n) + '</b><span class="tc-sub">' + sub + '</span></button>';
+  };
+  $('hmToday').innerHTML = !recs ? skelCards(1) :
+    card('due', dueLate ? 'late' : dueSoon ? 'soon' : 'ok', '견적 회신 기한', dueLate + dueSoon, dueLate || dueSoon ? '지남 ' + dueLate + ' · 내일까지 ' + dueSoon + ' (회신 대기 ' + dueAll + '건)' : '급한 건 없음 · 회신 대기 ' + dueAll + '건') +
+    card('po', poLate ? 'late' : poSoon ? 'soon' : 'ok', '발주 마감 (14일 이내)', poLate + poSoon, poLate || poSoon ? '지남 ' + poLate + ' · 14일 이내 ' + poSoon : 'PO 발행 전 급한 건 없음') +
+    card('exp', exp30 ? (exp7 ? 'late' : 'soon') : 'ok', '계약 만료 (30일 이내)', exp30, exp30 === null ? '불러오는 중' : exp30 ? '7일 이내 ' + exp7 + '건' : '30일 안에 끝나는 계약 없음') +
+    card('rec', '', '진행 중', recs.length, '견적요청서 ' + rfqN + ' · 구매내역서 ' + buyN);
+  if (!recs) return;
+  $('hmToday').querySelectorAll('[data-today]').forEach(function (b) {
+    b.onclick = function () {
+      var g = b.dataset.today;
+      if (g === 'exp') return showView('expiring');
+      state.recKind = g === 'rec' ? 'all' : 'alert';
+      document.querySelectorAll('[data-rk]').forEach(function (x) { x.setAttribute('aria-pressed', x.dataset.rk === state.recKind); });
+      showView('records');
+    };
+  });
+  if (!state.todayAnimated && !$('viewHome').hidden) { state.todayAnimated = true; countUp($('hmToday')); }
 }
 
 checkAuth();   // 로그인 확인 → 화면 시작

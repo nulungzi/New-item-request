@@ -940,7 +940,7 @@ function addRecord_(o) {
   lock.waitLock(20000);
   try {
     var sh = recordSheet_(), now = new Date();
-    var id = Utilities.formatDate(now, 'Asia/Seoul', 'yyMMdd-HHmmss') + '-' + Math.floor(Math.random() * 900 + 100);
+    var id = Utilities.formatDate(now, 'Asia/Seoul', 'yyMMdd-HHmmss') + '-' + (Math.random().toString(36) + '000000').slice(2, 8);   // 같은 초에 여러 개 만들어도 겹치지 않게
     var data = { items: o.items || [], due: o.due || '' };
     // group: 같은 소요제기에서 만든 파일 묶음, parent: 이 파일을 만든 견적요청서, fixed: 하나로 만들기 때 같이 들어갈 계약 줄
     ['group', 'parent', 'fixed', 'reqDates'].forEach(function (k) { if (o[k] && (!Array.isArray(o[k]) || o[k].length)) data[k] = o[k]; });
@@ -1210,6 +1210,83 @@ function apiArchivedRecords() {
   }).filter(function (r) { return r.id && r.owner === who; });
   list.sort(function (a, b) { return String(b.done || b.id).localeCompare(String(a.done || a.id)); });
   return { records: list.slice(0, 300), ready: true };
+}
+
+/* ================================================================
+ * 업체 성적표 · 견적 업체 추천 — 견적요청서 기록(진행 중 + 완료, 모든 담당자)과 구매이력에서
+ *   화면에는 업체 이름과 숫자만 나감 (다른 담당자의 기록 내용은 보이지 않음)
+ * ================================================================ */
+function quoteRecordsAll_() {
+  var out = [];
+  var take = function (rows) { rows.forEach(function (r) { if (r[0] && r[1] === '견적요청서') out.push(rowToRecord_(r)); }); };
+  take(recordSheet_().getDataRange().getValues().slice(1));
+  var aid = prop_('ARCHIVE_SHEET_ID');
+  if (aid) {
+    try { var sh = SpreadsheetApp.openById(aid).getSheetByName('완료기록'); if (sh) take(sh.getDataRange().getValues().slice(1)); }
+    catch (e) { console.warn('완료기록 읽기 실패: ' + e); }
+  }
+  return out;
+}
+function historyValues_() {
+  var hs = db_().getSheetByName(HISTORY.SHEET);
+  return hs ? hs.getDataRange().getValues() : [];
+}
+function apiVendorStats() {
+  auth_();
+  return vendorStats_(quoteRecordsAll_(), historyValues_());
+}
+/** 이 견적요청서의 자재를 예전에 견적 냈거나 산 업체 (이 기록 자신은 빼고) */
+function apiVendorHints(recordId) {
+  auth_();
+  var rec = findRecord_(recordId, true).rec;
+  var items = (rec.items || []).map(function (it) { return it && it.item; }).filter(Boolean);
+  if (!items.length) return [];
+  var recs = quoteRecordsAll_().filter(function (r) { return r.id !== rec.id; });
+  return vendorStats_(recs, historyValues_(), items).filter(function (s) { return s.quoted || s.bought; });
+}
+
+/**
+ * 완료 취소: 완료기록에서 진행기록으로 되돌림 (본인 기록만). 상태는 단계·내용으로 다시 정함
+ *   그 기록으로 올린 구매이력 줄은 지움 (다시 완료할 때 다시 올림)
+ */
+function restoredStatus_(rec) {
+  if (rec.po && rec.po.stage) return rec.po.stage;
+  if (rec.kind === '견적요청서') return rec.spotFile ? '견적 구매내역서 작성' : (rec.mails || []).length > 1 ? '재요청 초안' : rec.draft ? '메일 초안' : '작성';
+  if (rec.confirmMail) return rec.confirmMail.mode === 'send' ? '사업부 확인 요청' : '사업부 확인 초안';
+  return '작성';
+}
+function apiRestoreArchived(ids) {
+  auth_();
+  var want = {};
+  (ids || []).forEach(function (id) { if (String(id || '').trim()) want[String(id)] = 1; });
+  if (!Object.keys(want).length) throw new Error('되돌릴 기록을 골라 주세요.');
+  var aid = prop_('ARCHIVE_SHEET_ID');
+  if (!aid) throw new Error('스크립트 속성 ARCHIVE_SHEET_ID(완료 보관 스프레드시트 ID)를 설정해 주세요.');
+  var who = me_(), lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sh = SpreadsheetApp.openById(aid).getSheetByName('완료기록'), rs = recordSheet_(), restored = 0, skipped = 0, history = 0, back = {};
+    if (sh) {
+      var v = sh.getDataRange().getValues();
+      for (var i = v.length - 1; i >= 1; i--) {
+        if (!want[String(v[i][0])]) continue;
+        if (String(v[i][2]).toLowerCase() !== who) { skipped++; continue; }
+        var row = v[i].slice(0, RECORD_HEADERS.length);
+        row[7] = restoredStatus_(rowToRecord_(row));
+        row[11] = new Date();
+        rs.appendRow(row);
+        sh.deleteRow(i + 1); restored++; back[String(v[i][0])] = 1;
+      }
+    }
+    var hs = db_().getSheetByName(HISTORY.SHEET);
+    if (hs && restored) {
+      var hv = hs.getDataRange().getValues(), idCol = HISTORY.HEAD.indexOf('기록 ID'), whoCol = HISTORY.HEAD.indexOf('담당자');
+      for (var j = hv.length - 1; j >= 1; j--) {
+        if (back[String(hv[j][idCol])] && String(hv[j][whoCol]).toLowerCase() === who) { hs.deleteRow(j + 1); history++; }
+      }
+    }
+    return { restored: restored, skipped: skipped, history: history };
+  } finally { lock.releaseLock(); }
 }
 
 /**

@@ -516,3 +516,33 @@ test('완료 기록 삭제: 본인 기록만, 구매 이력 줄도 같이 (선�
   assert.strictEqual(ctx.apiDeleteArchived(['A4'], false).history, 0);
   assert.strictEqual(db.tabs['구매이력'].rows.length, 4);
 });
+
+test('완료 취소: 진행 중으로 되돌리고 상태 복원, 올린 구매 이력 줄 지움 · 업체 추천은 이 기록 빼고', () => {
+  const H = ['ID', '종류', '담당자', '작성일', '제목', 'URL', '파일ID', '상태', '초안', 'BCC', 'JSON', '수정일'];
+  const L = require('./load.js').load();
+  const hrow = (id, who, item, sup) => { const r = Array(L.HISTORY.HEAD.length).fill(''); r[2] = item; r[4] = sup; r[L.HISTORY.HEAD.indexOf('기록 ID')] = id; r[L.HISTORY.HEAD.indexOf('담당자')] = who; return r; };
+  const quote = { rates: { USD: 1400 }, items: [{ quotes: { OMI: { price: '10', cur: 'USD' }, CBOL: { price: '9', cur: 'USD' } } }] };
+  const arc = fakeBook({ 완료기록: [H.concat(['완료일']),
+    ['A1', '견적요청서', 'me@ke.com', '2026-10-01', 'RFQ old', '', '', '완료', 'D', '', JSON.stringify({ items: [{ item: 'K1' }], vendors: ['OMI', 'CBOL'], quote }), '', ''],
+    ['A2', '계약 구매내역서', 'me@ke.com', '', '구매', '', '', '완료', '', '', JSON.stringify({ items: [], po: { stage: 'PO 발행' } }), '', ''],
+    ['A3', '계약 구매내역서', 'lee@ke.com', '', '남의 것', '', '', '완료', '', '', '{}', '', '']] });
+  const db = fakeBook({ 진행기록: [H, ['Q9', '견적요청서', 'me@ke.com', '2026-11-15', 'RFQ new', '', '', '메일 초안', 'D', '', JSON.stringify({ items: [{ item: 'k1' }], vendors: ['OMI'] }), '']],
+    구매이력: [L.HISTORY.HEAD.slice(), hrow('A2', 'me@ke.com', 'K1', 'CBOL'), hrow('A2', 'lee@ke.com', 'K1', 'CBOL'), hrow('Z', 'me@ke.com', 'K1', 'PPG')] });
+  const ctx = inContext({
+    SpreadsheetApp: { getActive: () => db, openById: () => arc },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: k => (k === 'ARCHIVE_SHEET_ID' ? 'arc' : null) }) },
+    LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
+    Session: { getActiveUser: () => ({ getEmail: () => 'me@ke.com' }), getEffectiveUser: () => ({ getEmail: () => 'me@ke.com' }) },
+  });
+  // 추천: A1(완료) 견적 + 구매이력, Q9 자신은 뺌
+  const hints = JSON.parse(JSON.stringify(ctx.apiVendorHints('Q9')));
+  assert.deepStrictEqual(hints.map(h => [h.name, h.quoted, h.lowest, h.bought]), [['CBOL', 1, 1, 2], ['PPG', 0, 0, 1], ['OMI', 1, 0, 0]]);
+  assert.strictEqual(ctx.apiVendorStats().length, 3);
+  const r = ctx.apiRestoreArchived(['A1', 'A2', 'A3']);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(r)), { restored: 2, skipped: 1, history: 1 });
+  const rows = db.tabs['진행기록'].rows;
+  assert.deepStrictEqual(rows.slice(1).map(x => [x[0], x[7]]), [['Q9', '메일 초안'], ['A2', 'PO 발행'], ['A1', '메일 초안']]);
+  assert.deepStrictEqual(arc.tabs['완료기록'].rows.slice(1).map(x => x[0]), ['A3']);
+  assert.strictEqual(db.tabs['구매이력'].rows.length, 3);
+  assert.ok(ctx.apiMyRecords().records.some(x => x.id === 'A1'));
+});

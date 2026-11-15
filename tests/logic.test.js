@@ -723,3 +723,23 @@ test('사업부 확인 요청 메일: 인사 · 본문 · 제목 링크 · 감�
   assert.ok(m.html.endsWith('<div><b>서명</b></div></div>'));
   assert.ok(/^안녕하십니까 자재구매 김민형입니다\n\n해당 건/.test(m.text));
 });
+
+test('업체 성적표 · 추천: 요청·회신·견적·최저가(원화)·선정·구매·평균 L/T', () => {
+  const rfq = (created, vendors, items, quote) => ({ kind: '견적요청서', created, vendors, items: items.map(i => ({ item: i })), quote });
+  const recs = [
+    rfq('2026-10-01', ['OMI', 'CBOL', 'AERO'], ['K1', 'K2'], { rates: { USD: 1400 }, noReply: { AERO: true }, items: [
+      { quotes: { OMI: { price: '10', cur: 'USD', lt: '4wks' }, CBOL: { price: '13000', cur: 'KRW', lt: '6' , sel: true } } },
+      { quotes: { OMI: { price: 'NO BID' }, CBOL: { price: '5', cur: 'USD', lt: '2wks' } } }] }),
+    rfq('2026-11-02', ['OMI', 'CBOL'], ['K3'], { rates: { USD: 1400 }, items: [{ quotes: { OMI: { price: '3', cur: 'USD', lt: '8' } } }] }),
+    { kind: '계약 구매내역서', vendors: ['X'] }];
+  const H = [['등록일', '소요제기 일자', 'Item', 'Description', '업체'], ['', '', 'K1', '', 'CBOL'], ['', '', 'K9', '', 'PPG']];
+  const all = JSON.parse(JSON.stringify(L.vendorStats_(recs, H)));
+  const by = Object.fromEntries(all.map(s => [s.name, s]));
+  assert.deepStrictEqual([by.CBOL.requested, by.CBOL.replied, by.CBOL.quoted, by.CBOL.lowest, by.CBOL.selected, by.CBOL.bought, by.CBOL.replyRate], [2, 1, 2, 1, 1, 1, 50]);
+  assert.deepStrictEqual([by.OMI.requested, by.OMI.replied, by.OMI.quoted, by.OMI.lowest, by.OMI.ltWeeks, by.OMI.last], [2, 2, 2, 0, 6, '2026-11-02']);
+  assert.deepStrictEqual([by.AERO.replied, by.AERO.replyRate], [0, 0]);
+  assert.strictEqual(by.PPG.bought, 1);
+  assert.strictEqual(all[0].name, 'CBOL');                    // 최저가·구매가 많은 업체가 먼저
+  const hint = JSON.parse(JSON.stringify(L.vendorStats_(recs, H, ['k1'])));
+  assert.deepStrictEqual(hint.map(s => [s.name, s.quoted, s.lowest, s.bought, s.items.join()]), [['CBOL', 1, 1, 1, 'K1'], ['OMI', 1, 0, 0, 'K1'], ['AERO', 0, 0, 0, '']]);
+});
