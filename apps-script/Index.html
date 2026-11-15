@@ -33,6 +33,7 @@
   --bar-plan: #f1cf6a;
   --bar-plan-edge: #c79a1d;
   --bar-plan-ink: #3a2d05;
+  --gc0: #2f5fd0; --gc1: #0e8a74; --gc2: #7b52c9; --gc3: #b8730f; --gc4: #c23b72; --g-tint: 7%;
   --font-body: "IBM Plex Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
   --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   --r: 8px;
@@ -43,6 +44,7 @@
     --accent: #7b9cff; --accent-ink: #0d1324; --accent-soft: #24345f; --ok: #5fd39a; --ok-soft: #173426;
     --spot: #f0a066; --spot-soft: #3a2616; --warn: #ff8a80; --warn-soft: #3d1c1a; --priced: #f3cf73; --fill-priced: #3a3016; --bar-stock: #5d6678; --bar-stock-ink: #eef1f6;
     --bar-plan: #c9a43c; --bar-plan-edge: #f1cf6a; --bar-plan-ink: #1b1503; color-scheme: dark;
+  --gc0: #7b9cff; --gc1: #45cdb3; --gc2: #b39bff; --gc3: #f0b45a; --gc4: #ff8fb6; --g-tint: 13%; --line: #39445c; --muted: #a7b1c5;
   }
 }
 :root[data-theme="dark"] {
@@ -50,6 +52,7 @@
   --accent: #7b9cff; --accent-ink: #0d1324; --accent-soft: #24345f; --ok: #5fd39a; --ok-soft: #173426;
   --spot: #f0a066; --spot-soft: #3a2616; --warn: #ff8a80; --warn-soft: #3d1c1a; --priced: #f3cf73; --fill-priced: #3a3016; --bar-stock: #5d6678; --bar-stock-ink: #eef1f6;
   --bar-plan: #c9a43c; --bar-plan-edge: #f1cf6a; --bar-plan-ink: #1b1503; color-scheme: dark;
+  --gc0: #7b9cff; --gc1: #45cdb3; --gc2: #b39bff; --gc3: #f0b45a; --gc4: #ff8fb6; --g-tint: 13%; --line: #39445c; --muted: #a7b1c5;
 }
 
 * { box-sizing: border-box }
@@ -108,11 +111,12 @@ main { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px }
 .dm-subject { font: 500 .88rem var(--font-data); padding: 8px 10px; background: var(--surface-2); border-radius: 6px; word-break: break-all }
 .dm-vendors { display: grid; gap: 8px; min-height: 0 }
 .dm-list { max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)) }
-.dm-v { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); align-self: start }
+.dm-v { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); align-self: stretch; min-width: 0 }
 .dm-v:has(.dm-vhead input:checked), .dm-v:has(.dm-vhead input:indeterminate) { background: var(--accent-soft) }
 .dm-vhead { display: flex; align-items: center; gap: 6px; padding: 7px 8px 7px 12px }
 .dm-vhead label { flex: 1; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: center; cursor: pointer; min-width: 0 }
-.dm-vhead small { grid-column: 2; color: var(--muted); font: .75rem var(--font-data); word-break: break-all }
+.dm-vhead small { grid-column: 2; color: var(--muted); font: .75rem var(--font-data); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0 }
+.dm-vhead label > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
 .dm-more { border: 1px solid var(--line); background: var(--surface); color: var(--accent); border-radius: 999px; padding: 3px 9px; font: 600 .74rem var(--font-body); cursor: pointer; white-space: nowrap }
 .dm-people { display: grid; gap: 2px; padding: 0 10px 8px 34px }
 .dm-people label { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; align-items: center; padding: 4px 6px; border-radius: 6px; cursor: pointer; font: .8rem var(--font-data); word-break: break-all }
@@ -242,7 +246,7 @@ main { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px }
 .rec-vfoot { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; padding-top: 4px }
 
 /* 진행 중 */
-.rec-list { display: grid; gap: 10px }
+.rec-list { display: grid; gap: 14px }
 .rec { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface) }
 .rec-title { font-weight: 600; word-break: break-all }
 .rec-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .8rem; color: var(--muted) }
@@ -317,7 +321,11 @@ a.btn-ghost { display: inline-block; text-decoration: none; border-radius: 6px }
 .lt-dl.late { color: var(--warn); font-weight: 600 }
 .po-dl b { font: 600 .8rem var(--font-data); color: var(--ink) }
 .po-dl.late, .po-dl.late b { color: var(--warn) }
-.rec-group { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2) }
+.rec-group { display: grid; gap: 8px; padding: 10px 10px 10px 12px; border: 1px solid color-mix(in srgb, var(--gc, var(--line)) 32%, var(--line)); border-left: 5px solid var(--gc, var(--line)); border-radius: 12px;
+  background: color-mix(in srgb, var(--gc, var(--muted)) var(--g-tint), var(--surface)) }
+.gc0 { --gc: var(--gc0) } .gc1 { --gc: var(--gc1) } .gc2 { --gc: var(--gc2) } .gc3 { --gc: var(--gc3) } .gc4 { --gc: var(--gc4) }
+.rec.solo { border-left: 5px solid var(--gc) }
+.rec-gtitle::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--gc, var(--muted)); margin-right: 8px; vertical-align: 1px }
 .rec-ghead { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; padding: 2px 4px }
 .rec-gtitle { font-weight: 700 }
 .rec-ghead .btn-ghost { padding: 5px 12px; font-size: .82rem }
@@ -2047,7 +2055,7 @@ function renderDraftVendors(d, keep) {
   $('dmList').innerHTML = d.vendors.length ? d.vendors.map(function (v, i) {
     var people = v.people || v.emails.map(function (m) { return { email: m, contact: '' }; });
     return '<div class="dm-v" data-v="' + i + '"><div class="dm-vhead"><label><input type="checkbox" data-vall="' + i + '"><span><b>' + esc(v.name) + '</b></span>' +
-        '<small>' + esc(v.emails.join(', ')) + '</small></label>' +
+        '<small title="' + esc(v.emails.join(', ')) + '">' + esc(v.emails[0] || '') + (v.emails.length > 1 ? ' 외 ' + (v.emails.length - 1) + '개' : '') + '</small></label>' +
         '<button type="button" class="dm-more" data-more="' + i + '" aria-expanded="false">담당자 ' + people.length + '명 ▾</button></div>' +
       '<div class="dm-people" hidden>' + people.map(function (p) {
         return '<label><input type="checkbox" data-v="' + i + '" data-e="' + esc(p.email) + '"' + (keep.indexOf(p.email) >= 0 ? ' checked' : '') + '><span>' + esc(p.email) + '</span>' + (p.contact ? '<small>' + esc(p.contact) + '</small>' : '') + '</label>';
@@ -2863,12 +2871,15 @@ function renderRecords() {
   }
   var q = ($('recFind').value || '').trim().toLowerCase(), all = state.records || [];
   var groups = recGroups(all).filter(function (g) { return g.recs.some(function (r) { return recMatch(r, q); }); });
+  state.lastGc = -1;
   $('recShown').textContent = (q || state.recKind !== 'all') ? '맞는 묶음 ' + groups.length + '개' : '';
   $('recList').innerHTML = !all.length ? emptyHtml('inbox', '진행 중인 기록이 없습니다.<br>구매내역서나 견적요청서를 만들면 여기에 쌓입니다.')
     : !groups.length ? emptyHtml('search', '찾는 기록이 없습니다.') : groups.map(function (g) {
-      if (g.recs.length === 1) return recCard(g.recs[0]);
+      var h = 0; String(g.key).split('').forEach(function (ch) { h = (h * 31 + ch.charCodeAt(0)) % 9973; });
+      var c = h % 5; if (c === state.lastGc) c = (c + 1) % 5; state.lastGc = c;
+      if (g.recs.length === 1) return recCard(g.recs[0]).replace('<div class="rec', '<div class="gc' + c + ' solo rec');
       var kinds = {}; g.recs.forEach(function (r) { kinds[r.kind] = (kinds[r.kind] || 0) + 1; });
-      return '<div class="rec-group"><div class="rec-ghead"><div><span class="rec-gtitle">소요제기 · ' + esc(g.reqDates.length ? g.reqDates.join(' · ') : g.created) + '</span><span class="muted"> 파일 ' + g.recs.length + '개 · ' +
+      return '<div class="rec-group gc' + c + '"><div class="rec-ghead"><div><span class="rec-gtitle">소요제기 · ' + esc(g.reqDates.length ? g.reqDates.join(' · ') : g.created) + '</span><span class="muted"> 파일 ' + g.recs.length + '개 · ' +
           esc(Object.keys(kinds).map(function (k) { return k + (kinds[k] > 1 ? ' ' + kinds[k] : ''); }).join(' / ')) + '</span></div>' +
           '<button class="btn-ghost" type="button" data-gdone="' + esc(g.recs.map(function (r) { return r.id; }).join(',')) + '">모두 완료</button></div>' +
         g.recs.map(function (r) { return recCard(r, r._child); }).join('') + '</div>';
