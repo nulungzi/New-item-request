@@ -443,7 +443,10 @@ function keyForHeader_(h) {
  * 등록 값 검사. rec: {item, priceMode, supplier, price, cur, start, end, moq, ... , 'x:머리글': 값}
  * 반환: {errors: [...], rec: 정리된 값(날짜는 Date, 숫자는 Number)}
  */
-function validateNewItem_(rec, contracts) {
+/* SPOT 신규 자재는 UOM · Description · Type(시트에 열이 있으면) 만 적음 (QPL 선택) */
+var SPOT_FIELDS = ['item', 'priceMode', 'uom', 'qpl', 'desc'];
+function isTypeKey_(k) { return /^x:\s*type$/i.test(String(k || '')); }
+function validateNewItem_(rec, contracts, typeKey) {
   var e = [], out = {};
   Object.keys(rec || {}).forEach(function (k) { out[k] = typeof rec[k] === 'string' ? rec[k].trim() : rec[k]; });
   out.item = itemKey_(rec.item);
@@ -466,6 +469,11 @@ function validateNewItem_(rec, contracts) {
     if (!hasPrice) e.push('LTA·3PP는 단가가 필요합니다.');
     if (!out.cur) e.push('LTA·3PP는 통화(CUR)가 필요합니다.');
     if (!out.start || !out.end) e.push('LTA·3PP는 계약시작과 계약종료가 필요합니다.');
+  }
+  if (out.priceMode === 'SPOT') {
+    if (!String(out.uom || '').trim()) e.push('SPOT은 UOM이 필요합니다.');
+    if (!String(out.desc || '').trim()) e.push('SPOT은 Description이 필요합니다.');
+    if (typeKey && !String(out[typeKey] || '').trim()) e.push('SPOT은 Type이 필요합니다.');
   }
   if (out.start && out.end && out.start > out.end) e.push('계약종료가 계약시작보다 빠릅니다.');
   var moqN = toNumber_(rec.moq);
@@ -1238,7 +1246,8 @@ function rfqEmail_(items, due, signatureHtml, remind) {
     }).join('') + '</table>';
   var p = function (t) { return '<p style="margin:0 0 14px;font-family:Arial,sans-serif;font-size:10pt">' + t + '</p>'; };
   var dueLine = 'We would like to have a quote on the items as you can find in the below' + (due ? ' due ' + e(due) : ' ASAP') + '.';
-  if (remind) dueLine = 'This is a kind reminder of our RFQ' + (remind.sentOn ? ' sent on ' + e(remind.sentOn) : '') + '. We have not received your quotation yet, ' +
+  if (remind && remind.revised) dueLine = 'Please note that our RFQ has been revised (items or quantities have changed). ' + dueLine;
+  else if (remind) dueLine = 'This is a kind reminder of our RFQ' + (remind.sentOn ? ' sent on ' + e(remind.sentOn) : '') + '. We have not received your quotation yet, ' +
     'and we would appreciate it if you could send it' + (due ? ' by ' + e(due) : ' as soon as possible') + '.';
   var html = '<div>' + p('Dear Sir/Madam,') + p('Hope you are doing well.') + p(dueLine) +
     p('Please review and let us know the relevant information attached.') + p('Below is the summary of the RFQ') +
@@ -1249,6 +1258,59 @@ function rfqEmail_(items, due, signatureHtml, remind) {
     .concat(['', 'Thank you']).join('\n');
   return { html: html, text: text };
 }
+
+/* ------------------------------------------------------------------
+ * 견적요청서 수정 (메일을 보낸 뒤에도 품목 추가·제거·수량·Need-by 변경)
+ * ------------------------------------------------------------------ */
+/** 기록의 품목(합친 줄 또는 목록형 줄) → 화면에서 고치는 한 줄 = Need-by 한 건 */
+function rfqLines_(items) {
+  var out = [];
+  (items || []).forEach(function (it) {
+    var base = {};
+    ['item', 'name', 'desc', 'qpl', 'uom', 'remark', 'material', 'registered'].forEach(function (k) { if (it[k] !== undefined) base[k] = it[k]; });
+    var ps = it.parts && it.parts.length ? it.parts : [{ qty: it.qty, needBy: it.needBy, program: it.program }];
+    ps.forEach(function (p) {
+      var o = {};
+      Object.keys(base).forEach(function (k) { o[k] = base[k]; });
+      o.qty = p.qty; o.needBy = p.needBy ? fmtDate_(toDate_(p.needBy)) || String(p.needBy) : ''; o.program = p.program || '';
+      out.push(o);
+    });
+  });
+  return out;
+}
+/** 견적요청서 양식: 기록에 없으면 제목으로 (양식 2 는 RFQ_YYMMDD_…) */
+function rfqTemplateOf_(rec) { return rec.template || (/^RFQ_\d{6}/.test(String(rec.title || '')) ? 'list' : 'month'); }
+function rfqRowKey_(it) { return itemKey_(it.item) || itemKey_(it.name); }
+/**
+ * 고친 품목에 맞춰 입력한 견적을 옮김 (같은 Item 끼리, 목록형은 Need-by 까지 같으면 우선)
+ *   → {quoteItems: 새 품목 순서의 견적, added: [Item], removed: [Item]}
+ */
+function remapRfqQuote_(oldRows, oldQuoteItems, newRows) {
+  var used = {}, q = oldQuoteItems || [];
+  var find = function (row, exact) {
+    for (var i = 0; i < oldRows.length; i++) {
+      if (used[i] || rfqRowKey_(oldRows[i]) !== rfqRowKey_(row)) continue;
+      if (exact && fmtDate_(toDate_(oldRows[i].needBy)) !== fmtDate_(toDate_(row.needBy))) continue;
+      return i;
+    }
+    return -1;
+  };
+  var idx = newRows.map(function (r) { var i = find(r, true); if (i >= 0) used[i] = 1; return i; });
+  idx = idx.map(function (i, k) { if (i >= 0) return i; var j = find(newRows[k], false); if (j >= 0) used[j] = 1; return j; });
+  var oldKeys = uniq_(oldRows.map(rfqRowKey_)), newKeys = uniq_(newRows.map(rfqRowKey_));
+  return {
+    quoteItems: idx.map(function (i) { return i >= 0 && q[i] ? q[i] : { quotes: {} }; }),
+    added: newKeys.filter(function (k) { return oldKeys.indexOf(k) < 0; }),
+    removed: oldKeys.filter(function (k) { return newKeys.indexOf(k) < 0; })
+  };
+}
+/** 수정한 뒤 아직 메일을 안 보냈는지 (다음 메일은 [Revised]) */
+function rfqRevisedPending_(rec) {
+  if (!rec || !rec.rev || !rec.rev.at) return false;
+  var ms = rec.mails || [], last = ms[ms.length - 1];
+  return !last || String(last.at || '') < String(rec.rev.at);
+}
+function revisedTitle_(title) { return '[Revised] ' + String(title || '').replace(/^\[(Revised|Reminder)\]\s*/i, ''); }
 
 /* ------------------------------------------------------------------
  * 견적요청서 템플릿 2 (목록형): Need-by 마다 한 줄 (같은 자재여도 다음 줄)

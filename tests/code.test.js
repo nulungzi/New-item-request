@@ -81,18 +81,18 @@ test('apiRegisterItem: 자재정보 맨 아래에 머리글 순서대로 추가,
     LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
   };
   inContext(ctx);
-  const res = ctx.apiRegisterItem({ item: 'kern99999-001', priceMode: 'SPOT', supplier: 'Hexcel', shipFrom: 'Air', desc: 'PREPREG' });
+  const res = ctx.apiRegisterItem({ item: 'kern99999-001', priceMode: 'SPOT', supplier: 'Hexcel', shipFrom: 'Air', desc: 'PREPREG', uom: 'RL' });
   assert.deepStrictEqual([res.row, res.item, res.mode], [4, 'KERN99999-001', 'SPOT']);
   assert.strictEqual(written.length, 1);
   assert.deepStrictEqual(JSON.parse(JSON.stringify(written[0].v[0])), [2, 'KERN99999-001', 'SPOT', 'Hexcel', '', '', '', '', '', 'Air', 'PREPREG']);
   assert.throws(() => ctx.apiRegisterItem({ item: 'B', priceMode: 'LTA' }), /업체명/);
   // 여러 줄: 하나라도 틀리면 아무것도 안 씀, 같은 묶음 안의 겹치는 SPOT 도 막음
-  const bad = ctx.apiRegisterItems([{ item: 'C1', priceMode: 'SPOT', supplier: 'X' }, { item: 'C1', priceMode: 'spot', supplier: 'x' }, {}, { item: 'C2', priceMode: 'LTA' }]);
+  const bad = ctx.apiRegisterItems([{ item: 'C1', priceMode: 'SPOT', supplier: 'X', uom: 'EA', desc: 'D' }, { item: 'C1', priceMode: 'spot', supplier: 'x', uom: 'EA', desc: 'D' }, {}, { item: 'C2', priceMode: 'LTA' }]);
   assert.strictEqual(bad.ok, false);
   assert.deepStrictEqual(JSON.parse(JSON.stringify(bad.errors.map(e => [e.i, e.item]))), [[1, 'C1'], [3, 'C2']]);
   assert.match(bad.errors[0].messages[0], /이번 1번째 줄/);
   assert.strictEqual(written.length, 1);
-  const good = ctx.apiRegisterItems([{ item: 'D1', priceMode: 'SPOT', supplier: 'X' }, { item: 'D2', priceMode: 'LTA', supplier: 'PPG', price: '2.5', cur: 'usd', start: '2027-01-01', end: '2027-12-31' }, {}]);
+  const good = ctx.apiRegisterItems([{ item: 'D1', priceMode: 'SPOT', supplier: 'X', uom: 'EA', desc: 'D' }, { item: 'D2', priceMode: 'LTA', supplier: 'PPG', price: '2.5', cur: 'usd', start: '2027-01-01', end: '2027-12-31' }, {}]);
   assert.deepStrictEqual(JSON.parse(JSON.stringify([good.ok, good.added.map(a => [a.row, a.item])])), [true, [[4, 'D1'], [5, 'D2']]]);
   assert.deepStrictEqual(JSON.parse(JSON.stringify(written[1].v.map(r => [r[0], r[1], r[4], r[5]]))), [[2, 'D1', '', ''], [3, 'D2', 2.5, 'USD']]);
   // 초기화: 등록 양식 필드는 시트 머리글 순서
@@ -545,4 +545,151 @@ test('완료 취소: 진행 중으로 되돌리고 상태 복원, 올린 구매 
   assert.deepStrictEqual(arc.tabs['완료기록'].rows.slice(1).map(x => x[0]), ['A3']);
   assert.strictEqual(db.tabs['구매이력'].rows.length, 3);
   assert.ok(ctx.apiMyRecords().records.some(x => x.id === 'A1'));
+});
+
+test('파일 만들기 속도: 붙은 칸 쓰기를 묶어도 결과는 칸마다 하나씩 쓸 때와 똑같음', () => {
+  const L = require('./load.js').load();
+  const d = s => L.toDate_(s);
+  // 시트 호출을 칸 단위 사건으로 기록하는 가짜 스프레드시트
+  const mkBook = () => {
+    const log = [], calls = { n: 0 };
+    const norm = v => (typeof v === 'string' && v.charAt(0) === '=') ? ['f', v] : v instanceof Date ? ['d', v.toISOString()] : ['v', v];
+    const rng = (s, r, c, nr = 1, nc = 1) => {
+      const each = (f) => { for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) f(r + i, c + j, i, j); };
+      const ev = (k, x) => each((rr, cc) => log.push([s, rr, cc, k, x]));
+      const range = {
+        setValue: v => { calls.n++; if (v === undefined) throw new Error('undefined'); ev(...norm(v)); return range; },
+        setFormula: f => { calls.n++; ev('f', f); return range; },
+        setValues: m => { calls.n++; each((rr, cc, i, j) => { if (m[i][j] === undefined) throw new Error('undefined in setValues'); log.push([s, rr, cc, ...norm(m[i][j])]); }); return range; },
+        setBackground: x => { calls.n++; ev('bg', x); return range; },
+        setBackgrounds: m => { calls.n++; each((rr, cc, i, j) => log.push([s, rr, cc, 'bg', m[i][j]])); return range; },
+        setNumberFormat: x => { calls.n++; ev('nf', x); return range; },
+        setNumberFormats: m => { calls.n++; each((rr, cc, i, j) => log.push([s, rr, cc, 'nf', m[i][j]])); return range; },
+        copyTo: (t) => { calls.n++; log.push(['copy', s, r, c, nr, nc, t._at]); },
+        merge: () => { calls.n++; log.push(['merge', s, r, c, nr, nc]); }, breakApart: () => { calls.n++; log.push(['unmerge', s, r, c, nr, nc]); },
+        setBorder: (...a) => { calls.n++; log.push(['border', s, r, c, nr, nc, JSON.stringify(a)]); return range; },
+        setDataValidation: () => { calls.n++; log.push(['dv', s, r, c, nr, nc]); }, insertCheckboxes: () => { calls.n++; log.push(['cb', s, r, c, nr, nc]); },
+        setWrap: x => { calls.n++; log.push(['wrap', s, r, c, x]); }, clear: () => { calls.n++; log.push(['clear', s, r, c, nr, nc]); },
+        _at: [s, r, c],
+      };
+      return range;
+    };
+    const sheets = {};
+    const sheet = n => sheets[n] || (sheets[n] = { getRange: (r, c, nr, nc) => rng(n, r, c, nr, nc),
+      setRowHeight: (r, h) => { calls.n++; log.push(['h', n, r, h]); }, setColumnWidth: (c, w) => { calls.n++; log.push(['w', n, c, w]); },
+      setFrozenRows: x => { calls.n++; log.push(['fr', n, x]); }, setFrozenColumns: x => { calls.n++; log.push(['fc', n, x]); },
+      deleteColumns: (c, k) => { calls.n++; log.push(['delc', n, c, k]); }, getConditionalFormatRules: () => [], setConditionalFormatRules: x => { calls.n++; log.push(['cf', n, x.length]); } });
+    return { log, calls, ss: { getSheetByName: sheet, getSpreadsheetTimeZone: () => 'Asia/Seoul' } };
+  };
+  const chain = new Proxy({}, { get: () => () => chain });
+  const ctx = inContext({
+    SpreadsheetApp: { CopyPasteType: { PASTE_FORMAT: 'F' }, BorderStyle: { SOLID: 'S', SOLID_MEDIUM: 'M' }, newDataValidation: () => chain, newConditionalFormatRule: () => chain },
+    Utilities: { parseDate: (s) => new Date(s + 'T00:00:00+09:00') },
+  });
+  const lines = Array.from({ length: 22 }, (_, i) => ({ item: 'KERC' + (100 + i), qty: 5 + i, needBy: d('2027-0' + (1 + i % 8) + '-10'), supplier: i % 2 ? 'AKZO' : 'PPG', cur: i % 3 ? 'USD' : 'KRW',
+    price: 10 + i, priceMode: 'LTA', material: '화공', desc: 'PRIMER ' + i, product: 'P', shipFrom: i % 4 ? 'Ocean' : '', leadtime: i % 5 ? '10wks' : '', uom: 'KT', remark: i % 6 ? '' : '분납', program: i % 7 ? 'AH-64E' : '',
+    needs: i === 3 ? [{ needBy: '2027-01-10', qty: 3 }, { needBy: '2027-04-10', qty: 5 }] : undefined }));
+  const base = d('2026-11-15');
+  const spotItems = [
+    { item: 'KERN00278-001', desc: 'FEP FILM', material: 'FEP', qpl: 'Airtech', uom: 'RL', qty: 64, needBy: d('2027-05-10'), program: '공통', prev: { year: 2026, qty: 24, cur: 'usd', price: 964.19 },
+      quotes: { Airtech: { sel: true, review: 'Sole source', qty: 64, mfg: 'A4000V', uom: 'RL', price: 1, cur: 'usd', lt: '4~6' }, Hexcel: { price: 'no bid' }, '3M': { price: 2, cur: 'EUR', qty: 64 } } },
+    { item: 'MS20995C20', desc: 'Safety Wire', uom: 'RL', qty: 3, needBy: d('2027-01-15'), program: '', quotes: {} },
+    L.fixedSpotItem_({ item: 'KERC00064', supplier: 'AKZO', qty: 1100, uom: 'KT', price: 78.49, cur: 'USD', priceMode: 'LTA', needBy: '2027-05-14', needs: [{ needBy: '2027-05-14', qty: 500 }, { needBy: '2027-06-20', qty: 600 }], desc: 'PRIMER' })];
+  const rfqItems = [{ item: 'MS20995C20', registered: false, name: 'MS20995C20', desc: 'Safety Wire', qpl: 'MALIN', uom: 'RL', qty: 3, needBy: d('2027-01-15') },
+    { item: 'KERC00016', registered: true, name: 'PR-1776', desc: 'PRIMER', qpl: 'PPG', uom: 'KT', remark: '', qty: 5, needBy: d('2027-03-01'), parts: [{ qty: 2, needBy: '2027-03-01' }, { qty: 3, needBy: '2027-06-01' }] }];
+  const plans = {
+    contract: L.buildPurchasePlan_(lines, ['USD'], { USD: 1400 }, base).concat(L.scheduleConfirmOps_(base, null, {})),
+    spot: L.buildSpotPlan_(spotItems, ['Airtech', 'Hexcel', '3M'], { USD: 1355.6, EUR: 1740.98 }, base, null, { title: 'T', confirmer: '홍길동' }),
+    rfq: L.buildRfqPlan_(rfqItems, base),
+    rfq2: L.buildRfq2Plan_(L.splitRfqItems_(rfqItems)),
+  };
+  for (const [name, ops] of Object.entries(plans)) {
+    const one = mkBook(), many = mkBook();
+    ctx.applyPlan_(one.ss, ops, { batch: false });
+    ctx.applyPlan_(many.ss, ops);
+    assert.strictEqual(JSON.stringify(many.log), JSON.stringify(one.log), name + ': 결과가 달라짐');
+    assert.ok(many.calls.n < one.calls.n, name + ': 호출이 줄지 않음');
+    console.log('#', name, '시트 호출', one.calls.n, '→', many.calls.n);
+  }
+});
+
+test('SPOT 신규 자재: UOM · Description · Type(열이 있을 때) 필요', () => {
+  const values = [['Item', '계약 구분', 'UOM', 'QPL', 'Description', 'Type'], ['A1', 'SPOT', 'EA', '', 'X', 'Chemical']];
+  const written = [];
+  const sheet = { getDataRange: () => ({ getValues: () => values }), getLastRow: () => values.length, getRange: () => ({ setValues: v => written.push(v), copyTo: () => {}, setNumberFormat: () => {} }) };
+  const ctx = inContext({ SpreadsheetApp: { getActive: () => ({ getSheetByName: () => sheet }), CopyPasteType: { PASTE_FORMAT: 'F' } },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }) }, LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) } });
+  const bad = ctx.apiRegisterItems([{ item: 'N1', priceMode: 'SPOT' }]);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(bad.errors[0].messages)), ['SPOT은 UOM이 필요합니다.', 'SPOT은 Description이 필요합니다.', 'SPOT은 Type이 필요합니다.']);
+  const ok = ctx.apiRegisterItems([{ item: 'N1', priceMode: 'SPOT', uom: 'RL', desc: 'TAPE', 'x:Type': 'Tape' }]);
+  assert.strictEqual(ok.ok, true);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(written[0][0])), ['N1', 'SPOT', 'RL', '', 'TAPE', 'Tape']);
+  // 잠금을 오래 못 받으면 한국어 안내
+  const busy = inContext({ SpreadsheetApp: { getActive: () => ({ getSheetByName: () => sheet }) }, PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }) },
+    LockService: { getScriptLock: () => ({ waitLock: () => { throw new Error('Lock timeout'); }, releaseLock: () => {} }) } });
+  assert.throws(() => busy.apiRegisterItems([{ item: 'N2', priceMode: 'SPOT', uom: 'EA', desc: 'D', 'x:Type': 'T' }]), /다른 분이 지금 저장하는 중/);
+});
+
+test('견적요청서 수정: 새 파일(예전 파일은 이름만 바꿈), 견적 옮김, 다음 메일은 [Revised] · 업체 더함', () => {
+  const db = fakeBook({ 업체목록: [['업체명', '이메일'], ['Hexcel', 'a@hexcel.com'], ['3M', 'q@3m.com']] });
+  let drafts = [], n = 0, clock = '2026-11-16 10:00';
+  const rfqBook = id => ({ getUrl: () => 'URL-' + id, getId: () => id, getSheetByName: () => new Proxy({}, { get: () => () => new Proxy({}, { get: (t) => () => t }) }) });
+  const files = {}, renamed = [];
+  const file = id => files[id] || (files[id] = { getId: () => id, setName: x => renamed.push([id, x]), getParents: () => ({ hasNext: () => true, next: () => 'FOLDER' }),
+    makeCopy: (name, folder) => { const nid = 'F' + (++n); files[nid] = file(nid); files[nid].copiedInto = folder; return files[nid]; } });
+  const ctx = inContext({
+    console: { warn: () => {}, log: () => {} },
+    SpreadsheetApp: { getActive: () => db, openById: id => rfqBook(id), CopyPasteType: { PASTE_FORMAT: 'F' }, BorderStyle: { SOLID: 'S', SOLID_MEDIUM: 'M' } },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: k => ({ RFQ_TEMPLATE_ID: 'tpl' })[k] || null }), getUserProperties: () => ({ getProperty: () => '', setProperty: () => {} }) },
+    DriveApp: { getFileById: id => file(id) },
+    LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
+    Session: { getActiveUser: () => ({ getEmail: () => 'me@ke.com' }), getEffectiveUser: () => ({ getEmail: () => 'me@ke.com' }) },
+    Utilities: { formatDate: (d, tz, f) => (f === 'yyyy-MM-dd HH:mm' ? clock : '261116-100000') },
+    UrlFetchApp: { fetch: () => ({ getResponseCode: () => 200, getBlob: () => ({ setName: x => ({ name: x }) }) }) },
+    ScriptApp: { getOAuthToken: () => 't' },
+    GmailApp: { createDraft: (to, subj, text, opt) => { drafts.push({ subj, opt }); return { getId: () => 'D' + drafts.length }; } },
+  });
+  const title = '[KE] RFQ // 261116 Test Material Spot (due 11/20)';
+  const r = ctx.apiCreateRfq({ baseDate: '2026-11-16', title, due: '2026-11-20', items: [
+    { item: 'K1', name: 'A', uom: 'EA', qty: 2, needBy: '2027-01-10' }, { item: 'K2', name: 'B', uom: 'RL', qty: 1, needBy: '2027-02-01' }] });
+  clock = '2026-11-16 10:05';
+  ctx.apiCreateRfqDraft({ recordId: r.recordId, bcc: ['a@hexcel.com'], vendors: ['Hexcel'] });
+  ctx.apiSaveQuotes(r.recordId, { vendors: ['Hexcel'], items: [{ quotes: { Hexcel: { price: '10' } } }, { quotes: { Hexcel: { price: '3' } } }] });
+  clock = '2026-11-16 11:00';
+  assert.throws(() => ctx.apiReviseRfq({ recordId: r.recordId, items: [{ item: 'K9', qty: 1 }] }), /Item name/);
+  const v = ctx.apiReviseRfq({ recordId: r.recordId, baseDate: '2026-11-16', items: [{ item: 'K1', name: 'A', uom: 'EA', qty: 5, needBy: '2027-01-10' }, { item: 'K3', name: 'C', uom: 'KT', qty: 4, needBy: '2027-03-01' }] });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify([v.rev.no, v.rev.added, v.rev.removed])), [1, ['K3'], ['K2']]);
+  assert.deepStrictEqual(renamed, [['F1', title + ' (수정 전 261116-1100)']]);
+  assert.strictEqual(files.F2.copiedInto, 'FOLDER');                      // 같은 폴더에 새 파일
+  let rec = ctx.apiMyRecords().records.find(x => x.id === r.recordId);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify([rec.url, rec.fileId, rec.status, rec.items.map(i => [i.item, i.qty]), rec.quote.items.map(q => q.quotes.Hexcel ? q.quotes.Hexcel.price : '')])),
+    ['URL-F2', 'F2', '견적요청서 수정', [['K1', 5], ['K3', 4]], ['10', '']]);
+  clock = '2026-11-16 11:10';
+  const d = ctx.apiCreateRfqDraft({ recordId: r.recordId, bcc: ['q@3m.com'], vendors: ['3M'] });
+  assert.strictEqual(d.subject, '[Revised] ' + title);
+  assert.match(drafts[1].opt.htmlBody, /has been revised/);
+  rec = ctx.apiMyRecords().records.find(x => x.id === r.recordId);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify([rec.status, rec.vendors, rec.mails.map(m => m.kind)])), ['수정 메일 초안', ['Hexcel', '3M'], ['견적 요청', '수정 요청']]);
+  // 그다음 메일은 다시 보통 (수정 뒤 이미 보냄)
+  clock = '2026-11-16 11:20';
+  assert.strictEqual(ctx.apiCreateRfqDraft({ recordId: r.recordId, bcc: ['q@3m.com'], vendors: ['3M'] }).subject, title);
+});
+
+test('자재 정보: 열 키 + Item 있는 줄, 버전은 DB 새로고침 · 자재 등록 때만 바뀜', () => {
+  const values = [['', '', ''], ['Item', '계약 구분', '업체명', '단가', 'CUR', '계약시작', '메모'], ['A1', 'LTA', 'PPG', 1, 'USD', new Date(2026, 0, 1), 'x'], ['', '', '', '', '', '', ''], ['A2', 'SPOT', '', '', '', '', '']];
+  const props = { MASTER_VER: '100' };
+  const sheet = { getDataRange: () => ({ getValues: () => values }), getLastRow: () => values.length, getRange: () => ({ setValues: () => {}, copyTo: () => {}, setNumberFormat: () => {} }) };
+  const ctx = inContext({ SpreadsheetApp: { getActive: () => ({ getSheetByName: () => sheet }), CopyPasteType: { PASTE_FORMAT: 'F' } },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k] || null, setProperty: (k, v) => { props[k] = v; } }) },
+    LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) }, Utilities: { formatDate: () => '2026-11-16 09:00' } });
+  const m = JSON.parse(JSON.stringify(ctx.apiMasterList()));
+  assert.deepStrictEqual(m.cols.map(c => c.key), ['item', 'priceMode', 'supplier', 'price', 'cur', 'start', 'x:메모']);
+  assert.deepStrictEqual(m.rows.map(r => r[0]), ['A1', 'A2']);
+  assert.strictEqual(m.rows[0][5], '2026-01-01');
+  assert.strictEqual(m.ver, '100');
+  assert.strictEqual(ctx.apiInit().masterVer, '100');              // 그냥 열면 그대로
+  const v1 = ctx.apiInit(true).masterVer;                           // DB 새로고침
+  assert.notStrictEqual(v1, '100');
+  const reg = ctx.apiRegisterItem({ item: 'A3', priceMode: 'SPOT', uom: 'EA', desc: 'D' });
+  assert.ok(reg.masterVer && reg.masterVer === props.MASTER_VER);
 });

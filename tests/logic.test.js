@@ -169,8 +169,8 @@ test('신규 자재 등록 검사와 행 만들기', () => {
     ['Item', '계약 구분', '업체명', '단가', 'CUR', '계약시작', '계약종료'],
     ['A1', 'LTA', 'PPG', 1, 'USD', '2026-01-01', '2026-12-31'],
   ]);
-  // SPOT: Item·구분만 있어도 됨
-  let v = L.validateNewItem_({ item: ' new-1 42l ', priceMode: 'spot', desc: 'SEAL' }, c);
+  // SPOT: Item·구분 + UOM · Description (Type 열이 있으면 Type 도)
+  let v = L.validateNewItem_({ item: ' new-1 42l ', priceMode: 'spot', desc: 'SEAL', uom: 'EA' }, c);
   assert.deepStrictEqual(v.errors, []);
   assert.strictEqual(v.rec.item, 'NEW-1 42L');
   // LTA: 필수값 누락
@@ -742,4 +742,22 @@ test('업체 성적표 · 추천: 요청·회신·견적·최저가(원화)·선
   assert.strictEqual(all[0].name, 'CBOL');                    // 최저가·구매가 많은 업체가 먼저
   const hint = JSON.parse(JSON.stringify(L.vendorStats_(recs, H, ['k1'])));
   assert.deepStrictEqual(hint.map(s => [s.name, s.quoted, s.lowest, s.bought, s.items.join()]), [['CBOL', 1, 1, 1, 'K1'], ['OMI', 1, 0, 0, 'K1'], ['AERO', 0, 0, 0, '']]);
+});
+
+test('견적요청서 수정: 줄 펼치기, 견적 옮기기(같은 Item), 추가·제거, [Revised]', () => {
+  const rows = [{ item: 'K1', name: 'A', uom: 'EA', qty: 5, needBy: '2027-01-10', parts: [{ qty: 2, needBy: '2027-01-10', program: 'X' }, { qty: 3, needBy: '2027-03-10', program: 'Y' }] },
+    { item: 'K2', name: 'B', uom: 'RL', qty: 1, needBy: '2027-02-01', program: 'Z' }];
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(L.rfqLines_(rows).map(l => [l.item, l.qty, l.needBy, l.program, l.uom]))),
+    [['K1', 2, '2027-01-10', 'X', 'EA'], ['K1', 3, '2027-03-10', 'Y', 'EA'], ['K2', 1, '2027-02-01', 'Z', 'RL']]);
+  const q = [{ quotes: { OMI: { price: '10' } } }, { quotes: { CBOL: { price: '5' } } }];
+  const newRows = L.mergeRfqItems_([{ item: 'k3', name: 'C', qty: 4, needBy: '2027-05-01' }, { item: 'K1', name: 'A', qty: 9, needBy: '2027-01-10' }]);
+  const m = L.remapRfqQuote_(rows, q, newRows);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(m)), { quoteItems: [{ quotes: {} }, { quotes: { OMI: { price: '10' } } }], added: ['K3'], removed: ['K2'] });
+  assert.strictEqual(L.rfqTemplateOf_({ title: 'RFQ_261116_KE_HW_KMH_EFAB' }), 'list');
+  assert.strictEqual(L.rfqTemplateOf_({ title: '[KE] RFQ // 261116 X' }), 'month');
+  assert.strictEqual(L.rfqTemplateOf_({ title: 'RFQ_261116_x', template: 'month' }), 'month');
+  assert.strictEqual(L.rfqRevisedPending_({ rev: { at: '2026-11-16 10:00' }, mails: [{ at: '2026-11-15 09:00' }] }), true);
+  assert.strictEqual(L.rfqRevisedPending_({ rev: { at: '2026-11-16 10:00' }, mails: [{ at: '2026-11-16 11:00' }] }), false);
+  assert.strictEqual(L.revisedTitle_('[Reminder] [KE] RFQ // x'), '[Revised] [KE] RFQ // x');
+  assert.match(L.rfqEmail_([{ name: 'A', qty: 1 }], '11/20', '', { revised: true }).html, /has been revised[\s\S]*due 11\/20/);
 });

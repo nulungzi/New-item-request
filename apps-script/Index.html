@@ -235,8 +235,10 @@ main { max-width: 1600px; margin: 0 auto; display: grid; gap: 18px }
 
 /* 진행 중: 견적요청서 펼치기 */
 .rec.rfq .rec-toggle { border: 0; background: transparent; padding: 0; text-align: left; color: inherit; cursor: pointer; display: grid; gap: 6px }
-.rec.rfq .rec-toggle::after { content: "업체별 견적 입력 ▾"; font-size: .78rem; font-weight: 600; color: var(--accent) }
-.rec.rfq.open .rec-toggle::after { content: "접기 ▴" }
+.rec-actions .vq-btn { color: var(--accent); font-weight: 700; border-color: var(--accent); background: var(--accent-soft) }
+.rec-actions .vq-btn[aria-expanded="true"] { background: var(--surface) }
+.rev-chip { color: var(--accent); font-weight: 600 }
+.rev-chip.pending { color: var(--spot) }
 .rec-vendors { grid-column: 1 / -1; display: grid; gap: 6px; padding-top: 10px; border-top: 1px dashed var(--line) }
 .v-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; transition: border-color .12s, background .12s }
@@ -301,11 +303,26 @@ a.btn-ghost { display: inline-block; text-decoration: none; border-radius: 6px }
 .rec-list.compact .rec-meta > span:not(.al-chip):not(.po-chip):not(.cf-sent) { display: none }
 .rec-list.compact .rec-meta { display: inline-flex; margin-left: 6px; vertical-align: 1px }
 .rec-list.compact .rec-toggle, .rec-list.compact .rec > div:first-child { display: flex !important; flex-wrap: wrap; align-items: center; gap: 4px 10px }
-.rec-list.compact .trk { margin-top: 0; width: 150px; flex: 0 0 150px }
-.rec-list.compact .rec-actions { grid-row: 1 }
+.rec-list.compact .rec { grid-template-columns: minmax(0, 1fr) auto auto }
+.rec-list.compact .rec > .trk { grid-row: 1; grid-column: 2; width: 170px; margin-top: 0; align-self: center }
+.rec-list.compact .rec-actions { grid-row: 1; grid-column: 3 }
 .rec-list.compact .rec-actions .btn-ghost, .rec-list.compact .rec-actions .btn { padding: 4px 9px; font-size: .78rem }
 .rec-list.compact .rec-title { font-size: .92rem }
 /* 홈: 오늘 할 일 */
+/* 자재 정보 */
+.ms-tools { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center }
+.ms-tools input[type="search"] { flex: 1 1 280px; max-width: 460px; padding: 7px 10px }
+.ms-tbl td { vertical-align: top }
+.ms-tbl .ms-modes { display: flex; flex-wrap: wrap; gap: 4px }
+.ms-trend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font: .78rem var(--font-data) }
+.ms-trend .yr { padding: 1px 7px; border-radius: 999px; background: var(--surface-2) }
+.ms-trend .yr.now { background: var(--accent-soft); color: var(--accent); font-weight: 600 }
+.ms-trend .up { color: var(--warn); font-weight: 600 } .ms-trend .down { color: var(--ok); font-weight: 600 } .ms-trend .same { color: var(--muted) }
+.ms-sub td { background: var(--surface-2); padding: 0 }
+.ms-sub table { width: 100%; margin: 0 }
+.ms-sub table td, .ms-sub table th { background: transparent; font-size: .8rem }
+.ms-st { font-size: .72rem; padding: 0 7px; border-radius: 999px; background: var(--surface-2); color: var(--muted); white-space: nowrap }
+.ms-st.ok { background: var(--ok-soft); color: var(--ok) } .ms-st.old { opacity: .7 } .ms-st.next { background: var(--accent-soft); color: var(--accent) }
 .today { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px }
 .today-card { display: grid; gap: 4px; text-align: left; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; font: inherit;
   transition: transform .15s ease, box-shadow .15s ease, border-color .15s }
@@ -359,6 +376,17 @@ a.btn-ghost { display: inline-block; text-decoration: none; border-radius: 6px }
 .digest-bar .on { color: var(--ok); font-weight: 600 }
 .digest-prev { white-space: pre-wrap; font-size: .82rem; color: var(--muted); margin: 0; width: 100% }
 .cf-sent { color: var(--ok); font-weight: 600 }
+.modal-box.rv-box { width: min(1320px, 100%); grid-template-rows: auto auto minmax(0, 1fr) auto auto auto }
+.rv-wrap { max-height: 52vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px }
+.rv-tbl th { position: sticky; top: 0; background: var(--surface); z-index: 1 }
+.rv-tbl td { padding: 4px 6px }
+.rv-tbl input { width: 100%; min-width: 60px; padding: 5px 7px; font: .84rem var(--font-body); text-align: left }
+.rv-tbl input[data-f="item"], .rv-tbl input[data-f="qty"], .rv-tbl input[data-f="needBy"] { font-family: var(--font-data) }
+.rv-tbl input[data-f="qty"] { width: 80px; text-align: right }
+.rv-tbl tr.added td { background: var(--ok-soft) }
+.rv-tbl tr.changed td { background: var(--fill-priced) }
+.rv-diff { font-size: .84rem }
+.rv-diff b.add { color: var(--ok) } .rv-diff b.del { color: var(--warn) }
 .modal-box.cf-box { width: min(1000px, 100%); grid-template-rows: auto auto minmax(0, 1fr) auto auto; overflow: auto }
 .cf-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 16px; min-height: 0 }
 .cf-form { display: grid; gap: 10px; align-content: start }
@@ -643,6 +671,12 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-size: .
 .reg-grid .field .data { font-family: var(--font-data) }
 .reg-grid .field.full { grid-column: 1 / -1 }
 .reg-grid .req::after { content: " *"; color: var(--warn) }
+.reg-grid .opt::after { content: " (선택)"; color: var(--muted); font-weight: 400 }
+.reg-grid .field.na { opacity: .4 }
+.reg-grid .field.na input, .reg-grid .field.na select, .reg-grid .field.na textarea { background: var(--surface-2); cursor: not-allowed }
+.reg-note { margin: 0 0 4px; padding: 7px 12px; border-radius: 8px; background: var(--surface); border: 1px dashed var(--line); font-size: .84rem; color: var(--muted) }
+.reg-note b { color: var(--ink) }
+#itTbl td.na input, #itTbl td.na select { background: var(--surface-2); opacity: .45 }
 .reg-mode { display: flex; gap: 6px; flex-wrap: wrap }
 .reg-mode label { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); cursor: pointer; font: 600 .8rem var(--font-data) }
 .reg-mode input { width: auto; margin: 0 }
@@ -760,6 +794,12 @@ table.list td.nw { white-space: nowrap }
 .trk-s { flex: 1 1 0; min-width: 0; display: grid; justify-items: center; gap: 4px; position: relative; font-size: .7rem; line-height: 1.25; color: var(--muted); text-align: center }
 .trk-s::before { content: ''; position: absolute; top: 6px; right: 50%; width: 100%; height: 2px; background: var(--line); transform-origin: left }
 .trk-s:first-child::before { display: none }
+button.trk-s { border: 0; background: transparent; padding: 2px 0; margin: 0; font: inherit; font-size: .7rem; line-height: 1.25; border-radius: 6px }
+button.trk-s:not(:disabled) { cursor: pointer }
+button.trk-s:not(:disabled):hover .trk-l { color: var(--accent); text-decoration: underline }
+button.trk-s:not(:disabled):hover .trk-d { box-shadow: 0 0 0 4px var(--accent-soft) }
+button.trk-s:disabled { cursor: default; opacity: 1 }
+button.trk-s:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
 .trk-s.done::before, .trk-s.cur::before { background: var(--accent) }
 .trk-d { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); background: var(--surface); position: relative; z-index: 1; display: grid; place-items: center }
 .trk-s.done { color: var(--ink) }
@@ -916,6 +956,7 @@ td .empty { border: 0; padding: 18px 8px }
   <button type="button" class="side-btn" data-view="records">진행 중 <span class="side-count" id="recCount"></span><span class="side-alert" id="recAlert"></span></button>
   <div class="side-sep" role="presentation"></div>
   <button type="button" class="side-btn" data-view="items">자재 등록</button>
+  <button type="button" class="side-btn" data-view="master">자재 정보</button>
   <button type="button" class="side-btn" data-view="vendors">업체 등록</button>
   <button type="button" class="side-btn" data-view="history">자재 이력</button>
   <button type="button" class="side-btn" data-view="expiring">계약 만료 <span class="side-count" id="expCount"></span></button>
@@ -1005,6 +1046,7 @@ td .empty { border: 0; padding: 18px 8px }
         <h3>신규 자재 등록</h3>
         <span class="muted">자재정보 시트 맨 아래에 한 줄로 추가됩니다</span>
       </div>
+      <p class="reg-note" id="regNote"></p>
       <form id="regForm" class="reg-grid" novalidate></form>
       <div class="row">
         <button class="btn" id="btnRegSave" type="button">DB에 등록</button>
@@ -1153,6 +1195,21 @@ td .empty { border: 0; padding: 18px 8px }
       <label class="inline" for="expDays">기간<select id="expDays"><option value="30">30일</option><option value="60">60일</option><option value="90" selected>90일</option><option value="180">180일</option></select></label>
     </div>
     <div class="scroll"><table class="list" id="hmExpTbl"></table></div>
+  </div>
+</div>
+
+<div id="viewMaster" class="stack" hidden>
+  <div class="panel">
+    <div class="panel-head"><h2>자재 정보</h2><div class="row"><span class="muted" id="msStamp"></span><button class="btn-ghost" id="msReload" type="button" title="시트에서 다시 받기 (DB 새로고침과 같음)">시트에서 다시 받기</button></div></div>
+    <p class="muted lead">자재정보 시트를 이 브라우저에 저장해 두고 봅니다. <b>자재 등록</b>이나 <b>DB 새로고침</b>이 있을 때만 다시 받으므로 시트를 매번 읽지 않습니다. 같은 자재에 계약이 여러 건(연도 · 업체가 다름)이면 단가가 어떻게 바뀌었는지 같이 보여 줍니다.</p>
+    <div class="ms-tools">
+      <input id="msFind" type="search" placeholder="Item · Description · 업체 · QPL · Type 찾기" autocomplete="off" spellcheck="false" aria-label="자재 찾기">
+      <div class="seg" role="group" aria-label="구분"><button type="button" data-ms="all" aria-pressed="true">전체</button><button type="button" data-ms="LTA" aria-pressed="false">LTA</button><button type="button" data-ms="3PP" aria-pressed="false">3PP</button><button type="button" data-ms="SPOT" aria-pressed="false">SPOT</button></div>
+      <label class="inline"><input type="checkbox" id="msMulti"> 계약 여러 건인 자재만</label>
+      <span class="muted" id="msCount"></span>
+    </div>
+    <div class="scroll"><table class="list ms-tbl" id="msTbl"></table></div>
+    <div class="row" id="msMoreRow" hidden><button class="btn-ghost" id="msMore" type="button">100개 더 보기</button></div>
   </div>
 </div>
 
@@ -1405,6 +1462,17 @@ td .empty { border: 0; padding: 18px 8px }
 </div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
+<div class="modal" id="rvModal" hidden role="dialog" aria-modal="true" aria-labelledby="rvTitle">
+  <div class="modal-box rv-box">
+    <div class="panel-head"><h2 id="rvTitle">소요제기 · 견적요청서 수정</h2><span class="muted" id="rvFile"></span></div>
+    <p class="muted" style="margin:0">메일을 보낸 뒤에도 품목을 더하거나 빼고, 수량 · Need-by 를 고칠 수 있습니다. 한 줄 = Need-by 한 건이고, 같은 Item 은 견적요청서에서 한 줄로 합쳐집니다 (양식 1). 초록 줄은 새로 더한 품목, 노란 줄은 바뀐 줄입니다.</p>
+    <div class="rv-wrap"><table class="list rv-tbl" id="rvTbl"></table></div>
+    <div class="row spread"><button class="btn-ghost" id="rvAdd" type="button">+ 품목 추가</button><span class="rv-diff" id="rvDiff"></span></div>
+    <p class="muted" style="margin:0">저장하면 견적요청서 파일을 같은 폴더에 새로 만들고, 예전 파일은 이름 끝에 "(수정 전 …)" 을 붙여 그대로 둡니다. 입력한 견적은 같은 Item 끼리 이어집니다. 그다음 <b>수정 메일 초안</b>(제목 앞 [Revised])을 만들어 다시 보냅니다.</p>
+    <div class="pk-foot"><span class="err" id="rvMsg"></span><div class="row"><button class="btn-ghost" id="rvCancel" type="button">취소</button><button class="btn" id="rvSave" type="button">저장하고 견적요청서 다시 만들기</button></div></div>
+  </div>
+</div>
+
 <div class="modal" id="cfModal" hidden role="dialog" aria-modal="true" aria-labelledby="cfTitle">
   <div class="modal-box cf-box">
     <div class="panel-head"><h2 id="cfTitle">사업부 확인 요청 메일</h2><span class="muted" id="cfFile"></span></div>
@@ -1489,7 +1557,7 @@ function showLogin(msg, st) {
   st = st || auth.st;
   clearTimeout(auth.timer);
   document.body.classList.add('locked');
-  ['vDrawer', 'draftModal', 'picker', 'rfqPick', 'guide', 'histModal', 'cfModal'].forEach(function (id) { if ($(id)) $(id).hidden = true; });
+  ['vDrawer', 'draftModal', 'picker', 'rfqPick', 'guide', 'histModal', 'cfModal', 'rvModal'].forEach(function (id) { if ($(id)) $(id).hidden = true; });
   $('loginGate').hidden = false;
   $('loginMsg').textContent = msg || '';
   if (st) {
@@ -1755,6 +1823,9 @@ function loadDb(first) {
   return call('apiInit', !first).then(function (d) {   // DB 새로고침이면 캐시 없이 시트에서
     if (first) $('base').value = d.today;
     state.today = d.today;
+    var verChanged = state.masterVer && d.masterVer && state.masterVer !== d.masterVer;
+    state.masterVer = d.masterVer || state.masterVer || '0';
+    if (verChanged && !$('viewMaster').hidden) loadMaster();
     state.rates = Object.assign({}, d.rates || {}, first ? {} : state.rates);
     itemDesc = {};
     (d.items || []).forEach(function (x) { itemDesc[x[0]] = [x[1], x[2] || '', x[3] || '', x[4] || '']; });
@@ -2091,13 +2162,13 @@ function createRfq(tpl, title) {
 var draft = { recordId: null, vendors: null, remind: false };
 function openDraft(recordId, title, remind) {
   draft.recordId = recordId; draft.remind = !!remind;
-  var rec = state.records && recById(recordId);
-  $('dmTitle').textContent = remind ? '재요청 메일 만들기' : '메일 초안 만들기';
+  var rec = state.records && recById(recordId), revised = !remind && rfqRevisedPending(rec);
+  $('dmTitle').textContent = remind ? '재요청 메일 만들기' : revised ? '수정 메일 만들기 (품목이 바뀐 견적요청서)' : '메일 초안 만들기';
   $('dmRemind').hidden = !remind;
-  $('dmOk').textContent = remind ? '재요청 초안 만들기' : '임시보관함에 만들기';
+  $('dmOk').textContent = remind ? '재요청 초안 만들기' : revised ? '수정 메일 초안 만들기' : '임시보관함에 만들기';
   if (remind) $('dmDue').value = rec && rec.due ? rec.due : '';
-  draft.title = String(title).replace(/^\[Reminder\]\s*/i, '');
-  $('dmSubject').textContent = remind ? remindSubject() : title;
+  draft.title = String(title).replace(/^\[(Reminder|Revised)\]\s*/i, '');
+  $('dmSubject').textContent = remind ? remindSubject() : revised ? '[Revised] ' + draft.title : title;
   $('dmMsg').textContent = ''; $('dmAll').checked = false;
   $('draftModal').hidden = false;
   $('dmList').innerHTML = '<div class="pk-empty">업체정보 불러오는 중…</div>';
@@ -2109,6 +2180,8 @@ function openDraft(recordId, title, remind) {
     if (remind && rec) {   // 아직 견적을 입력하지 않은 업체(회신 없음 제외)의 담당자 전부
       var c = quoteFor(rec), wait = (rec.vendors || []).filter(function (v) { return vendorStatus(c, v).cls === ''; });
       d.vendors.forEach(function (v) { if (wait.indexOf(v.name) >= 0) keep = keep.concat(v.emails); });
+    } else if (revised) {   // 수정 메일: 예전에 보낸 업체를 미리 체크
+      d.vendors.forEach(function (v) { if ((rec.vendors || []).indexOf(v.name) >= 0) keep = keep.concat(v.emails); });
     }
     renderDraftVendors(d, keep);
   }).catch(function (e) { $('dmMsg').textContent = e.message || e; });
@@ -2295,6 +2368,7 @@ function quoteFor(rec) {
     vendors: (rec.vendors || []).slice(),            // 메일 초안에서 고른 업체만
     noReply: Object.assign({}, saved.noReply || {}),
     rates: Object.assign({}, state.rates, saved.rates || {}),
+    savedAt: saved.savedAt || '',
     name: saved.name || rec.title.replace(/^\[KE\] RFQ \/\/ /, '') + ' 견적 구매내역서',
     confirmer: saved.confirmer || '',
     items: (rec.items || []).map(function (it, i) {
@@ -2329,9 +2403,21 @@ function quotePayload(c) {
   };
 }
 function saveQuoteSilently(c) {
-  var p = quotePayload(c);
-  c.rec.quote = p;
-  return call('apiSaveQuotes', c.rec.id, p);
+  // 이 창의 저장은 차례로 (앞 저장이 끝난 뒤의 값으로 보냄)
+  var run = function () {
+    var p = quotePayload(c);
+    p.base = c.savedAt || '';   // 서버의 마지막 저장과 같아야 저장 (다른 창이 먼저 저장했으면 거절)
+    return call('apiSaveQuotes', c.rec.id, p).then(function (d) {
+      c.savedAt = d.savedAt; delete p.base; p.savedAt = d.savedAt; c.rec.quote = p;
+      return d;
+    }, function (e) {
+      var m = String((e && e.message) || e);
+      if (/다른 창/.test(m)) toast('<b>견적을 저장하지 않았습니다</b><span class="muted">' + esc(m) + '</span>', 'err');
+      throw e;
+    });
+  };
+  c.saving = (c.saving || Promise.resolve()).catch(function () {}).then(run);
+  return c.saving;
 }
 
 /* 펼친 견적요청서의 업체 목록 */
@@ -2703,7 +2789,7 @@ $('qCreate').onclick = function () {
     b.disabled = true; b.textContent = '만드는 중…';
     return call('apiCreateSpotPurchase', { recordId: qs.rec.id, baseDate: $('base').value, rates: qs.rates, folder: folder.id, name: p.name, confirmer: p.confirmer,
       schedule: schedPayload(), vendors: p.vendors, items: items }).then(function (d) {
-      qs.rec.quote = p;
+      qs.rec.quote = p; qs.savedAt = d.savedAt || qs.savedAt;
       $('qMsg').innerHTML = '<span class="ok-msg">Spot 견적 구매내역서를 ' + esc(folder.name) + '에 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.name) + ' 열기 ↗</a></span>';
       loadRecords();
     });
@@ -2720,9 +2806,11 @@ function showView(v) {
   $('viewItems').hidden = v !== 'items';
   $('viewVendors').hidden = v !== 'vendors';
   $('viewHistory').hidden = v !== 'history';
+  $('viewMaster').hidden = v !== 'master';
+  if (v === 'master') loadMaster();
   if (v === 'records' && !dg.hour) loadDigest();
   if (v === 'records') state.animOnce = true;
-  var shown = $({ home: 'viewHome', 'new': 'viewNew', records: 'viewRecords', items: 'viewItems', vendors: 'viewVendors', history: 'viewHistory', expiring: 'viewExpiring' }[v]);
+  var shown = $({ home: 'viewHome', 'new': 'viewNew', records: 'viewRecords', items: 'viewItems', vendors: 'viewVendors', history: 'viewHistory', expiring: 'viewExpiring', master: 'viewMaster' }[v]);
   if (shown) { shown.classList.remove('view-in'); void shown.offsetWidth; shown.classList.add('view-in'); }
   $('viewExpiring').hidden = v !== 'expiring';
   if (v === 'expiring') loadExpiring();
@@ -2740,18 +2828,26 @@ var IT_LISTS = { priceMode: ['', 'SPOT', 'LTA', '3PP'], cur: ['', 'USD', 'EUR', 
 function renderItemTable(errs) {
   var f = itFields(), em = {};
   (errs || []).forEach(function (e) { em[e.i] = e.messages; });
-  $('itTbl').innerHTML = '<thead><tr><th></th>' + f.map(function (x) { return '<th>' + esc(x.header) + (x.key === 'item' || x.key === 'priceMode' ? ' *' : '') + '</th>'; }).join('') + '<th></th></tr></thead><tbody>' +
+  $('itTbl').innerHTML = '<thead><tr><th></th>' + f.map(function (x) { return '<th' + (spotUses(x.key) ? ' title="SPOT 도 적는 칸"' : ' title="LTA · 3PP 계약일 때 적는 칸"') + '>' + esc(x.header) + (x.key === 'item' || x.key === 'priceMode' ? ' *' : '') + '</th>'; }).join('') + '<th></th></tr></thead><tbody>' +
     state.itRows.map(function (r, i) {
       return '<tr' + (em[i] ? ' class="bad"' : '') + ' data-r="' + i + '"><td class="no">' + (i + 1) + '</td>' + f.map(function (x, c) {
         var v = r[x.key] == null ? '' : String(r[x.key]), key = esc(x.key);
         var ctl = IT_LISTS[x.key] ? '<select data-k="' + key + '" data-c="' + c + '" aria-label="' + (i + 1) + '행 ' + esc(x.header) + '">' + IT_LISTS[x.key].concat(IT_LISTS[x.key].indexOf(v) < 0 ? [v] : []).map(function (o) { return '<option' + (o === v ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select>'
           : '<input data-k="' + key + '" data-c="' + c + '" value="' + esc(v) + '"' + (x.key === 'start' || x.key === 'end' ? ' placeholder="2027-12-31"' : '') + ' aria-label="' + (i + 1) + '행 ' + esc(x.header) + '">';
-        return '<td class="k-' + key.replace(/[^a-z]/gi, '') + '">' + ctl + '</td>';
+        var na = /^spot$/i.test(String(r.priceMode || '').trim()) && !spotUses(x.key);
+        return '<td class="k-' + key.replace(/[^a-z]/gi, '') + (na ? ' na' : '') + '"' + (na ? ' title="SPOT 은 적지 않아도 됩니다"' : '') + '>' + ctl + '</td>';
       }).join('') + '<td><button type="button" class="it-x" data-del="' + i + '" aria-label="' + (i + 1) + '행 지우기">✕</button></td></tr>' +
         (em[i] ? '<tr class="bad"><td></td><td colspan="' + (f.length + 1) + '" class="row-err">⚠ ' + esc(em[i].join(' · ')) + '</td></tr>' : '');
     }).join('') + '</tbody>';
   $('itTbl').querySelectorAll('[data-k]').forEach(function (el) {
-    var h = function () { state.itRows[+el.closest('tr').dataset.r][el.dataset.k] = el.value; };
+    var h = function () {
+      var tr = el.closest('tr');
+      state.itRows[+tr.dataset.r][el.dataset.k] = el.value;
+      if (el.dataset.k === 'priceMode') {   // SPOT 이면 안 쓰는 칸을 회색으로
+        var spot = /^spot$/i.test(el.value.trim());
+        tr.querySelectorAll('[data-k]').forEach(function (x) { var td = x.closest('td'), na = spot && !spotUses(x.dataset.k); td.classList.toggle('na', na); td.title = na ? 'SPOT 은 적지 않아도 됩니다' : ''; });
+      }
+    };
     el.oninput = h; el.onchange = h;
   });
   $('itTbl').querySelectorAll('[data-del]').forEach(function (b) { b.onclick = function () { state.itRows.splice(+b.dataset.del, 1); if (!state.itRows.length) state.itRows.push({}); renderItemTable(); }; });
@@ -2798,6 +2894,7 @@ $('itSave').onclick = function () {
   if (!rows.some(function (r) { return Object.keys(r).some(function (k) { return String(r[k] || '').trim(); }); })) { $('itMsg').innerHTML = '<span class="err">등록할 자재를 입력해 주세요.</span>'; return; }
   b.disabled = true; b.textContent = '검사·등록 중…'; $('itMsg').innerHTML = '';
   call('apiRegisterItems', rows).then(function (d) {
+    if (d.masterVer) state.masterVer = d.masterVer;   // 자재 정보 화면은 다음에 열 때 새로 받음
     if (!d.ok) {
       renderItemTable(d.errors);
       $('itMsg').innerHTML = '<span class="err">' + d.errors.length + '줄을 확인해 주세요 (주황색 줄). 아무것도 등록하지 않았습니다.</span>';
@@ -2914,12 +3011,15 @@ function recCard(r, child) {
   var head = '<div>' + (child ? '<span class="rec-arrow" aria-hidden="true">↳</span>' : '') + '<span class="chip ' + chipCls + '">' + esc(r.kind) + '</span> <span class="rec-title">' + esc(r.title) + '</span></div>' +
     '<div class="rec-meta"><span>' + esc(r.created) + '</span><span>상태: <b>' + esc(r.status) + '</b></span><span>품목 ' + (r.items || []).length + '개</span>' +
       (rfq && (r.fixed || []).length ? '<span>+ 계약 ' + r.fixed.length + '개 같이</span>' : '') +
-      (rfq && (r.vendors || []).length ? '<span>업체 ' + r.vendors.length + '곳</span>' : '') + poMeta(r) + alertChips(r) + cfMeta(r) + '</div>' +
-    (rfq ? mailLine(r) : '') + stageTrack(r);
+      (rfq && (r.vendors || []).length ? '<span>업체 ' + r.vendors.length + '곳</span>' : '') + poMeta(r) + alertChips(r) + cfMeta(r) + revMeta(r) + '</div>' +
+    (rfq ? mailLine(r) : '');
   return '<div class="rec' + (rfq ? ' rfq' : '') + (open ? ' open' : '') + (child ? ' child' : '') + '" data-id="' + esc(r.id) + '">' +
     (rfq ? '<button type="button" class="rec-toggle" data-toggle="' + esc(r.id) + '" aria-expanded="' + !!open + '">' + head + '</button>' : '<div>' + head + '</div>') +
+    stageTrack(r) +
     '<div class="rec-actions"><a class="btn-ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener">파일 열기 ↗</a>' +
-      (rfq ? '<button class="' + (r.draft ? 'btn-ghost' : 'btn') + '" type="button" data-draft="' + esc(r.id) + '">' + (r.draft ? '메일 초안 다시 만들기' : '메일 초안 만들기') + '</button>' : '') +
+      (rfq ? '<button class="btn-ghost vq-btn" type="button" data-vq="' + esc(r.id) + '" aria-expanded="' + !!open + '">' + (open ? '견적 입력 접기 ▴' : '업체별 견적 입력 ▾') + '</button>' : '') +
+      (rfq ? '<button class="' + (!r.draft || rfqRevisedPending(r) ? 'btn' : 'btn-ghost') + '" type="button" data-draft="' + esc(r.id) + '">' +
+        (rfqRevisedPending(r) ? '수정 메일 초안 만들기' : r.draft ? '메일 초안 다시 만들기' : '메일 초안 만들기') + '</button>' : '') +
       (rfq && r.draft ? '<button class="btn-ghost" type="button" data-remind="' + esc(r.id) + '" title="아직 견적을 안 보낸 업체에 다시 요청">재요청 메일</button>' : '') +
       (!rfq ? '<button class="btn-ghost" type="button" data-cf="' + esc(r.id) + '" title="검토가 끝난 구매내역서를 사업부에 날인 요청">사업부 확인 메일</button>' : '') +
       (!rfq ? '<button class="btn-ghost" type="button" data-po="' + esc(r.id) + '" title="품의·PR·PO 번호와 단계 기록">상태</button>' : '') +
@@ -2991,6 +3091,8 @@ function renderRecords() {
         state.recOpen[id] = !state.recOpen[id];
         card.classList.toggle('open', state.recOpen[id]);
         b.setAttribute('aria-expanded', state.recOpen[id]);
+        var vq = card.querySelector('[data-vq]');
+        if (vq) { vq.setAttribute('aria-expanded', state.recOpen[id]); vq.textContent = state.recOpen[id] ? '견적 입력 접기 ▴' : '업체별 견적 입력 ▾'; }
         slide(box, state.recOpen[id], function () { box.innerHTML = vendorListHtml(recById(id)); bindVendorList(box); });
       };
     });
@@ -2998,6 +3100,8 @@ function renderRecords() {
     $('recList').querySelectorAll('[data-done]').forEach(function (b) { b.onclick = function () { openComplete([b.dataset.done]); }; });
     $('recList').querySelectorAll('[data-po]').forEach(function (b) { b.onclick = function () { togglePoForm(b.dataset.po); }; });
     $('recList').querySelectorAll('[data-cf]').forEach(function (b) { b.onclick = function () { openConfirm(recById(b.dataset.cf)); }; });
+    $('recList').querySelectorAll('[data-vq]').forEach(function (b) { b.onclick = function () { var t = document.querySelector('[data-toggle="' + b.dataset.vq + '"]'); if (t) t.click(); }; });
+    $('recList').querySelectorAll('[data-step]').forEach(function (b) { b.onclick = function () { stepAction(b.dataset.rid, b.dataset.step); }; });
 }
 /* 완료 기록 (보관 파일, 읽기만) */
 function renderArchive() {
@@ -3154,16 +3258,32 @@ function openRegister(item) {
   if (first) first.focus({ preventScroll: true });
 }
 function regMode() { var c = $('regForm').querySelector('input[name="regMode"]:checked'); return c ? c.value : 'SPOT'; }
+/* SPOT 은 UOM · QPL(선택) · Description · Type 만 (나머지는 회색으로 막음), LTA·3PP 는 전부 */
+var SPOT_FIELDS = ['item', 'priceMode', 'uom', 'qpl', 'desc'], SPOT_REQUIRED = ['item', 'uom', 'desc'];
+function isTypeKey(k) { return /^x:\s*type$/i.test(String(k || '')); }
+function spotUses(k) { return SPOT_FIELDS.indexOf(k) >= 0 || isTypeKey(k); }
 function markRequired() {
-  var deal = regMode() !== 'SPOT';
-  DEAL_REQUIRED.forEach(function (k) { var el = $('regForm').querySelector('[data-for="' + k + '"]'); if (el) el.classList.toggle('req', deal); });
+  var spot = regMode() === 'SPOT';
+  $('regForm').querySelectorAll('label.field').forEach(function (lb) {
+    var el = lb.querySelector('[data-key]'), tag = lb.querySelector('[data-for]');
+    if (!el || !tag) return;
+    var k = el.dataset.key, use = !spot || spotUses(k);
+    lb.classList.toggle('na', !use);
+    el.disabled = !use;
+    lb.title = use ? '' : 'SPOT 신규 등록에는 적지 않습니다 (LTA · 3PP 계약일 때 씀)';
+    tag.classList.toggle('req', k === 'item' || (spot ? SPOT_REQUIRED.indexOf(k) >= 0 || isTypeKey(k) : DEAL_REQUIRED.indexOf(k) >= 0));
+    tag.classList.toggle('opt', spot && k === 'qpl');
+  });
+  $('regNote').innerHTML = spot ? '<b>SPOT</b> 은 <b>UOM · Description · Type</b> 만 적으면 됩니다 (QPL 은 선택). 회색 칸은 LTA · 3PP 계약일 때 씁니다.'
+    : '<b>' + esc(regMode()) + '</b> 계약은 업체명 · 단가 · CUR · 계약시작 · 계약종료가 필요합니다.';
 }
 $('btnRegCancel').onclick = function () { $('regPanel').hidden = true; };
 $('btnRegSave').onclick = function () {
   var b = this, rec = { priceMode: regMode() };
-  $('regForm').querySelectorAll('[data-key]').forEach(function (el) { rec[el.dataset.key] = el.value; });
+  $('regForm').querySelectorAll('[data-key]').forEach(function (el) { if (!el.disabled) rec[el.dataset.key] = el.value; });
   b.disabled = true; $('regMsg').className = 'err'; $('regMsg').textContent = '';
   call('apiRegisterItem', rec).then(function (d) {
+    if (d.masterVer) state.masterVer = d.masterVer;
     itemDesc[d.item] = [d.desc, d.ship, d.mode, d.shelf || ''];
     rows().forEach(showDesc);
     $('regPanel').hidden = true;
@@ -3866,23 +3986,137 @@ document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$
 var REDUCE = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* 진행 단계 트랙: 견적요청서 = 작성 → 메일 → 견적 입력 → 구매내역서, 구매내역서 = 작성 → 사업부 확인 → 품의 → PR → PO */
+var STEP_TIPS = { revise: '눌러서 품목 추가 · 제거 · 수량 · Need-by 수정', file: '눌러서 파일 열기', draft: '눌러서 메일 초안 만들기', vendors: '눌러서 업체별 견적 입력',
+  sum: '눌러서 견적 종합', cf: '눌러서 사업부 확인 메일', po: '눌러서 품의 · PR · PO 상태 기록' };
 function stageTrack(r) {
-  var names, reached, cur;
+  var names, reached, cur, acts;
   if (r.kind === '견적요청서') {
-    names = ['견적요청서', '메일', '견적 입력', '구매내역서'];
+    names = ['소요제기', '견적요청서', '메일', '견적 입력', '구매내역서'];
+    acts = [r.spotFile ? '' : 'revise', 'file', 'draft', 'vendors', 'sum'];
     var got = ((r.quote || {}).items || []).some(function (x) { return x && x.quotes && Object.keys(x.quotes).some(function (v) { return String(x.quotes[v].price || '').trim(); }); });
-    reached = r.spotFile ? 3 : got ? 2 : r.draft ? 1 : 0;
+    reached = r.spotFile ? 4 : got ? 3 : r.draft ? 2 : 1;
+    if (rfqRevisedPending(r)) cur = 2;   // 고친 뒤 메일을 다시 보낼 차례
   } else {
     names = ['작성', '사업부 확인', '품의', 'PR', 'PO'];
+    acts = ['file', 'cf', 'po', 'po', 'po'];
     var st = (r.po && r.po.stage) || r.status;
     reached = st === '입고' || st === 'PO 발행' ? 4 : st === 'PR 발행' ? 3 : st === '품의 완료' ? 2 : (st === '품의 중' || (r.confirmMail && r.confirmMail.mode === 'send')) ? 1 : 0;
     if (st === '품의 중') { reached = 1; cur = 2; }
   }
   if (cur === undefined) cur = reached + 1;
-  return '<div class="trk" aria-label="진행 단계: ' + esc(names[Math.min(reached, names.length - 1)]) + '까지">' + names.map(function (n, i) {
-    return '<span class="trk-s' + (i <= reached ? ' done' : i === cur ? ' cur' : '') + '" style="--i:' + i + '"><span class="trk-d"></span><span class="trk-l">' + esc(n) + '</span></span>';
+  return '<div class="trk" aria-label="진행 단계: ' + esc(names[Math.min(reached, names.length - 1)]) + '까지 · 지난 단계를 누르면 고칠 수 있음">' + names.map(function (n, i) {
+    var act = acts[i], live = act && i <= Math.max(reached, cur);
+    var tip = act ? STEP_TIPS[act] : r.kind === '견적요청서' && i === 0 ? '견적 구매내역서를 만든 뒤에는 고칠 수 없습니다' : '';
+    return '<button type="button" class="trk-s' + (i <= reached && i !== cur ? ' done' : i === cur ? ' cur' : '') + '" style="--i:' + i + '"' +
+      (live ? ' data-step="' + act + '" data-rid="' + esc(r.id) + '" title="' + esc(tip) + '"' : ' disabled' + (tip ? ' title="' + esc(tip) + '"' : '')) + '><span class="trk-d"></span><span class="trk-l">' + esc(n) + '</span></button>';
   }).join('') + '</div>';
 }
+function rfqRevisedPending(r) {   // Logic.gs rfqRevisedPending_ 와 같음
+  if (!r || !r.rev || !r.rev.at) return false;
+  var ms = r.mails || [], last = ms[ms.length - 1];
+  return !last || String(last.at || '') < String(r.rev.at);
+}
+function revMeta(r) {
+  if (!r.rev) return '';
+  var pend = rfqRevisedPending(r);
+  return '<span class="rev-chip' + (pend ? ' pending' : '') + '" title="' + esc((r.rev.added || []).length ? '추가: ' + r.rev.added.join(', ') : '') + ((r.rev.removed || []).length ? ' 제외: ' + r.rev.removed.join(', ') : '') + '">✎ 수정 ' + r.rev.no + '회 · ' +
+    esc(String(r.rev.at || '').slice(5, 10).replace('-', '/')) + (pend ? ' · 수정 메일 아직' : '') + '</span>';
+}
+function stepAction(id, act) {
+  var r = recById(id), card = document.querySelector('.rec[data-id="' + id + '"]');
+  if (!r || !card) return;
+  if (act === 'revise') return openRevise(r);
+  if (act === 'file') return window.open(r.url, '_blank', 'noopener');
+  if (act === 'draft') return openDraft(r.id, r.title);
+  if (act === 'vendors') { if (!state.recOpen[id]) card.querySelector('[data-toggle]').click(); else card.querySelector('.rec-vendors').scrollIntoView({ block: 'nearest' }); return; }
+  if (act === 'sum') return openSummary(r);
+  if (act === 'cf') return openConfirm(r);
+  if (act === 'po') { if (!card.querySelector('.po-form')) togglePoForm(id); var f = card.querySelector('.po-form'); if (f) f.scrollIntoView({ block: 'nearest' }); }
+}
+
+/* ---------- 소요제기 · 견적요청서 수정 ---------- */
+var rv = { rec: null, lines: [], orig: [] };
+function rfqLinesOf(items) {   // Logic.gs rfqLines_ 와 같음: 한 줄 = Need-by 한 건
+  var out = [];
+  (items || []).forEach(function (it) {
+    var ps = it.parts && it.parts.length ? it.parts : [{ qty: it.qty, needBy: it.needBy, program: it.program }];
+    ps.forEach(function (p) {
+      out.push({ item: it.item || '', name: it.name || '', desc: it.desc || '', qpl: it.qpl || '', uom: it.uom || '', remark: it.remark === undefined ? '' : it.remark,
+        material: it.material || '', registered: it.registered, qty: p.qty, needBy: String(p.needBy || '').slice(0, 10), program: p.program || '' });
+    });
+  });
+  return out;
+}
+var RV_COLS = [['item', 'Item'], ['name', 'Item name *'], ['desc', 'Description'], ['qpl', 'QPL'], ['uom', 'UOM'], ['remark', 'Remark'], ['qty', '수량 *'], ['needBy', 'Need-by'], ['program', 'Program']];
+function rvKey(l) { return String(l.item || l.name || '').trim().toUpperCase(); }
+function rvSig(l) { return [rvKey(l), String(l.qty == null ? '' : l.qty).trim(), l.needBy, l.name, l.desc, l.qpl, l.uom, l.remark, l.program].join('|'); }
+function rvClass(l) {   // 새 품목 · 바뀐 줄 (칸을 옮겨 다녀도 다시 그리지 않고 표시만 바꿈)
+  var k = rvKey(l);
+  if (!k) return '';
+  if (rv.orig.map(rvKey).indexOf(k) < 0) return 'added';
+  return rv.orig.map(rvSig).indexOf(rvSig(l)) < 0 ? 'changed' : '';
+}
+function renderRevise() {
+  $('rvTbl').innerHTML = '<tr><th>#</th>' + RV_COLS.map(function (c) { return '<th>' + c[1] + '</th>'; }).join('') + '<th></th></tr>' + rv.lines.map(function (l, i) {
+    return '<tr data-i="' + i + '" class="' + rvClass(l) + '"><td class="muted">' + (i + 1) + '</td>' + RV_COLS.map(function (c) {
+      var v = l[c[0]] == null ? '' : l[c[0]];
+      return '<td><input data-f="' + c[0] + '" value="' + esc(v) + '"' + (c[0] === 'needBy' ? ' type="date"' : c[0] === 'qty' ? ' inputmode="decimal"' : '') + ' aria-label="' + (i + 1) + '줄 ' + c[1] + '"></td>';
+    }).join('') + '<td><button type="button" class="it-x" data-rvdel="' + i + '" aria-label="' + (i + 1) + '줄 빼기">✕</button></td></tr>';
+  }).join('');
+  $('rvTbl').querySelectorAll('input[data-f]').forEach(function (el) {
+    el.oninput = function () {
+      var l = rv.lines[+el.closest('tr').dataset.i];
+      l[el.dataset.f] = el.value;
+      if (el.dataset.f === 'item') {   // 자재정보에 있으면 Description 채움
+        var code = el.value.trim().toUpperCase(), d = itemDesc[code];
+        if (d && !String(l.desc || '').trim()) { l.desc = d[0]; el.closest('tr').querySelector('[data-f="desc"]').value = d[0]; }
+      }
+      el.closest('tr').className = rvClass(l);
+      rvDiff();
+    };
+  });
+  $('rvTbl').querySelectorAll('[data-rvdel]').forEach(function (b) { b.onclick = function () { rv.lines.splice(+b.dataset.rvdel, 1); renderRevise(); }; });
+  rvDiff();
+}
+function rvDiff() {
+  var o = [], n = [];
+  rv.orig.forEach(function (l) { var k = rvKey(l); if (k && o.indexOf(k) < 0) o.push(k); });
+  rv.lines.forEach(function (l) { var k = rvKey(l); if (k && n.indexOf(k) < 0) n.push(k); });
+  var add = n.filter(function (k) { return o.indexOf(k) < 0; }), del = o.filter(function (k) { return n.indexOf(k) < 0; });
+  $('rvDiff').innerHTML = '기존 ' + rv.orig.length + '줄 → <b>' + rv.lines.length + '줄</b>' + (add.length ? ' · <b class="add">추가 ' + esc(add.join(', ')) + '</b>' : '') + (del.length ? ' · <b class="del">빠짐 ' + esc(del.join(', ')) + '</b>' : '');
+}
+function openRevise(r) {
+  rv.rec = r; rv.orig = rfqLinesOf(r.items); rv.lines = rfqLinesOf(r.items);
+  $('rvFile').textContent = r.title; $('rvMsg').textContent = '';
+  $('rvModal').hidden = false;
+  renderRevise();
+}
+$('rvAdd').onclick = function () {
+  rv.lines.push({ item: '', name: '', desc: '', qpl: '', uom: '', remark: 'MFG COC/TR', qty: '', needBy: '', program: '' });
+  renderRevise();
+  var last = $('rvTbl').querySelector('tr:last-child [data-f="item"]'); if (last) { last.focus(); last.scrollIntoView({ block: 'nearest' }); }
+};
+$('rvCancel').onclick = function () { $('rvModal').hidden = true; };
+$('rvModal').addEventListener('click', function (e) { if (e.target === this) this.hidden = true; });
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('rvModal').hidden) $('rvModal').hidden = true; });
+$('rvSave').onclick = function () {
+  var lines = rv.lines.filter(function (l) { return rvKey(l) || String(l.qty || '').trim(); });
+  var miss = lines.filter(function (l) { return !String(l.name || '').trim() || !(parseFloat(String(l.qty).replace(/,/g, '')) > 0); });
+  if (!lines.length) { $('rvMsg').textContent = '품목이 한 줄 이상 있어야 합니다.'; return; }
+  if (miss.length) { $('rvMsg').textContent = 'Item name 과 수량(0보다 큼)을 적어 주세요: ' + miss.map(function (l) { return l.item || '(빈 Item)'; }).join(', '); return; }
+  var b = this, r = rv.rec;
+  b.disabled = true; $('rvMsg').textContent = '';
+  call('apiReviseRfq', { recordId: r.id, baseDate: $('base').value, items: lines.map(function (l) { var o = {}; Object.keys(l).forEach(function (k) { o[k] = k === 'qty' ? parseFloat(String(l.qty).replace(/,/g, '')) : l[k]; }); return o; }) }).then(function (d) {
+    $('rvModal').hidden = true;
+    delete state.qcache[r.id];   // 견적 입력은 새 품목 순서로 다시
+    var t = toast('<b>견적요청서를 고쳤습니다 (수정 ' + d.rev.no + '회)</b><span class="muted">' + (d.rev.added.length ? '추가 ' + esc(d.rev.added.join(', ')) + ' · ' : '') + (d.rev.removed.length ? '빠짐 ' + esc(d.rev.removed.join(', ')) + ' · ' : '') + '예전 파일은 "(수정 전 …)" 으로 남김</span>' +
+      '<a href="' + esc(d.url) + '" target="_blank" rel="noopener">새 견적요청서 열기 ↗</a><button type="button" class="btn" data-rvmail>수정 메일 초안 만들기 ([Revised])</button>');
+    loadRecords().then(function () {
+      var mb = t && t.querySelector('[data-rvmail]');
+      if (mb) mb.onclick = function () { openDraft(r.id, r.title); };
+    });
+  }).catch(function (e) { $('rvMsg').textContent = e.message || e; }).finally(function () { b.disabled = false; });
+};
 
 /* 펼침·접힘 (높이 애니메이션) */
 function slide(box, open, fill) {
@@ -4022,6 +4256,7 @@ var MAKING = {
   apiCreatePurchase: { t: '구매내역서', tabs: ['구매세부내역', '구매요약', '구매일정'], steps: ['템플릿 복사', '구매세부내역 채우기', '통화 합계 · 환율', '구매일정 그리기', '서식 정리'] },
   apiCreateSpotPurchase: { t: 'Spot 견적 구매내역서', tabs: ['견적종합', '구매내역서', '구매일정'], steps: ['템플릿 복사', '견적종합 채우기', '업체별 견적 · 순위', '구매내역서 · 구매일정', '서식 정리'] },
   apiCreateRfq: { t: '견적요청서', tabs: ['RFQ'], steps: ['템플릿 복사', '품목 채우기', '월별 수량', '서식 정리'] },
+  apiReviseRfq: { t: '견적요청서 (수정)', tabs: ['RFQ'], steps: ['템플릿 복사', '고친 품목 채우기', '견적 옮기기', '예전 파일 이름 바꾸기'], quiet: true },
   apiCreateQuoteSheet: { t: '견적 입력용 시트', tabs: ['업체별 탭'], steps: ['시트 만들기', '업체별 탭', '품목 채우기', '마무리'] },
   apiCreateInputSheet: { t: '입력용 시트', tabs: ['소요제기 입력', '사용 방법'], steps: ['시트 만들기', '열 · 목록 넣기', '마무리'] },
   apiCreateItemSheet: { t: '자재 입력용 시트', tabs: ['자재 입력', '사용 방법'], steps: ['시트 만들기', '열 · 목록 넣기', '마무리'] }
@@ -4066,6 +4301,7 @@ function makingDone(m, d) {
   $('mkStep').textContent = '완료';
   setTimeout(function () {
     makingEnd(m);
+    if (m.cfg.quiet) return;
     toast('<b>' + esc(m.cfg.t) + '를 만들었습니다</b>' + files.map(function (f) { return '<a href="' + esc(f.url) + '" target="_blank" rel="noopener">' + esc(f.name || '파일') + ' 열기 ↗</a>'; }).join(''));
     updateFlow();
   }, REDUCE ? 0 : 450);
@@ -4091,6 +4327,7 @@ function toast(html, kind) {
   el.onmouseenter = function () { clearTimeout(timer); };
   el.onmouseleave = arm;
   arm();
+  return el;
 }
 
 
@@ -4197,6 +4434,111 @@ function renderToday() {
   });
   if (!state.todayAnimated && !$('viewHome').hidden) { state.todayAnimated = true; countUp($('hmToday')); }
 }
+
+
+/* ---------- 자재 정보 (브라우저에 저장, 버전이 바뀔 때만 다시 받음) ---------- */
+var ms = { data: null, groups: [], kind: 'all', limit: 100, open: {} };
+var MS_KEY = 'masterCache';
+function msNum(v) { var n = parseFloat(String(v == null ? '' : v).replace(/,/g, '')); return isNaN(n) ? null : n; }
+function msBuild(d) {
+  var ki = {}; d.cols.forEach(function (c, i) { ki[c.key] = i; });
+  var typeKey = d.cols.filter(function (c) { return isTypeKey(c.key); }).map(function (c) { return c.key; })[0];
+  var g = {}, order = [], get = function (r, k) { var i = ki[k]; return i === undefined ? '' : r[i]; };
+  d.rows.forEach(function (r, n) {
+    var code = String(get(r, 'item')).trim().toUpperCase();
+    if (!code) return;
+    var x = g[code];
+    if (!x) { x = g[code] = { item: code, desc: '', uom: '', qpl: '', type: '', ship: '', deals: [] }; order.push(code); }
+    ['desc', 'uom', 'qpl'].forEach(function (k) { if (!x[k] && String(get(r, k)).trim()) x[k] = String(get(r, k)).trim(); });
+    if (typeKey && !x.type && String(get(r, typeKey)).trim()) x.type = String(get(r, typeKey)).trim();
+    if (!x.ship && String(get(r, 'shipFrom')).trim()) x.ship = String(get(r, 'shipFrom')).trim();
+    x.deals.push({ mode: String(get(r, 'priceMode')).trim().toUpperCase(), supplier: String(get(r, 'supplier')).trim(), price: msNum(get(r, 'price')), cur: String(get(r, 'cur')).trim().toUpperCase(),
+      start: String(get(r, 'start')).slice(0, 10), end: String(get(r, 'end')).slice(0, 10), moq: get(r, 'moq'), lt: get(r, 'leadtime'), n: n });
+  });
+  var today = state.today || '';
+  ms.groups = order.map(function (code) {
+    var x = g[code];
+    x.deals.sort(function (a, b) { return (a.start || '0').localeCompare(b.start || '0') || a.n - b.n; });
+    x.deals.forEach(function (dl, i) {
+      dl.state = !dl.start && !dl.end ? '' : dl.end && dl.end < today ? 'old' : dl.start && dl.start > today ? 'next' : 'ok';
+      var prev = null;   // 이전 계약(같은 통화, 단가 있음) 대비
+      for (var j = i - 1; j >= 0; j--) if (x.deals[j].price !== null && x.deals[j].cur === dl.cur) { prev = x.deals[j]; break; }
+      dl.diff = prev && dl.price !== null && prev.price ? Math.round((dl.price / prev.price - 1) * 1000) / 10 : null;
+    });
+    x.modes = []; x.deals.forEach(function (dl) { if (dl.mode && x.modes.indexOf(dl.mode) < 0) x.modes.push(dl.mode); });
+    x.priced = x.deals.filter(function (dl) { return dl.price !== null; });
+    x.now = x.deals.filter(function (dl) { return dl.state === 'ok' && dl.price !== null; }).pop() || x.priced[x.priced.length - 1] || x.deals[0];
+    x.hay = [code, x.desc, x.qpl, x.type, x.deals.map(function (dl) { return dl.supplier; }).join(' ')].join(' ').toLowerCase();
+    return x;
+  });
+}
+function msTrend(x) {
+  if (x.priced.length < 2) return '<span class="muted">—</span>';
+  return '<div class="ms-trend">' + x.priced.map(function (dl, i) {
+    var yr = dl.start ? "'" + dl.start.slice(2, 4) : '?';
+    var arrow = i ? ' <span class="' + (dl.diff === null ? 'same' : dl.diff > 0 ? 'up' : dl.diff < 0 ? 'down' : 'same') + '">' + (dl.diff === null ? '→ 통화 다름' : (dl.diff > 0 ? '▲ +' : dl.diff < 0 ? '▼ ' : '= ') + (dl.diff ? dl.diff + '%' : '')) + '</span> ' : '';
+    return arrow + '<span class="yr' + (dl === x.now ? ' now' : '') + '" title="' + esc(dl.mode + ' · ' + dl.supplier + ' · ' + (dl.start || '') + ' ~ ' + (dl.end || '')) + '">' + yr + ' ' + esc(dl.mode) + ' ' + fmt(dl.price) + ' ' + esc(dl.cur) + '</span>';
+  }).join('') + '</div>';
+}
+function renderMaster() {
+  if (!ms.data) return;
+  var q = ($('msFind').value || '').trim().toLowerCase(), multi = $('msMulti').checked;
+  var list = ms.groups.filter(function (x) {
+    return (ms.kind === 'all' || x.modes.indexOf(ms.kind) >= 0) && (!multi || x.priced.length > 1) && (!q || q.split(/\s+/).every(function (w) { return x.hay.indexOf(w) >= 0; }));
+  });
+  $('msCount').textContent = '자재 ' + list.length.toLocaleString('ko-KR') + '개' + (list.length !== ms.groups.length ? ' / 전체 ' + ms.groups.length.toLocaleString('ko-KR') : '');
+  var shown = list.slice(0, ms.limit);
+  $('msTbl').innerHTML = '<tr><th>ITEM</th><th>Description</th><th>구분</th><th>UOM</th><th>업체 · 단가 (지금)</th><th>계약기간</th><th>단가 추이 (계약 연도별)</th><th></th></tr>' + (shown.length ? shown.map(function (x) {
+    var n = x.now || {}, more = x.deals.length > 1, open = !!ms.open[x.item];
+    var chip = function (m) { return '<span class="chip ' + (m === 'SPOT' ? 'chip-priced' : 'chip-ok') + '">' + esc(m) + '</span>'; };
+    return '<tr><td class="nw"><div class="data">' + esc(x.item) + '</div><button type="button" class="link-btn" data-msih="' + esc(x.item) + '">이력</button></td>' +
+      '<td><div class="desc">' + esc(x.desc) + '</div>' + (x.qpl || x.type ? '<div class="muted" style="font-size:.76rem">' + esc([x.qpl, x.type].filter(String).join(' · ')) + '</div>' : '') + '</td>' +
+      '<td><div class="ms-modes">' + x.modes.map(chip).join('') + '</div></td><td class="data">' + esc(x.uom) + '</td>' +
+      '<td class="nw">' + (n.supplier ? esc(n.supplier) : '<span class="muted">—</span>') + (n.price !== null && n.price !== undefined ? '<div class="data">' + fmt(n.price) + ' ' + esc(n.cur) + '</div>' : '') + '</td>' +
+      '<td class="data muted nw">' + (n.start || n.end ? esc(n.start || '') + '<br>~ ' + esc(n.end || '') : '') + '</td><td>' + msTrend(x) + '</td>' +
+      '<td class="nw">' + (more ? '<button type="button" class="link-btn" data-msopen="' + esc(x.item) + '" aria-expanded="' + open + '">계약 ' + x.deals.length + '건 ' + (open ? '▴' : '▾') + '</button>' : '') + '</td></tr>' +
+      (more && open ? '<tr class="ms-sub"><td colspan="8"><table class="list"><tr><th>구분</th><th>업체</th><th class="n">단가</th><th>CUR</th><th>계약기간</th><th>MOQ</th><th>L/T</th><th>이전 대비</th><th>상태</th></tr>' + x.deals.map(function (dl) {
+        return '<tr><td>' + chip(dl.mode || '—') + '</td><td>' + esc(dl.supplier) + '</td><td class="n data">' + (dl.price === null ? '—' : fmt(dl.price)) + '</td><td class="data">' + esc(dl.cur) + '</td>' +
+          '<td class="data nw">' + esc(dl.start || '') + ' ~ ' + esc(dl.end || '') + '</td><td class="data">' + esc(dl.moq) + '</td><td class="data">' + esc(dl.lt) + '</td>' +
+          '<td class="data">' + (dl.diff === null ? '' : '<span class="' + (dl.diff > 0 ? 'up' : dl.diff < 0 ? 'down' : '') + '" style="color:' + (dl.diff > 0 ? 'var(--warn)' : dl.diff < 0 ? 'var(--ok)' : 'inherit') + '">' + (dl.diff > 0 ? '+' : '') + dl.diff + '%</span>') + '</td>' +
+          '<td>' + (dl.state ? '<span class="ms-st ' + dl.state + '">' + (dl.state === 'ok' ? '유효' : dl.state === 'old' ? '만료' : '예정') + '</span>' : '') + '</td></tr>';
+      }).join('') + '</table></td></tr>' : '');
+  }).join('') : '<tr><td colspan="8">' + emptyHtml('search', '찾는 자재가 없습니다.') + '</td></tr>');
+  $('msMoreRow').hidden = list.length <= ms.limit;
+  $('msMore').textContent = '100개 더 보기 (' + (list.length - ms.limit).toLocaleString('ko-KR') + '개 남음)';
+  $('msTbl').querySelectorAll('[data-msopen]').forEach(function (b) { b.onclick = function () { ms.open[b.dataset.msopen] = !ms.open[b.dataset.msopen]; renderMaster(); }; });
+  $('msTbl').querySelectorAll('[data-msih]').forEach(function (b) { b.onclick = function () { openItemHistory(b.dataset.msih); }; });
+}
+function msUse(d, from) {
+  ms.data = d; msBuild(d);
+  $('msStamp').textContent = (from === 'local' ? '저장해 둔 자재정보 · ' : '') + d.at + ' 기준 · ' + d.rows.length.toLocaleString('ko-KR') + '줄';
+  renderMaster();
+}
+function loadMaster(force) {
+  var ver = state.masterVer || '0';
+  if (!force && ms.data && ms.data.ver === ver) return renderMaster();
+  if (!force) {
+    var c = null;
+    try { c = JSON.parse(localStorage.getItem(MS_KEY) || 'null'); } catch (e) { c = null; }
+    if (c && c.ver === ver && c.rows) return msUse(c, 'local');
+  }
+  $('msTbl').innerHTML = skelRows(7, 8); $('msStamp').textContent = '시트에서 받는 중…';
+  return call('apiMasterList').then(function (d) {
+    state.masterVer = d.ver;
+    try { localStorage.setItem(MS_KEY, JSON.stringify(d)); } catch (e) { /* 저장 공간이 없으면 이번만 메모리로 */ }
+    msUse(d, 'sheet');
+  }).catch(function (e) { $('msTbl').innerHTML = '<tr><td class="err">' + esc(e.message || e) + '</td></tr>'; $('msStamp').textContent = ''; });
+}
+$('msFind').addEventListener('input', function () { ms.limit = 100; renderMaster(); });
+$('msMulti').onchange = function () { ms.limit = 100; renderMaster(); };
+document.querySelectorAll('[data-ms]').forEach(function (b) {
+  b.onclick = function () { ms.kind = b.dataset.ms; ms.limit = 100; document.querySelectorAll('[data-ms]').forEach(function (x) { x.setAttribute('aria-pressed', x === b); }); renderMaster(); };
+});
+$('msMore').onclick = function () { ms.limit += 100; renderMaster(); };
+$('msReload').onclick = function () {
+  var b = this; b.disabled = true; b.textContent = '받는 중…';
+  loadDb(false).then(function () { return loadMaster(true); }).finally(function () { b.disabled = false; b.textContent = '시트에서 다시 받기'; });
+};
 
 checkAuth();   // 로그인 확인 → 화면 시작
 </script>
