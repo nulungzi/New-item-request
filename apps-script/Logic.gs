@@ -877,7 +877,7 @@ function fixedSpotItem_(l) {
   var needs = (l.needs || [{ needBy: l.needBy, qty: l.qty }]).map(function (x) { return { qty: x.qty, needBy: x.needBy }; });
   return {
     item: l.item, name: l.product || l.desc || l.item, desc: l.desc || '', material: l.material || '', qpl: l.qpl || '', uom: l.uom || '',
-    remark: '', qty: Number(l.qty) || 0, needBy: toDate_(needs[0] && needs[0].needBy), parts: needs, program: l.program || '', prev: {}, shipFrom: l.shipFrom || '',
+    remark: '', qty: Number(l.qty) || 0, needBy: toDate_(needs[0] && needs[0].needBy), parts: needs, program: l.program || '', prev: {}, shipFrom: l.shipFrom || '', taxCode: l.taxCode || '',
     fixed: { vendor: l.supplier, price: l.price, cur: l.cur, lt: l.leadtime || '', mfg: l.product || '', reason: isSpotMode_(l.priceMode) ? 'Sole source' : (l.priceMode || '') }
   };
 }
@@ -1461,8 +1461,8 @@ var SPOT = {
   P_SUM_ROW: 1, P_SUM_CUR1: 2, P_SUM_CUR: 3, P_SUM_TOTAL: 4, P_SUM_NOTE: 5, P_DET_ROW: 11, P_Q_ROW: 21,
   Q_FIRST: 5, Q_M0: 12, Q_LAST: 47,           // 견적종합: 5행부터, 월 L~W, AT SUPPLIER · AU SITE 까지
   Q_SUP: 46, Q_SITE: 47,
-  D_FIRST: 11, D_NEED: 23, D_SUP: 24, D_SITE: 25,   // 구매내역서: W Need-by · X SUPPLIER · Y SITE (선정 업체)
-  D_V0: 26, D_LAST: 105, MAX_VENDORS: 20,           // 업체별 비교 칸은 Z 부터 (업체마다 4칸)
+  D_FIRST: 11, D_NEED: 23, D_UOM: 24, D_TAX: 25, D_SUP: 26, D_SITE: 27,   // 구매내역서 선정 결과 뒤: W Need-by · X UOM · Y Tax Code · Z SUPPLIER · AA SITE
+  D_V0: 28, D_LAST: 107, MAX_VENDORS: 20,           // 업체별 비교 칸은 AB 부터 (업체마다 4칸)
   CURS: ['USD', 'EUR', 'JPY', 'SGD', 'KRW'],
   RATE_COL: { USD: 'P', JPY: 'Q', EUR: 'R', SGD: 'S' }   // 구매내역서 3행 환율
 };
@@ -1601,9 +1601,11 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
     set(D, r, 16, xl(key, 'D:AD', '미정', true));
     set(D, r, 17, xl(key, 'D:X')); set(D, r, 18, xl(key, 'D:AH')); set(D, r, 19, xl(key, 'D:AJ'));
     set(D, r, 20, xl(key, 'D:AI', '', true)); set(D, r, 21, xl(key, 'D:AL', '', true)); set(D, r, 22, xl(key, 'D:AN', '', true));
-    // W Need-by (여러 건이면 날짜(수량) 줄마다) · X SUPPLIER · Y SITE (견적종합에서 선정한 업체)
+    // W Need-by (여러 건이면 날짜(수량) 줄마다) · X UOM(선정 업체 견적) · Y Tax Code(소요제기) · Z SUPPLIER · AA SITE (견적종합에서 선정한 업체)
     set(D, r, SPOT.D_NEED, needsText_(needs) || 'ASAP');
     add({ op: 'wrap', s: D, r: r, c: SPOT.D_NEED });
+    set(D, r, SPOT.D_UOM, xl(key, 'D:AG', '', true));
+    if (String(it.taxCode || '').trim()) set(D, r, SPOT.D_TAX, String(it.taxCode).trim());
     set(D, r, SPOT.D_SUP, xl(key, 'D:AT', '', true));
     set(D, r, SPOT.D_SITE, xl(key, 'D:AU', '', true));
     vendors.forEach(function (v, j) {

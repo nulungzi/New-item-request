@@ -2781,7 +2781,7 @@ $('qCreate').onclick = function () {
   delete b.dataset.ok;
   var items = qs.items.map(function (x, i) {
     var it = x.src;
-    return { item: it.item, name: it.name, desc: it.desc, material: it.material || '', qpl: it.qpl, uom: it.uom, remark: it.remark, qty: it.qty, needBy: it.needBy, parts: it.parts,
+    return { item: it.item, name: it.name, desc: it.desc, material: it.material || '', qpl: it.qpl, uom: it.uom, remark: it.remark, qty: it.qty, needBy: it.needBy, parts: it.parts, taxCode: it.taxCode || '',
       program: x.program, prev: x.prev, quotes: p.items[i].quotes };
   });
   pickFolder('Spot 견적 구매내역서').then(function (folder) {

@@ -4,7 +4,7 @@ Spot 견적 구매내역서 샘플에서 템플릿을 만든다.
 - 행 서식 원본은 숨김 탭 `_proto` 에 모은다 (Apps Script가 복사한 뒤 지운다).
     1  전체구매요약 품목 행      2  CUR 별 합계 첫 행   3  CUR 별 합계 다음 행
     4  총 합계(KRW) 행           5  적용환율 메모 행
-    11 구매내역서 품목 행 (A~DA): W Need-by · X SUPPLIER · Y SITE, 업체 비교 칸은 Z 부터
+    11 구매내역서 품목 행 (A~DC): W Need-by · X UOM · Y Tax Code · Z SUPPLIER · AA SITE, 업체 비교 칸은 AB 부터
     21 견적종합 업체 행 (A~AU): AT SUPPLIER · AU SITE
 - 구매내역서 통화 합계를 USD·EUR·JPY·SGD·KRW 로, 환율 칸을 USD·JPY·EUR·SGD 로 바꾼다.
 
@@ -117,10 +117,11 @@ clear(D, 11, 1, 102)
 for c in range(23, 103, 4):   # 업체 이름은 만들 때 채움
     D.cell(8, c).value = None
 
-# ---------- 구매내역서: 선정 결과 뒤에 W Need-by · X SUPPLIER · Y SITE (업체 비교 칸은 Z 부터) ----------
+# ---------- 구매내역서: 선정 결과 뒤에 W Need-by · X UOM · Y Tax Code · Z SUPPLIER · AA SITE (업체 비교 칸은 AB 부터) ----------
 from openpyxl.formatting.formatting import ConditionalFormattingList
 from openpyxl.utils import column_index_from_string as CI
-NEW, AT = 3, 23
+NEW, AT = 5, 23
+HEADS = ['Need-by', 'UOM', 'Tax Code', 'SUPPLIER', 'SITE']
 old_merges = [m for m in D.merged_cells.ranges]
 moved = []
 for m in list(old_merges):
@@ -151,10 +152,10 @@ def shift_ref(ref):
     return ' '.join(out)
 for ref, rules in old_cf:
     for rule in rules:
-        f = [x.replace('W11', 'Z11') for x in (rule.formula or [])]
+        f = [x.replace('W11', L(AT + NEW) + '11') for x in (rule.formula or [])]
         rule.formula = f
         D.conditional_formatting.add(shift_ref(ref), rule)
-# 머리글: '선정 결과'(P8)를 Y 까지, 9행 Need-by · SUPPLIER · SITE (V 서식)
+# 머리글: '선정 결과'(P8)를 AA 까지, 9행 Need-by · UOM · Tax Code · SUPPLIER · SITE (V 서식)
 for m in list(D.merged_cells.ranges):
     if m.min_row == 8 and m.max_col == AT - 1:
         D.unmerge_cells(str(m))
@@ -162,18 +163,22 @@ for m in list(D.merged_cells.ranges):
 for r in (8, 9, 10):
     for c in range(AT, AT + NEW):
         cp(D.cell(r, 22), D.cell(r, c))
-for c, h in zip(range(AT, AT + NEW), ['Need-by', 'SUPPLIER', 'SITE']):
+for c, h in zip(range(AT, AT + NEW), HEADS):
     D.cell(9, c).value = h
 D.column_dimensions['W'].width = 20.7   # Need-by ≈150px
-D.column_dimensions['X'].width = 30.7   # SUPPLIER ≈220px
-D.column_dimensions['Y'].width = 22.1   # SITE ≈160px
-# _proto 11행(구매내역서 품목 행): 23열부터 오른쪽으로 3칸 밀고, W·X·Y 는 V 서식 (X·Y 는 줄바꿈 없음)
+D.column_dimensions['X'].width = 9      # UOM ≈65px
+D.column_dimensions['Y'].width = 11     # Tax Code ≈80px
+D.column_dimensions['Z'].width = 30.7   # SUPPLIER ≈220px
+D.column_dimensions['AA'].width = 22.1  # SITE ≈160px
+# _proto 11행(구매내역서 품목 행): 23열부터 오른쪽으로 5칸 밀고, W~AA 는 V 서식 (UOM·Tax Code 는 가운데, SUPPLIER·SITE 는 줄바꿈 없음)
 for c in range(102, AT - 1, -1):
     cp(P.cell(11, c), P.cell(11, c + NEW))
 for c in range(AT, AT + NEW):
     cp(P.cell(11, 22), P.cell(11, c))
-for c in (AT + 1, AT + 2):
-    al = copy(P.cell(11, c).alignment); al.wrap_text = False; P.cell(11, c).alignment = al
+for c in (AT + 1, AT + 2, AT + 3, AT + 4):
+    al = copy(P.cell(11, c).alignment); al.wrap_text = False
+    if c in (AT + 1, AT + 2): al.horizontal = 'center'
+    P.cell(11, c).alignment = al
 
 # ---------- 견적종합 ----------
 Q['G1'].value = None
