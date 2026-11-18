@@ -769,7 +769,7 @@ function checkSetup() {
   if (!sid) bad('스크립트 속성 SPOT_TEMPLATE_ID 가 없습니다 (Spot 견적 구매내역서 템플릿)');
   else { try { var st = SpreadsheetApp.openById(sid), miss = [SPOT.SUMMARY, SPOT.DETAIL, SPOT.QUOTE, SPOT.PROTO].filter(function (n) { return !st.getSheetByName(n); });
     if (miss.length) bad('Spot 템플릿에 없는 탭: ' + miss.join(', '));
-    else if (!spotTemplateCurrent_(st)) bad('Spot 템플릿이 예전 버전입니다 (구매내역서 선정 결과에 UOM · Tax Code 열 없음) — 새 템플릿을 올려 주세요');
+    else if (!spotTemplateCurrent_(st)) bad('Spot 템플릿이 예전 버전입니다 (견적종합 Need-by 구분 열 없음) — 새 템플릿을 올려 주세요');
     else ok('Spot 견적 구매내역서 템플릿: ' + st.getName()); } catch (e) { bad('Spot 템플릿을 열 수 없습니다: ' + e.message); } }
   var aid = prop_('ARCHIVE_SHEET_ID');
   if (!aid) bad('스크립트 속성 ARCHIVE_SHEET_ID 가 없습니다 (완료 보관 파일)');
@@ -957,7 +957,9 @@ function vendorSheet_() {
 /** Spot 템플릿이 선정 결과 뒤 W Need-by · X UOM · Y Tax Code · Z SUPPLIER · AA SITE 가 있는 새 버전인지 */
 function spotTemplateCurrent_(ss) {
   var d = ss.getSheetByName(SPOT.DETAIL);
-  return !!d && String(d.getRange(9, SPOT.D_NEED).getValue()).trim() === 'Need-by' && String(d.getRange(9, SPOT.D_TAX).getValue()).trim() === 'Tax Code';
+  var q = ss.getSheetByName(SPOT.QUOTE);
+  return !!d && String(d.getRange(9, SPOT.D_NEED).getValue()).trim() === 'Need-by' && String(d.getRange(9, SPOT.D_TAX).getValue()).trim() === 'Tax Code' &&
+    !!q && String(q.getRange(3, SPOT.Q_NBMODE).getValue()).trim() === 'Need-by 구분';
 }
 /** 업체정보 탭 SUPPLIER·SITE (업체명 기준). 탭이 없으면 빈 값 */
 function vendorInfoMap_() {
@@ -1574,7 +1576,7 @@ function apiCreateSpotPurchase(payload) {
   var ss = SpreadsheetApp.openById(file.getId());
   if (!spotTemplateCurrent_(ss)) {
     DriveApp.getFileById(ss.getId()).setTrashed(true);
-    throw new Error('Spot 구매내역서 템플릿이 예전 버전입니다 (구매내역서 선정 결과에 UOM · Tax Code 열이 없음). ' +
+    throw new Error('Spot 구매내역서 템플릿이 예전 버전입니다 (견적종합에 Need-by 구분 · 조정 Need-by 열이 없음). ' +
       'templates/Spot_구매내역서_템플릿.xlsx 를 새로 올려 구글 시트로 저장하고 SPOT_TEMPLATE_ID 를 바꿔 주세요.');
   }
   applyPlan_(ss, buildSpotPlan_(items, vendors, rates, base, payload.schedule, { title: name, confirmer: payload.confirmer, vendorInfo: vendorInfoMap_() }));

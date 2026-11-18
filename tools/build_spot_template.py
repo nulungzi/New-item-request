@@ -5,7 +5,7 @@ Spot 견적 구매내역서 샘플에서 템플릿을 만든다.
     1  전체구매요약 품목 행      2  CUR 별 합계 첫 행   3  CUR 별 합계 다음 행
     4  총 합계(KRW) 행           5  적용환율 메모 행
     11 구매내역서 품목 행 (A~DC): W Need-by · X UOM · Y Tax Code · Z SUPPLIER · AA SITE, 업체 비교 칸은 AB 부터
-    21 견적종합 업체 행 (A~AU): AT SUPPLIER · AU SITE
+    21 견적종합 업체 행 (A~AW): AM Need-by 구분 · AN 조정 Need-by (Lead Time 뒤), AV SUPPLIER · AW SITE
 - 구매내역서 통화 합계를 USD·EUR·JPY·SGD·KRW 로, 환율 칸을 USD·JPY·EUR·SGD 로 바꾼다.
 
 사용: python3 -I tools/build_spot_template.py <Spot구매내역서샘플.xlsx> templates/Spot_구매내역서_템플릿.xlsx
@@ -198,6 +198,48 @@ Q.column_dimensions['AU'].width = 18
 for c in range(12, 24):
     Q.cell(3, c).value = None
 clear(Q, 5, 1, 45)
+
+# 견적종합: Lead Time(AL) 뒤에 AM Need-by 구분 · AN 조정 Need-by (L/T 때문에 Need-by 를 바꿀 때)
+#   그 뒤 칸은 2칸씩 밀림: AO Shelf Life · AP Supplier Remarks · AQ 작성일/환율 · AR~AU 환율 · AV SUPPLIER · AW SITE
+QN, QAT = 2, 39
+q_merges = [(m.min_row, m.min_col, m.max_row, m.max_col) for m in Q.merged_cells.ranges if m.max_col >= QAT]
+for r1, c1, r2, c2 in q_merges:
+    Q.unmerge_cells(start_row=r1, start_column=c1, end_row=r2, end_column=c2)
+q_cf = [(str(rng.sqref), list(rules)) for rng, rules in Q.conditional_formatting._cf_rules.items()]
+q_w = {k: d.width for k, d in Q.column_dimensions.items() if d.width}
+Q.insert_cols(QAT, QN)
+for r1, c1, r2, c2 in q_merges:
+    Q.merge_cells(start_row=r1, start_column=c1 + QN if c1 >= QAT else c1, end_row=r2, end_column=c2 + QN)
+for k in list(Q.column_dimensions.keys()):
+    del Q.column_dimensions[k]
+for k, w in q_w.items():
+    i = CI(k)
+    Q.column_dimensions[L(i + QN if i >= QAT else i)].width = w
+def q_shift(ref):
+    out = []
+    for part in ref.split():
+        ends = []
+        for x in part.split(':'):
+            col = ''.join(ch for ch in x if ch.isalpha()); row = x[len(col):]
+            i = CI(col)
+            ends.append(L(i + QN if i >= QAT else i) + row)
+        out.append(':'.join(ends))
+    return ' '.join(out)
+Q.conditional_formatting = ConditionalFormattingList()
+for ref, rules in q_cf:
+    for rule in rules:
+        Q.conditional_formatting.add(q_shift(ref), rule)
+# _proto 21행(견적종합 업체 행)도 같은 자리에서 2칸 밀고, 새 칸은 Lead Time(AL) 서식
+for c in range(60, QAT - 1, -1):
+    cp(P.cell(21, c), P.cell(21, c + QN))
+for c, h in ((QAT, 'Need-by 구분'), (QAT + 1, '조정 Need-by')):
+    for r in (3, 4):
+        cp(Q.cell(r, QAT - 1), Q.cell(r, c))
+    Q.cell(3, c).value = h
+    cp(P.cell(21, QAT - 1), P.cell(21, c))
+P.cell(21, QAT + 1).number_format = 'yyyy-mm-dd'
+Q.column_dimensions[L(QAT)].width = 24
+Q.column_dimensions[L(QAT + 1)].width = 13
 
 # ---------- 구매일정: 12개월 (계약 구매내역서 템플릿과 같게) ----------
 # 샘플은 10개월(E~X)까지만 서식이 있어 Y~AB(11·12번째 달)에 W·X 서식을 복사

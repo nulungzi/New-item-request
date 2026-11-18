@@ -398,6 +398,9 @@ a.btn-ghost { display: inline-block; text-decoration: none; border-radius: 6px }
 .cf-prev { border: 1px solid var(--line); border-radius: 10px; background: #fff; min-height: 300px; width: 100%; height: 100% }
 .cf-prev-wrap { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 6px; min-height: 300px }
 @media (max-width: 760px) { .cf-grid { grid-template-columns: 1fr } }
+.nb-cell select { padding: 3px 4px; font-size: .78rem; max-width: 150px }
+.nb-cell input[type="date"] { display: block; margin-top: 4px; padding: 3px 4px; font: .78rem var(--font-data) }
+.nb-cell input[hidden] { display: none }
 .jump { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 999px; font: 600 .7rem var(--font-data); background: var(--warn-soft); color: var(--warn) }
 .lt-dl { display: block; font-size: .72rem; color: var(--muted); white-space: nowrap }
 .lt-dl.late { color: var(--warn); font-weight: 600 }
@@ -2763,13 +2766,15 @@ function renderQSum() {
         '<label class="field">직전 CUR<input data-p="cur" value="' + esc(x.prev.cur) + '" placeholder="선택"></label>' +
         '<label class="field">직전 단가<input data-p="price" value="' + esc(x.prev.price) + '" inputmode="decimal" placeholder="선택"></label>' +
       '</div>' +
-      '<div class="scroll"><table class="list q-table"><tr><th>선정</th><th>업체</th><th class="n">U/P</th><th>CUR</th><th class="n">수량</th><th class="n">원화</th><th>순위</th><th>MOQ</th><th>L/T</th><th>SUPPLIER REMARKS</th><th>검토 문구</th></tr>' +
+      '<div class="scroll"><table class="list q-table"><tr><th>선정</th><th>업체</th><th class="n">U/P</th><th>CUR</th><th class="n">수량</th><th class="n">원화</th><th>순위</th><th>MOQ</th><th>L/T</th><th title="L/T 때문에 소요제기 Need-by 를 못 맞추면 조정 · 구매내역서 Need-by 에 들어감">Need-by</th><th>SUPPLIER REMARKS</th><th>검토 문구</th></tr>' +
         qs.vendors.map(function (v) {
           var none = !!qs.noReply[v], q = x.quotes[v] || {};
           var price = none ? 'NO BID' : (q.price || '—');
           return '<tr data-v="' + esc(v) + '"' + (none ? ' class="nobid"' : '') + '><td><input type="radio" name="sel-' + i + '"' + (q.sel ? ' checked' : '') + (none ? ' disabled' : '') + ' aria-label="' + esc(v) + ' 선정"></td><td class="nw">' + esc(v) + '</td>' +
             '<td class="n data">' + esc(price) + '<span class="jump-slot"></span></td><td class="data">' + esc(none ? '' : q.cur || '') + '</td><td class="n data">' + esc(q.qty || '') + '</td>' +
             '<td class="krw"></td><td class="rank"></td><td class="data">' + esc(none ? '' : q.moq || '') + '</td><td class="data">' + esc(none ? '' : q.lt || '') + (none ? '' : ltDeadline(it, q.lt)) + '</td>' +
+            '<td class="nb-cell">' + (none ? '' : '<select data-f="nbMode" aria-label="' + esc(v) + ' Need-by"><option value="">소요제기와 동일</option><option value="adj"' + (q.nbMode === 'adj' ? ' selected' : '') + '>L/T 고려하여 조정</option></select>' +
+              '<input type="date" data-f="nbAdj" value="' + esc(q.nbAdj || '') + '"' + (q.nbMode === 'adj' ? '' : ' hidden') + ' aria-label="' + esc(v) + ' 조정 Need-by">') + '</td>' +
             '<td class="ro">' + esc(none ? '회신 없음' : q.remark || '') + '</td><td><input class="w-rev" data-f="review" value="' + esc(q.review || '') + '" placeholder="선정 시 적기"' + (none ? ' disabled' : '') + '></td></tr>';
         }).join('') + '</table></div>' +
       '<div class="row"><button class="link-btn" type="button" data-clear="' + i + '">선정 비우기 (시트에서 정하기)</button></div></div>';
@@ -2781,6 +2786,16 @@ function renderQSum() {
     box.querySelectorAll('tr[data-v]').forEach(function (tr) {
       var q = qOf(x, tr.dataset.v);
       tr.querySelector('[data-f="review"]').oninput = function () { q.review = this.value; };
+      var nbSel = tr.querySelector('[data-f="nbMode"]'), nbDate = tr.querySelector('[data-f="nbAdj"]');
+      if (nbSel) {
+        nbSel.onchange = function () {   // 조정: 오늘 + L/T + 운송·통관(21일) 과 소요제기 Need-by 중 늦은 날을 먼저 넣어 둠
+          q.nbMode = nbSel.value;
+          if (q.nbMode === 'adj' && !q.nbAdj) q.nbAdj = suggestNeedBy(x.src, q.lt);
+          nbDate.value = q.nbAdj || ''; nbDate.hidden = q.nbMode !== 'adj';
+          if (!nbDate.hidden) nbDate.focus();
+        };
+        nbDate.oninput = function () { q.nbAdj = nbDate.value; };
+      }
       tr.querySelector('input[type=radio]').onchange = function () {
         Object.keys(x.quotes).forEach(function (k) { x.quotes[k].sel = false; });
         q.sel = true; updateRanks();
@@ -2817,6 +2832,15 @@ function ltDeadline(it, lt) {
   var ds = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
   var days = t ? Math.round((d - new Date(+t[1], +t[2] - 1, +t[3])) / 86400000) : null;
   return '<span class="lt-dl' + (days !== null && days < 0 ? ' late' : '') + '" title="Need-by − L/T ' + ld + '일 − 운송·통관 21일">발주 ' + ds.slice(2) + (days !== null ? ' ' + ddayText(days) : '') + (days !== null && days < 0 ? ' · 납기 불가' : '') + '</span>';
+}
+/** L/T 를 고려한 Need-by: 오늘 + L/T(숫자만이면 주) + 운송·통관 21일 과 소요제기 Need-by 중 늦은 날 */
+function suggestNeedBy(it, lt) {
+  var ld = ltDays(lt), nb = String((it.parts && it.parts.length ? it.parts[0].needBy : it.needBy) || '').slice(0, 10);
+  var t = String(state.today || $('base').value || '').match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (ld === null || !t) return nb;
+  var d = new Date(+t[1], +t[2] - 1, +t[3] + ld + 21);
+  var ds = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+  return !nb || ds > nb ? ds : nb;
 }
 /** 원화 금액·순위 (견적종합 수식과 같은 계산) */
 function updateRanks() {

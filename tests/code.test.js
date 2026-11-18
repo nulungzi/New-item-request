@@ -240,7 +240,7 @@ test('견적 저장 → Spot 견적 구매내역서, 계약+Spot 단가는 두 �
   const db = fakeBook({});
   const ops = [];
   const book = (name) => ({ getUrl: () => 'URL-' + name, getId: () => 'ID-' + name, getName: () => name, deleteSheet: () => {}, setActiveSheet: () => {},
-    getSheetByName: () => { let col = 0; const rec = new Proxy({}, { get: (t, k) => (...a) => { ops.push(k); if (k === 'getRange') col = a[1]; return k === 'getValue' ? ({ 23: 'Need-by', 25: 'Tax Code' })[col] || '' : rec; } }); return rec; } });
+    getSheetByName: () => { let col = 0; const rec = new Proxy({}, { get: (t, k) => (...a) => { ops.push(k); if (k === 'getRange') col = a[1]; return k === 'getValue' ? ({ 23: 'Need-by', 25: 'Tax Code', 39: 'Need-by 구분' })[col] || '' : rec; } }); return rec; } });
   const made = [];
   const ctx = inContext({
     console: { warn: () => {}, log: () => {} },
