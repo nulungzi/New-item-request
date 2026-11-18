@@ -1236,14 +1236,15 @@ function rfqEmail_(items, due, signatureHtml, remind) {
     return ps.length < 2 ? need(ps[0].needBy) : ps.map(function (p) { return need(p.needBy) + ' (' + qty(p.qty) + ')'; }).join(sep);
   };
   var cell = 'border:1px solid #000;padding:4px 6px;font-family:Arial,sans-serif;font-size:10pt;';
-  var head = ['L/I', 'Product Name', 'Description', 'QPL<br>(Mfg)', 'UOM', 'Remark', 'Qty', 'Need-By'];
+  var head = ['L/I', 'KE No', 'Product Name', 'Description', 'QPL<br>(Mfg)', 'UOM', 'Remark', 'Qty', 'Need-By'];
+  var keNo = function (it) { return it.registered === false || !String(it.item || '').trim() ? 'TBD' : String(it.item).trim(); };   // 견적요청서 파일과 같게 (미등록은 TBD)
   var table = '<table style="border-collapse:collapse;margin:8px 0 16px">' +
     '<tr>' + head.map(function (h, i) {
-      return '<th style="' + cell + 'background:#deeaf6;font-weight:bold;text-align:' + (i === 1 ? 'left' : 'center') + ';white-space:nowrap">' + h + '</th>';
+      return '<th style="' + cell + 'background:#deeaf6;font-weight:bold;text-align:' + (i === 2 ? 'left' : 'center') + ';white-space:nowrap">' + h + '</th>';
     }).join('') + '</tr>' +
     items.map(function (it, i) {
-      var v = [i + 1, e(it.name), e(it.desc), e(it.qpl), e(it.uom), e(it.remark === undefined ? RFQ.REMARK : it.remark), qty(it.qty), needs(it, '<br>')];
-      return '<tr>' + v.map(function (x, j) { return '<td style="' + cell + 'text-align:' + (j === 1 ? 'left' : 'center') + (j === 7 ? ';white-space:nowrap' : '') + '">' + x + '</td>'; }).join('') + '</tr>';
+      var v = [i + 1, e(keNo(it)), e(it.name), e(it.desc), e(it.qpl), e(it.uom), e(it.remark === undefined ? RFQ.REMARK : it.remark), qty(it.qty), needs(it, '<br>')];
+      return '<tr>' + v.map(function (x, j) { return '<td style="' + cell + 'text-align:' + (j === 2 ? 'left' : 'center') + (j === 1 || j === 8 ? ';white-space:nowrap' : '') + '">' + x + '</td>'; }).join('') + '</tr>';
     }).join('') + '</table>';
   var p = function (t) { return '<p style="margin:0 0 14px;font-family:Arial,sans-serif;font-size:10pt">' + t + '</p>'; };
   var dueLine = 'We would like to have a quote on the items as you can find in the below' + (due ? ' due ' + e(due) : ' ASAP') + '.';
@@ -1255,7 +1256,7 @@ function rfqEmail_(items, due, signatureHtml, remind) {
     table + p('Thank you') + (signatureHtml ? '<div>' + signatureHtml + '</div>' : '') + '</div>';
   var text = ['Dear Sir/Madam,', '', 'Hope you are doing well.', '', dueLine.replace(/&amp;/g, '&'), '',
     'Please review and let us know the relevant information attached.', '', 'Below is the summary of the RFQ', '']
-    .concat(items.map(function (it, i) { return (i + 1) + '. ' + [it.name, it.desc, it.qpl, it.uom, it.remark === undefined ? RFQ.REMARK : it.remark, qty(it.qty), needs(it, ', ')].join(' | '); }))
+    .concat(items.map(function (it, i) { return (i + 1) + '. ' + [keNo(it), it.name, it.desc, it.qpl, it.uom, it.remark === undefined ? RFQ.REMARK : it.remark, qty(it.qty), needs(it, ', ')].join(' | '); }))
     .concat(['', 'Thank you']).join('\n');
   return { html: html, text: text };
 }

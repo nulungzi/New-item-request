@@ -323,7 +323,13 @@ test('견적요청 메일 본문', () => {
   assert.match(m.html, />ASAP</);
   assert.match(m.html, /MFG COC\/TR/);
   assert.ok(m.html.indexOf('Thank you') < m.html.indexOf('김민형'));
-  assert.match(m.text, /1\. LOCTITE EA 9837\.1 \| BMS 8-341/);
+  assert.match(m.text, /1\. TBD \| LOCTITE EA 9837\.1 \| BMS 8-341/);   // Item code 없으면 KE No TBD
+  // KE No: L/I 다음 칸 (등록 자재는 Item code, 미등록은 TBD)
+  const k = L.rfqEmail_([{ item: 'KERC02112', registered: true, name: 'DAPCO 2100', qty: 10, needBy: '2026-12-01' }, { item: 'MS20995C20', registered: false, name: 'MS20995C20', qty: 3 }], '11/20', '');
+  assert.ok(k.html.indexOf('>KE No<') > k.html.indexOf('>L/I<') && k.html.indexOf('>KE No<') < k.html.indexOf('>Product Name<'));
+  assert.match(k.html, />KERC02112</);
+  assert.match(k.text, /1\. KERC02112 \| DAPCO 2100/);
+  assert.match(k.text, /2\. TBD \| MS20995C20/);
 });
 
 test('Spot 견적 구매내역서 계획: 업체 수만큼 줄·비교 칸, 선정 체크, NO BID, 요약 순서 수식', () => {
