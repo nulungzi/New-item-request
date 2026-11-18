@@ -355,17 +355,20 @@ test('Spot 견적 구매내역서 계획: 업체 수만큼 줄·비교 칸, 선�
     ['AIRTECH INTERNATIONAL INC', 'HUNTINGTON BEACH', 'HEXCEL CORP', undefined, undefined]);
   // 구매내역서 선정 결과 뒤: W Need-by · X UOM(선정 업체) · Y Tax Code · Z SUPPLIER · AA SITE, 비교 칸은 AB 부터 3개 업체(AB~AM)만 남기고 AN부터 지움
   assert.strictEqual(get('구매내역서', 11, 23), '2027-05-10');
-  assert.strictEqual(get('구매내역서', 11, 24), "=IFERROR(INDEX('견적종합'!$AG:$AG, MATCH(TRUE&$B11, '견적종합'!$D:$D, 0))&\"\", \"\")");
+  assert.strictEqual(get('구매내역서', 11, 24), "=IFERROR(INDEX('견적종합'!$AG:$AG, MATCH(TRUE&$A11, '견적종합'!$D:$D, 0))&\"\", \"\")");
   assert.strictEqual(get('구매내역서', 11, 25), 'V1');
   assert.strictEqual(get('구매내역서', 12, 25), undefined);       // Tax Code 없으면 빈칸
-  assert.strictEqual(get('구매내역서', 11, 26), "=IFERROR(INDEX('견적종합'!$AT:$AT, MATCH(TRUE&$B11, '견적종합'!$D:$D, 0))&\"\", \"\")");
-  assert.strictEqual(get('구매내역서', 11, 27), "=IFERROR(INDEX('견적종합'!$AU:$AU, MATCH(TRUE&$B11, '견적종합'!$D:$D, 0))&\"\", \"\")");
+  assert.strictEqual(get('구매내역서', 11, 26), "=IFERROR(INDEX('견적종합'!$AT:$AT, MATCH(TRUE&$A11, '견적종합'!$D:$D, 0))&\"\", \"\")");
+  assert.strictEqual(get('구매내역서', 11, 27), "=IFERROR(INDEX('견적종합'!$AU:$AU, MATCH(TRUE&$A11, '견적종합'!$D:$D, 0))&\"\", \"\")");
   assert.deepStrictEqual([get('구매내역서', 8, 28), get('구매내역서', 8, 32), get('구매내역서', 8, 36)], ['Airtech', 'Hexcel', '3M']);
   assert.deepStrictEqual(ops.filter(o => o.op === 'deleteCols').map(o => [o.c, o.n]), [[40, 68]]);
   assert.ok(!ops.some(o => o.op === 'width' && o.s === '구매내역서'));     // 열 너비는 템플릿이 정함
   assert.strictEqual(get('구매내역서', 11, 2), "=IFERROR(INDEX('견적종합'!$F:$F, MATCH($A11, '견적종합'!$E:$E, 0)), \"\")");
-  assert.strictEqual(get('구매내역서', 11, 16), "=IFERROR(INDEX('견적종합'!$AD:$AD, MATCH(TRUE&$B11, '견적종합'!$D:$D, 0))&\"\", \"미정\")");
-  assert.strictEqual(get('구매내역서', 11, 28), "=IFERROR(INDEX('견적종합'!$AH:$AH, MATCH($B11&AB$8, '견적종합'!$C:$C, 0)), \"\")");
+  assert.strictEqual(get('구매내역서', 11, 16), "=IFERROR(INDEX('견적종합'!$AD:$AD, MATCH(TRUE&$A11, '견적종합'!$D:$D, 0))&\"\", \"미정\")");
+  assert.strictEqual(get('구매내역서', 11, 28), "=IFERROR(INDEX('견적종합'!$AH:$AH, MATCH($A11&AB$8, '견적종합'!$C:$C, 0)), \"\")");
+  // 같은 자재가 여러 줄이어도 줄마다: 견적종합 찾기 키는 L/I, 전체구매요약은 그 줄(L열)을 바로
+  assert.deepStrictEqual([get('견적종합', 5, 3), get('견적종합', 5, 4)], ['=E5&AD5', '=A5&E5']);
+  assert.strictEqual(get('전체구매요약', 5, 5), "=INDEX('구매내역서'!$B:$V, $L5, E$2)");
   assert.deepStrictEqual([6, 7, 8, 9].map(c => get('구매내역서', 11, c)), [2026, 24, 'USD', 964.19]);
   assert.strictEqual(get('구매내역서', 12, 14), undefined);       // Program 비면 노란 칸
   assert.ok(ops.some(o => o.op === 'bg' && o.s === '구매내역서' && o.r === 12 && o.c === 14));

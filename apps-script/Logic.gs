@@ -1528,8 +1528,8 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
       add({ op: 'fmt', s: Q, r: r, from: SPOT.P_Q_ROW, c1: 1, c2: SPOT.Q_LAST, fs: SPOT.PROTO });
       set(Q, r, 1, !!q.sel);
       if (q.review) set(Q, r, 2, q.review);
-      set(Q, r, 3, '=F' + r + '&AD' + r);
-      set(Q, r, 4, '=A' + r + '&F' + r);
+      set(Q, r, 3, '=E' + r + '&AD' + r);   // 찾기 키: L/I & 업체 (같은 자재 여러 줄도 줄마다)
+      set(Q, r, 4, '=A' + r + '&E' + r);    // 찾기 키: 선정(TRUE) & L/I
       set(Q, r, 5, i + 1);
       set(Q, r, 6, it.item);
       set(Q, r, 7, it.desc || it.name || '');
@@ -1619,7 +1619,7 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
     set(D, r, 10, '=Q' + r); set(D, r, 11, '=T' + r); set(D, r, 12, '=R' + r);
     set(D, r, 13, '=IF(ISNUMBER(L' + r + '), J' + r + ' * L' + r + ', "")');
     if (it.program) set(D, r, 14, it.program); else add({ op: 'bg', s: D, r: r, c: 14, color: TPL.FILL });
-    var key = 'TRUE&$B' + r;
+    var key = 'TRUE&$A' + r;   // 이 줄(L/I)에서 선정한 업체
     set(D, r, 15, xl(key, 'D:B', '', true));
     set(D, r, 16, xl(key, 'D:AD', '미정', true));
     set(D, r, 17, xl(key, 'D:X')); set(D, r, 18, xl(key, 'D:AH')); set(D, r, 19, xl(key, 'D:AJ'));
@@ -1632,7 +1632,7 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
     set(D, r, SPOT.D_SUP, xl(key, 'D:AT', '', true));
     set(D, r, SPOT.D_SITE, xl(key, 'D:AU', '', true));
     vendors.forEach(function (v, j) {
-      var c = SPOT.D_V0 + j * 4, vk = '$B' + r + '&' + A(c) + '$8';
+      var c = SPOT.D_V0 + j * 4, vk = '$A' + r + '&' + A(c) + '$8';   // 이 줄(L/I) & 업체
       ['AH', 'AI', 'AL', 'AN'].forEach(function (src, k3) {
         set(D, r, c + k3, '=IFERROR(INDEX(' + QR + '$' + src + ':$' + src + ', MATCH(' + vk + ', ' + QR + '$C:$C, 0))' + (k3 ? '&""' : '') + ', "")');
       });
@@ -1646,7 +1646,7 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
   /* ---------- 전체구매요약 ---------- */
   var sLast = 4 + n;
   items.forEach(function (it, i) {
-    var r = 5 + i, vl = function (col) { return '=VLOOKUP(P' + r + ', ' + DR + '$B:$V, ' + col + '$2, FALSE)'; };   // B~V: 선정 결과까지 (비교 칸은 지워질 수 있음)
+    var r = 5 + i, vl = function (col) { return '=INDEX(' + DR + '$B:$V, $L' + r + ', ' + col + '$2)'; };   // L열 = 구매내역서 행 (같은 자재 여러 줄도 그 줄 값), B~V 에서 2행 번호 열
     add({ op: 'fmt', s: S, r: r, from: SPOT.P_SUM_ROW, c1: 1, c2: 16, fs: SPOT.PROTO });
     add({ op: 'height', s: S, r: r, pt: 30 });
     set(S, r, 3, i + 1);
