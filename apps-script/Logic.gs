@@ -706,6 +706,7 @@ function vendorStats_(records, history, onlyItems) {
   (records || []).forEach(function (rec) {
     if (!rec || rec.kind !== '견적요청서' || !(rec.vendors || []).length) return;
     var q = rec.quote || {}, qi = q.items || [], rates = q.rates || {}, noReply = q.noReply || {};
+    var lines = quoteLines_(qi).filter(function (l) { var it = (rec.items || [])[l.at]; return it && (!want || want[itemKey_(it.item)]); });
     var idx = (rec.items || []).map(function (it, i) { return !want || want[itemKey_(it && it.item)] ? i : -1; }).filter(function (i) { return i >= 0; });
     if (!idx.length) return;
     var day = String(rec.created || '').slice(0, 10);
@@ -713,10 +714,10 @@ function vendorStats_(records, history, onlyItems) {
       var s = get(v);
       s.requested++;
       if (day > s.last) s.last = day;
-      if (!noReply[v] && idx.some(function (i) { var p = qi[i] && qi[i].quotes && qi[i].quotes[v]; return p && !p.noReply && String(p.price == null ? '' : p.price).trim(); })) s.replied++;
+      if (!noReply[v] && lines.some(function (l) { var p = l.x.quotes && l.x.quotes[v]; return p && !p.noReply && String(p.price == null ? '' : p.price).trim(); })) s.replied++;
     });
-    idx.forEach(function (i) {
-      var qs = (qi[i] && qi[i].quotes) || {}, code = itemKey_(rec.items[i].item), krw = {};
+    lines.forEach(function (l) {
+      var qs = l.x.quotes || {}, code = itemKey_(rec.items[l.at].item), krw = {};
       Object.keys(qs).forEach(function (v) {
         if (noReply[v]) return;
         var p = qs[v], n = priceOf(p);
@@ -1278,6 +1279,13 @@ function rfqLines_(items) {
   });
   return out;
 }
+/**
+ * 견적 줄 목록 → [{x, at, part}] (at = 기록 품목 번호, part = Need-by 별로 나눈 줄의 번호 · 안 나눴으면 undefined)
+ *   예전 기록(at 없음)은 품목과 같은 순서
+ */
+function quoteLines_(quoteItems) {
+  return (quoteItems || []).map(function (x, j) { return { x: x || {}, at: x && x.at !== undefined && x.at !== null ? Number(x.at) : j, part: x && x.part !== undefined && x.part !== null ? Number(x.part) : undefined }; });
+}
 /** 견적요청서 양식: 기록에 없으면 제목으로 (양식 2 는 RFQ_YYMMDD_…) */
 function rfqTemplateOf_(rec) { return rec.template || (/^RFQ_\d{6}/.test(String(rec.title || '')) ? 'list' : 'month'); }
 function rfqRowKey_(it) { return itemKey_(it.item) || itemKey_(it.name); }
@@ -1298,15 +1306,30 @@ function remapRfqQuote_(oldRows, oldQuoteItems, newRows) {
   var idx = newRows.map(function (r) { var i = find(r, true); if (i >= 0) used[i] = 1; return i; });
   idx = idx.map(function (i, k) { if (i >= 0) return i; var j = find(newRows[k], false); if (j >= 0) used[j] = 1; return j; });
   var oldKeys = uniq_(oldRows.map(rfqRowKey_)), newKeys = uniq_(newRows.map(rfqRowKey_));
+  var lines = quoteLines_(q), out = [];
+  var partsOf = function (r) { return r && r.parts && r.parts.length > 1 ? r.parts.length : 0; };
+  idx.forEach(function (i, k) {   // 새 품목 k ← 예전 품목 i 의 견적 줄(나눈 줄 포함)
+    var mine = i >= 0 ? lines.filter(function (l) { return l.at === i; }) : [];
+    var split = mine.some(function (l) { return l.part !== undefined; });
+    if (split && partsOf(oldRows[i]) && partsOf(oldRows[i]) === partsOf(newRows[k])) {
+      mine.forEach(function (l) { var o = {}; Object.keys(l.x).forEach(function (f) { o[f] = l.x[f]; }); o.at = k; o.part = l.part; out.push(o); });
+    } else {
+      var base = mine[0] ? mine[0].x : { quotes: {} }, o = {};   // Need-by 건수가 바뀌면 나눈 줄은 첫 줄로 합침
+      Object.keys(base).forEach(function (f) { if (f !== 'part') o[f] = base[f]; });
+      if (!o.quotes) o.quotes = {};
+      o.at = k;
+      out.push(o);
+    }
+  });
   return {
-    quoteItems: idx.map(function (i) { return i >= 0 && q[i] ? q[i] : { quotes: {} }; }),
+    quoteItems: out,
     added: newKeys.filter(function (k) { return oldKeys.indexOf(k) < 0; }),
     removed: oldKeys.filter(function (k) { return newKeys.indexOf(k) < 0; })
   };
 }
 /** 수정한 뒤 아직 메일을 안 보냈는지 (다음 메일은 [Revised]) */
 function rfqRevisedPending_(rec) {
-  if (!rec || !rec.rev || !rec.rev.at) return false;
+  if (!rec || rec.direct || !rec.rev || !rec.rev.at) return false;   // 견적 직접 입력은 메일이 없음
   var ms = rec.mails || [], last = ms[ms.length - 1];
   return !last || String(last.at || '') < String(rec.rev.at);
 }

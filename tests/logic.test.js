@@ -755,7 +755,15 @@ test('견적요청서 수정: 줄 펼치기, 견적 옮기기(같은 Item), 추�
   const q = [{ quotes: { OMI: { price: '10' } } }, { quotes: { CBOL: { price: '5' } } }];
   const newRows = L.mergeRfqItems_([{ item: 'k3', name: 'C', qty: 4, needBy: '2027-05-01' }, { item: 'K1', name: 'A', qty: 9, needBy: '2027-01-10' }]);
   const m = L.remapRfqQuote_(rows, q, newRows);
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(m)), { quoteItems: [{ quotes: {} }, { quotes: { OMI: { price: '10' } } }], added: ['K3'], removed: ['K2'] });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(m)), { quoteItems: [{ quotes: {}, at: 0 }, { quotes: { OMI: { price: '10' } }, at: 1 }], added: ['K3'], removed: ['K2'] });
+  // Need-by 별로 나눈 줄: 건수가 같으면 그대로 옮기고, 바뀌면 첫 줄로 합침
+  const split = [{ at: 0, part: 0, quotes: { OMI: { price: '9' } } }, { at: 0, part: 1, quotes: { OMI: { price: '8' } } }, { at: 1, quotes: { CBOL: { price: '5' } } }];
+  const same = L.remapRfqQuote_(rows, split, L.mergeRfqItems_([{ item: 'K2', name: 'B', qty: 1, needBy: '2027-02-01' }, { item: 'K1', name: 'A', qty: 2, needBy: '2027-01-10' }, { item: 'K1', name: 'A', qty: 3, needBy: '2027-03-10' }]));
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(same.quoteItems)), [{ quotes: { CBOL: { price: '5' } }, at: 0 }, { quotes: { OMI: { price: '9' } }, at: 1, part: 0 }, { quotes: { OMI: { price: '8' } }, at: 1, part: 1 }]);
+  const fewer = L.remapRfqQuote_(rows, split, L.mergeRfqItems_([{ item: 'K1', name: 'A', qty: 5, needBy: '2027-01-10' }]));
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(fewer.quoteItems)), [{ quotes: { OMI: { price: '9' } }, at: 0 }]);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(L.quoteLines_([{ quotes: {} }, { at: 0, part: 1, quotes: {} }]).map(l => [l.at, l.part]))), [[0, null], [0, 1]]);
+  assert.strictEqual(L.rfqRevisedPending_({ direct: true, rev: { at: '2026-11-16 10:00' }, mails: [] }), false);
   assert.strictEqual(L.rfqTemplateOf_({ title: 'RFQ_261116_KE_HW_KMH_EFAB' }), 'list');
   assert.strictEqual(L.rfqTemplateOf_({ title: '[KE] RFQ // 261116 X' }), 'month');
   assert.strictEqual(L.rfqTemplateOf_({ title: 'RFQ_261116_x', template: 'month' }), 'month');

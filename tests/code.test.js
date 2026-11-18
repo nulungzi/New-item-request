@@ -693,3 +693,32 @@ test('자재 정보: 열 키 + Item 있는 줄, 버전은 DB 새로고침 · 자
   const reg = ctx.apiRegisterItem({ item: 'A3', priceMode: 'SPOT', uom: 'EA', desc: 'D' });
   assert.ok(reg.masterVer && reg.masterVer === props.MASTER_VER);
 });
+
+test('견적요청서 없이 견적 바로 입력: 파일·메일 없는 기록, 업체 고르기, 수정은 품목만, 메일은 막음', () => {
+  const db = fakeBook({});
+  const ctx = inContext({
+    console: { warn: () => {}, log: () => {} },
+    SpreadsheetApp: { getActive: () => db },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }) },
+    LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
+    Session: { getActiveUser: () => ({ getEmail: () => 'me@ke.com' }), getEffectiveUser: () => ({ getEmail: () => 'me@ke.com' }) },
+    Utilities: { formatDate: (d, tz, f) => (f === 'yyMMdd' ? '261118' : f === 'yyyy-MM-dd HH:mm' ? '2026-11-18 10:00' : '261118-100000') },
+  });
+  const r = ctx.apiCreateDirectQuote({ items: [{ item: 'KERC02112', name: 'DAPCO 2100', uom: 'CA', qty: 10, needBy: '2026-12-01' }, { item: 'KERC02112', name: 'DAPCO 2100', uom: 'CA', qty: 20, needBy: '2027-01-01' }] });
+  assert.strictEqual(r.name, '261118 Material Spot (견적 직접 입력)');
+  let rec = ctx.apiMyRecords().records[0];
+  assert.deepStrictEqual(JSON.parse(JSON.stringify([rec.kind, rec.direct, rec.url, rec.status, rec.items.length, rec.items[0].parts.length])), ['견적요청서', true, '', '견적 직접 입력', 1, 2]);
+  assert.throws(() => ctx.apiSetQuoteVendors(r.recordId, []), /한 곳 이상/);
+  ctx.apiSetQuoteVendors(r.recordId, ['Syensqo', ' Syensqo', 'PPG']);
+  rec = ctx.apiMyRecords().records[0];
+  assert.deepStrictEqual(JSON.parse(JSON.stringify([rec.vendors, rec.status])), [['Syensqo', 'PPG'], '견적 입력']);
+  assert.throws(() => ctx.apiCreateRfqDraft({ recordId: r.recordId, bcc: ['a@b.com'] }), /보낼 메일이 없습니다/);
+  // Need-by 별로 나눈 견적 저장 → 수정(같은 건수)은 그대로 옮김, 파일 없이
+  ctx.apiSaveQuotes(r.recordId, { vendors: ['Syensqo'], items: [{ at: 0, part: 0, quotes: { Syensqo: { price: '5' } } }, { at: 0, part: 1, quotes: { Syensqo: { price: '4.5' } } }] });
+  const v = ctx.apiReviseRfq({ recordId: r.recordId, items: [{ item: 'KERC02112', qty: 10, needBy: '2026-12-01' }, { item: 'KERC02112', qty: 30, needBy: '2027-01-01' }] });
+  assert.strictEqual(v.url, '');
+  rec = ctx.apiMyRecords().records[0];
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(rec.quote.items.map(x => [x.at, x.part, x.quotes.Syensqo.price]))), [[0, 0, '5'], [0, 1, '4.5']]);
+  assert.strictEqual(rec.items[0].qty, 40);
+  assert.strictEqual(ctx.recordAlert_(rec, new Date(2026, 10, 18)).level, '');
+});
