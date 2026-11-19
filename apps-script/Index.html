@@ -569,6 +569,10 @@ body.locked { overflow: hidden }
 .login-card .btn { width: 100%; padding: 11px; font-size: 1rem }
 .login-acct { padding: 10px 12px; border-radius: 8px; background: var(--surface-2); font-size: .88rem; word-break: break-all }
 .login-acct b { font-family: var(--font-data) }
+.login-acct { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; justify-content: space-between }
+.login-copy { border: 1px solid var(--line); background: var(--surface); color: var(--accent); border-radius: 999px; padding: 3px 11px; font: 600 .78rem var(--font-body); cursor: pointer; white-space: nowrap }
+.login-copy:hover { border-color: var(--accent) }
+.login-copy.done { color: var(--ok); border-color: var(--ok) }
 .login-foot { display: grid; gap: 6px; font-size: .82rem }
 .user-row { gap: 8px }
 .user-row .btn-ghost { padding: 5px 12px; font-size: .82rem }
@@ -1569,13 +1573,35 @@ function showLogin(msg, st) {
   $('loginGate').hidden = false;
   $('loginMsg').textContent = msg || '';
   if (st) {
-    $('loginAcct').innerHTML = st.account ? '지금 접속한 Google 계정 <b>' + esc(st.account) + '</b>' : 'Google 계정을 확인하지 못했습니다.';
+    $('loginAcct').innerHTML = st.account ? '<span>지금 접속한 Google 계정 <b>' + esc(st.account) + '</b></span><button type="button" class="login-copy" id="loginCopy" title="이메일을 복사합니다 · 아래 칸에 붙여넣기(Ctrl+V)">복사</button>' : 'Google 계정을 확인하지 못했습니다.';
+    if (st.account) $('loginCopy').onclick = function () { copyText(st.account, this); };
     $('loginHours').textContent = st.hours || 4;
     if (st.url) $('loginSwitch').href = 'https://accounts.google.com/AccountChooser?continue=' + encodeURIComponent(st.url);
     var off = !st.deployOk;
     $('loginEmail').disabled = off; $('loginBtn').disabled = off;
     if (!off) setTimeout(function () { $('loginEmail').focus(); }, 50);
   }
+}
+/* 글자 복사: 클립보드 API (안 되면 숨은 칸으로 복사) → 버튼에 '복사됨' */
+function copyText(text, btn) {
+  var done = function () {
+    if (!btn) return;
+    btn.textContent = '복사됨 ✓'; btn.classList.add('done');
+    clearTimeout(btn._t); btn._t = setTimeout(function () { btn.textContent = '복사'; btn.classList.remove('done'); }, 2000);
+    var input = $('loginEmail'); if (input && !input.disabled) input.focus();   // 바로 Ctrl+V
+  };
+  var old = function () {
+    var t = document.createElement('textarea');
+    t.value = text; t.setAttribute('readonly', ''); t.style.position = 'fixed'; t.style.opacity = '0';
+    document.body.appendChild(t); t.select();
+    var ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    t.remove();
+    if (ok) done(); else if (btn) btn.textContent = '복사 안 됨 · 직접 입력';
+  };
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, old);
+    else old();
+  } catch (e) { old(); }
 }
 function hideLogin(st) {
   auth.st = st;
