@@ -562,7 +562,8 @@ var TPL = {
   // _proto 탭 행 번호
   P_S_VENDOR: 1, P_S_CUR: 2, P_S_TOTAL: 3, P_S_NOTE: 4,
   P_D_DATE: 11, P_D_RATE: 12, P_D_TTL: 13, P_D_TTLKRW: 14, P_D_TOTAL: 15, P_D_SPACER: 16, P_D_HEAD: 17, P_D_DATA: 18,
-  D_LAST: 22,   // 구매세부내역 마지막 열: T Need-by Date · U SUPPLIER · V SITE
+  D_LAST: 23,   // 구매세부내역 마지막 열: T Need-by Date · U 수량 · V SUPPLIER · W SITE
+  MOQ_FILL: '#fce4d6', DIFF_FILL: '#fde4e1',   // 수량 칸: MOQ 미달(주황) · 소요제기와 다름(빨강)
   FILL: '#fff2cc'
 };
 
@@ -642,6 +643,9 @@ function qtyText_(n) {
   var p = String(Math.round(x * 10000) / 10000).split('.');
   return p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (p[1] ? '.' + p[1] : '');
 }
+/** Need-by 날짜만 줄마다 · 수량만 줄마다 (Need-by 칸과 수량 칸을 나눠 같은 줄끼리 짝) */
+function needDates_(needs) { return (needs || []).map(function (x) { var d = toDate_(x.needBy); return d ? fmtDate_(d) : 'ASAP'; }).join('\n'); }
+function needQtys_(needs) { return (needs || []).map(function (x) { return qtyText_(x.qty); }).join('\n'); }
 /** Need-by 여러 건 → '2027-05-14(500)\n2027-06-20(600)' (한 건이면 날짜만) */
 function needsText_(needs) {
   needs = needs || [];
@@ -879,7 +883,7 @@ function fixedSpotItem_(l) {
   return {
     item: l.item, name: l.product || l.desc || l.item, desc: l.desc || '', material: l.material || '', qpl: l.qpl || '', uom: l.uom || '',
     remark: '', qty: Number(l.qty) || 0, needBy: toDate_(needs[0] && needs[0].needBy), parts: needs, program: l.program || '', prev: {}, shipFrom: l.shipFrom || '', taxCode: l.taxCode || '',
-    fixed: { vendor: l.supplier, price: l.price, cur: l.cur, lt: l.leadtime || '', mfg: l.product || '', reason: isSpotMode_(l.priceMode) ? 'Sole source' : (l.priceMode || '') }
+    fixed: { vendor: l.supplier, price: l.price, cur: l.cur, lt: l.leadtime || '', moq: l.moq, mfg: l.product || '', reason: isSpotMode_(l.priceMode) ? 'Sole source' : (l.priceMode || '') }
   };
 }
 
@@ -947,7 +951,7 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule, extra) {
   add({ op: 'fmt', s: D, r: head, from: TPL.P_D_HEAD, c1: 2, c2: TPL.D_LAST });
   add({ op: 'height', s: D, r: head, pt: 39.75 });
   ['L/I', 'Program', 'Item No.', 'Material', 'Description', 'Product\n Name', 'Qty', 'CUR', 'Unit Price', 'Amount',
-    'Ship From', 'Leadtime', 'UoM', 'Shelf Life', 'Supplier', 'Tax\nCode', 'Price \n Mode', '비고', 'Need-by\nDate', 'SUPPLIER', 'SITE']
+    'Ship From', 'Leadtime', 'UoM', 'Shelf Life', 'Supplier', 'Tax\nCode', 'Price \n Mode', '비고', 'Need-by\nDate', '수량', 'SUPPLIER', 'SITE']
     .forEach(function (h, i) { set(D, head, 2 + i, h); });
 
   lines.forEach(function (l, i) {
@@ -955,15 +959,17 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule, extra) {
     add({ op: 'fmt', s: D, r: n, from: TPL.P_D_DATA, c1: 2, c2: TPL.D_LAST });
     var needs = l.needs || [{ needBy: l.needBy, qty: l.qty }], multi = needs.length > 1;
     add({ op: 'height', s: D, r: n, pt: 15 * (multi ? needs.length : 1) });
-    // Need-by 가 여러 건이면 '날짜(수량)' 을 줄마다 (언제 발주할지 한눈에)
+    // T Need-by · U 수량: 여러 건이면 줄마다 (같은 줄끼리 짝)
     var row = [i + 1, l.program || '', l.item, l.material, l.desc, l.product, l.qty, l.cur, l.price, '=J' + n + '*H' + n,
       l.shipFrom, l.leadtime, l.uom, l.shelfLife, l.supplier, l.taxCode, l.priceMode, remarkWithDeadline_(l),
-      multi ? needsText_(needs) : (l.needBy ? { date: fmtDate_(toDate_(l.needBy)) } : ''), l.supplierName || '', l.site || ''];
+      multi ? needDates_(needs) : (l.needBy ? { date: fmtDate_(toDate_(l.needBy)) } : ''), multi ? needQtys_(needs) : l.qty, l.supplierName || '', l.site || ''];
     row.forEach(function (v, j) { if (v !== '' && v !== null && v !== undefined) set(D, n, 2 + j, v); });
     nf(D, n, 10, curFmt_(l.cur));
     nf(D, n, 11, curFmt_(l.cur));
     nf(D, n, 20, 'yyyy-mm-dd');
-    if (multi) add({ op: 'wrap', s: D, r: n, c: 20 });
+    if (multi) { add({ op: 'wrap', s: D, r: n, c: 20 }); add({ op: 'wrap', s: D, r: n, c: 21 }); }
+    var moqN = toNumber_(l.moq);   // 수량이 MOQ 보다 적으면 주황
+    if (moqN !== null && moqN > 0 && Number(l.qty) < moqN) add({ op: 'bg', s: D, r: n, c: 21, color: TPL.MOQ_FILL });
     if (/\n/.test(row[17])) add({ op: 'wrap', s: D, r: n, c: 19 });   // 비고 + 발주 마감 두 줄
     // 담당자 입력 칸
     if (!l.program) add({ op: 'bg', s: D, r: n, c: 3, color: TPL.FILL });
@@ -1487,8 +1493,8 @@ var SPOT = {
   Q_NBMODE: 39, Q_NBADJ: 40, Q_SHELF: 41, Q_REMARK: 42, Q_RATE0: 44,   // AM Need-by 구분 · AN 조정 Need-by (Lead Time 뒤) · AO Shelf · AP Remarks · AR~AU 환율
   Q_SUP: 48, Q_SITE: 49,
   NB_SAME: '소요제기와 동일', NB_ADJ: 'L/T 고려하여 Need-by 조정',
-  D_FIRST: 11, D_NEED: 23, D_UOM: 24, D_TAX: 25, D_SUP: 26, D_SITE: 27,   // 구매내역서 선정 결과 뒤: W Need-by · X UOM · Y Tax Code · Z SUPPLIER · AA SITE
-  D_V0: 28, D_LAST: 107, MAX_VENDORS: 20,           // 업체별 비교 칸은 AB 부터 (업체마다 4칸)
+  D_FIRST: 11, D_NEED: 23, D_QTY: 24, D_UOM: 25, D_TAX: 26, D_SUP: 27, D_SITE: 28,   // 선정 결과 뒤: W Need-by · X 수량 · Y UOM · Z Tax Code · AA SUPPLIER · AB SITE
+  D_V0: 29, D_LAST: 108, MAX_VENDORS: 20,           // 업체별 비교 칸은 AC 부터 (업체마다 4칸)
   CURS: ['USD', 'EUR', 'JPY', 'SGD', 'KRW'],
   RATE_COL: { USD: 'P', JPY: 'Q', EUR: 'R', SGD: 'S' }   // 구매내역서 3행 환율
 };
@@ -1496,20 +1502,19 @@ var SPOT = {
 /** 수식 안의 글자: 줄바꿈은 CHAR(10) */
 function fStr_(t) { return '"' + String(t).replace(/"/g, '""').split('\n').join('"&CHAR(10)&"') + '"'; }
 /**
- * 구매내역서 W Need-by 수식 (r 행, key = 선정 & L/I)
- *   AM 이 'L/T 고려하여 Need-by 조정' 이고 AN 이 날짜면 그 날짜, 아니면 소요제기 Need-by
- *   업체 구매수량(Q열)이 소요제기 수량과 같으면 (수량), 다르면 (숫자확인) · 선정 전(Q 비어 있음)이면 소요제기 그대로
+ * 구매내역서 W Need-by · X 수량 수식 (key = 선정 & L/I)
+ *   AM 이 'L/T 고려하여 Need-by 조정' 이고 AN 이 날짜면 W = 그 날짜 · X = 소요제기 수량 합계,
+ *   아니면 소요제기 Need-by · 수량 (여러 건이면 줄마다, 같은 줄끼리 짝) · 선정 전에도 소요제기 그대로
  */
-function needByFormula_(r, key, QR, needs, reqQty) {
-  var day = function (x) { var d = toDate_(x.needBy); return d ? fmtDate_(d) : 'ASAP'; };
-  var req = Number(toNumber_(reqQty)) || 0, qt = qtyText_(req);
-  var plain = needsText_(needs) || 'ASAP';
-  var ok = needs.length < 2 ? (needs[0] ? day(needs[0]) : 'ASAP') + '(' + qt + ')' : needsText_(needs);
-  var bad = (needs.length ? needs : [{}]).map(function (x) { return day(x) + '(숫자확인)'; }).join('\n');
+function needByFormulas_(key, QR, needs, reqQty) {
+  var req = Number(toNumber_(reqQty)) || 0;
+  var dates = needs.length ? needDates_(needs) : 'ASAP', qtys = needs.length > 1 ? needQtys_(needs) : null;
   var m = function (col) { return 'INDEX(' + QR + '$' + col + ':$' + col + ', MATCH(' + key + ', ' + QR + '$D:$D, 0))'; };
-  var same = 'IFERROR(VALUE($Q' + r + '&"")=' + req + ', FALSE)';
   var adj = 'IFERROR(AND(' + m('AM') + '="' + SPOT.NB_ADJ + '", ISNUMBER(' + m('AN') + ')), FALSE)';
-  return '=IF($Q' + r + '="", ' + fStr_(plain) + ', IF(' + adj + ', TEXT(' + m('AN') + ', "yyyy-mm-dd")&IF(' + same + ', "(' + qt + ')", "(숫자확인)"), IF(' + same + ', ' + fStr_(ok) + ', ' + fStr_(bad) + ')))';
+  return {
+    date: '=IF(' + adj + ', TEXT(' + m('AN') + ', "yyyy-mm-dd"), ' + fStr_(dates) + ')',
+    qty: qtys ? '=IF(' + adj + ', ' + req + ', ' + fStr_(qtys) + ')' : req
+  };
 }
 /**
  * items: [{item, name, desc, material, qpl, uom, remark, qty, needBy(Date), program,
@@ -1545,7 +1550,7 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
   items.forEach(function (it, i) {
     var mq = rfqMonthQty_(m0, it), fx = it.fixed;
     (fx ? [fx.vendor] : vendors).forEach(function (v) {
-      var r = qRow++, q = fx ? { sel: true, review: fx.reason, qty: it.qty, mfg: fx.mfg || '', uom: it.uom, price: fx.price, cur: fx.cur, lt: fx.lt } : (it.quotes || {})[v] || {};
+      var r = qRow++, q = fx ? { sel: true, review: fx.reason, qty: it.qty, mfg: fx.mfg || '', uom: it.uom, price: fx.price, cur: fx.cur, lt: fx.lt, moq: fx.moq } : (it.quotes || {})[v] || {};
       add({ op: 'fmt', s: Q, r: r, from: SPOT.P_Q_ROW, c1: 1, c2: SPOT.Q_LAST, fs: SPOT.PROTO });
       set(Q, r, 1, !!q.sel);
       if (q.review) set(Q, r, 2, q.review);
@@ -1651,10 +1656,15 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
     set(D, r, 16, xl(key, 'D:AD', '미정', true));
     set(D, r, 17, xl(key, 'D:X')); set(D, r, 18, xl(key, 'D:AH')); set(D, r, 19, xl(key, 'D:AJ'));
     set(D, r, 20, xl(key, 'D:AI', '', true)); set(D, r, 21, xl(key, 'D:AL', '', true)); set(D, r, 22, xl(key, 'D:AP', '', true));
-    // W Need-by: 선정한 업체 줄의 AM Need-by 구분이 조정이면 AN 날짜, 아니면 소요제기 Need-by.
-    //   업체 구매수량(Q)이 소요제기 수량과 같으면 날짜(수량), 다르면 날짜(숫자확인) · 선정 전이면 소요제기 그대로
-    set(D, r, SPOT.D_NEED, needByFormula_(r, key, QR, needs, it.qty));
-    add({ op: 'wrap', s: D, r: r, c: SPOT.D_NEED });
+    // W Need-by · X 수량: 선정한 업체 줄의 AM 이 조정이면 AN 날짜 · 소요제기 수량 합계, 아니면 소요제기 Need-by · 수량 (여러 건이면 줄마다)
+    //   X 칸 색: 업체 구매수량(Q)이 소요제기 수량과 다르면 빨강, 업체 MOQ 보다 적으면 주황 (시트에서 선정을 바꿔도 따라감)
+    var nb = needByFormulas_(key, QR, needs, it.qty);
+    set(D, r, SPOT.D_NEED, nb.date); set(D, r, SPOT.D_QTY, nb.qty);
+    add({ op: 'wrap', s: D, r: r, c: SPOT.D_NEED }); add({ op: 'wrap', s: D, r: r, c: SPOT.D_QTY });
+    var X = A(SPOT.D_QTY) + r, qv = 'IFERROR(VALUE($Q' + r + '&""), "")', req = Number(toNumber_(it.qty)) || 0;
+    var moqOf = 'IFERROR(VALUE(INDEX(INDIRECT("\'' + Q + '\'!AK:AK"), MATCH(TRUE&$A' + r + ', INDIRECT("\'' + Q + '\'!D:D"), 0))&""), "")';
+    add({ op: 'cf', s: D, r1: r, c1: SPOT.D_QTY, r2: r, c2: SPOT.D_QTY, formula: '=AND(ISNUMBER(' + qv + '), ISNUMBER(' + moqOf + '), ' + qv + '<' + moqOf + ')', bg: TPL.MOQ_FILL, font: '#9c5700' });
+    add({ op: 'cf', s: D, r1: r, c1: SPOT.D_QTY, r2: r, c2: SPOT.D_QTY, formula: '=AND(ISNUMBER(' + qv + '), ' + qv + '<>' + req + ')', bg: TPL.DIFF_FILL, font: '#c00000' });
     // X UOM(선정 업체 견적) · Y Tax Code(소요제기) · Z SUPPLIER · AA SITE (견적종합에서 선정한 업체)
     set(D, r, SPOT.D_UOM, xl(key, 'D:AG', '', true));
     if (String(it.taxCode || '').trim()) set(D, r, SPOT.D_TAX, String(it.taxCode).trim());
@@ -1667,8 +1677,6 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
       });
     });
   });
-  if (n) add({ op: 'cf', s: D, r1: SPOT.D_FIRST, c1: SPOT.D_NEED, r2: dLast, c2: SPOT.D_NEED,   // 숫자확인 은 빨갛게
-    formula: '=ISNUMBER(SEARCH("숫자확인", $' + A(SPOT.D_NEED) + SPOT.D_FIRST + '))', bg: '#fde4e1', font: '#c00000' });
   var used = SPOT.D_V0 + N * 4;   // 고른 업체 수만큼만 남기고 오른쪽 비교 칸은 지움
   if (n) add({ op: 'border', s: D, r1: SPOT.D_FIRST, c1: 1, r2: dLast, c2: used - 1 });   // 표 전체 테두리 (업체 비교 칸 포함)
   if (used <= SPOT.D_LAST) add({ op: 'deleteCols', s: D, c: used, n: SPOT.D_LAST - used + 1 });

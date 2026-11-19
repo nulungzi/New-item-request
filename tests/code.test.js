@@ -7,7 +7,8 @@ const vm = require('vm');
 test('apiCreatePurchase: 템플릿 복사 후 계획 적용', () => {
   const calls = [];
   const range = new Proxy({}, { get: (t, k) => (...a) => { calls.push(k); return range; } });
-  const sheet = name => ({ getRange: () => range, setRowHeight: () => {}, setColumnWidth: () => calls.push('setColumnWidth'), setFrozenRows: () => {}, setFrozenColumns: () => {},
+  const tplHead = { '7,21': '수량', '7,23': 'SITE' };   // 새 계약 템플릿 (Need-by 옆 수량)
+  const sheet = name => ({ getRange: (r, c) => (tplHead[r + ',' + c] ? new Proxy({}, { get: (t, k) => (k === 'getValue' ? () => tplHead[r + ',' + c] : range[k]) }) : range), setRowHeight: () => {}, setColumnWidth: () => calls.push('setColumnWidth'), setFrozenRows: () => {}, setFrozenColumns: () => {},
     getDataRange: () => ({ getValues: () => name === '자재정보'
       ? [['Item', '계약 구분', '업체명', '단가', 'CUR', '계약시작', '계약종료'], ['A1', 'LTA', 'AKZO', 2, 'USD', new Date(2026, 0, 1), new Date(2028, 11, 31)]]
       : [['CUR', 'KRW 환율', '수정일']] }), appendRow: () => {} });
@@ -240,7 +241,7 @@ test('견적 저장 → Spot 견적 구매내역서, 계약+Spot 단가는 두 �
   const db = fakeBook({});
   const ops = [];
   const book = (name) => ({ getUrl: () => 'URL-' + name, getId: () => 'ID-' + name, getName: () => name, deleteSheet: () => {}, setActiveSheet: () => {},
-    getSheetByName: () => { let col = 0; const rec = new Proxy({}, { get: (t, k) => (...a) => { ops.push(k); if (k === 'getRange') col = a[1]; return k === 'getValue' ? ({ 23: 'Need-by', 25: 'Tax Code', 39: 'Need-by 구분' })[col] || '' : rec; } }); return rec; } });
+    getSheetByName: () => { let at = ''; const rec = new Proxy({}, { get: (t, k) => (...a) => { ops.push(k); if (k === 'getRange') at = a[0] + ',' + a[1]; return k === 'getValue' ? ({ '9,23': 'Need-by', '9,24': '수량', '9,26': 'Tax Code', '3,39': 'Need-by 구분', '7,21': '수량', '7,23': 'SITE' })[at] || '' : rec; } }); return rec; } });
   const made = [];
   const ctx = inContext({
     console: { warn: () => {}, log: () => {} },

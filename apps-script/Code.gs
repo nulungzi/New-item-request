@@ -441,7 +441,18 @@ function copyTemplate_(name, folderInput) {
   if (!templateId) throw new Error('스크립트 속성 TEMPLATE_ID(구매내역서 템플릿 시트 ID)를 설정해 주세요. README 참고.');
   var folder = targetFolder_(folderInput), tpl = DriveApp.getFileById(templateId);
   var file = folder ? tpl.makeCopy(name, folder) : tpl.makeCopy(name);
-  return SpreadsheetApp.openById(file.getId());
+  var ss = SpreadsheetApp.openById(file.getId());
+  if (!contractTemplateCurrent_(ss)) {
+    DriveApp.getFileById(ss.getId()).setTrashed(true);
+    throw new Error('구매내역서 템플릿이 예전 버전입니다 (구매세부내역 Need-by 옆 수량 열이 없음). ' +
+      'templates/구매내역서_템플릿.xlsx 를 새로 올려 구글 시트로 저장하고 TEMPLATE_ID 를 바꿔 주세요.');
+  }
+  return ss;
+}
+/** 계약 구매내역서 템플릿이 T Need-by · U 수량 · V SUPPLIER · W SITE 가 있는 새 버전인지 (예시 머리글 7행) */
+function contractTemplateCurrent_(ss) {
+  var d = ss.getSheetByName(TPL.DETAIL);
+  return !!d && String(d.getRange(7, 21).getValue()).trim() === '수량' && String(d.getRange(7, TPL.D_LAST).getValue()).trim() === 'SITE';
 }
 
 /** 저장할 드라이브 폴더: 화면에서 고른 폴더 → 스크립트 속성 OUTPUT_FOLDER_ID → null(기본 위치) */
@@ -756,6 +767,7 @@ function checkSetup() {
       var tpl = SpreadsheetApp.openById(tid);
       var missing = [TPL.SUMMARY, TPL.DETAIL, TPL.SCHEDULE, TPL.CONFIRM, TPL.PROTO].filter(function (n) { return !tpl.getSheetByName(n); });
       if (missing.length) bad('템플릿에 없는 탭: ' + missing.join(', ') + ' — templates/구매내역서_템플릿.xlsx 를 다시 올려 주세요');
+      else if (!contractTemplateCurrent_(tpl)) bad('구매내역서 템플릿이 예전 버전입니다 (구매세부내역 Need-by 옆 수량 열 없음) — 새 템플릿을 올려 주세요');
       else ok('템플릿: ' + tpl.getName());
     } catch (e) { bad('템플릿을 열 수 없습니다 (ID·권한 확인): ' + e.message); }
   }
@@ -769,7 +781,7 @@ function checkSetup() {
   if (!sid) bad('스크립트 속성 SPOT_TEMPLATE_ID 가 없습니다 (Spot 견적 구매내역서 템플릿)');
   else { try { var st = SpreadsheetApp.openById(sid), miss = [SPOT.SUMMARY, SPOT.DETAIL, SPOT.QUOTE, SPOT.PROTO].filter(function (n) { return !st.getSheetByName(n); });
     if (miss.length) bad('Spot 템플릿에 없는 탭: ' + miss.join(', '));
-    else if (!spotTemplateCurrent_(st)) bad('Spot 템플릿이 예전 버전입니다 (견적종합 Need-by 구분 열 없음) — 새 템플릿을 올려 주세요');
+    else if (!spotTemplateCurrent_(st)) bad('Spot 템플릿이 예전 버전입니다 (선정 결과 Need-by 옆 수량 열 없음) — 새 템플릿을 올려 주세요');
     else ok('Spot 견적 구매내역서 템플릿: ' + st.getName()); } catch (e) { bad('Spot 템플릿을 열 수 없습니다: ' + e.message); } }
   var aid = prop_('ARCHIVE_SHEET_ID');
   if (!aid) bad('스크립트 속성 ARCHIVE_SHEET_ID 가 없습니다 (완료 보관 파일)');
@@ -958,7 +970,8 @@ function vendorSheet_() {
 function spotTemplateCurrent_(ss) {
   var d = ss.getSheetByName(SPOT.DETAIL);
   var q = ss.getSheetByName(SPOT.QUOTE);
-  return !!d && String(d.getRange(9, SPOT.D_NEED).getValue()).trim() === 'Need-by' && String(d.getRange(9, SPOT.D_TAX).getValue()).trim() === 'Tax Code' &&
+  return !!d && String(d.getRange(9, SPOT.D_NEED).getValue()).trim() === 'Need-by' && String(d.getRange(9, SPOT.D_QTY).getValue()).trim() === '수량' &&
+    String(d.getRange(9, SPOT.D_TAX).getValue()).trim() === 'Tax Code' &&
     !!q && String(q.getRange(3, SPOT.Q_NBMODE).getValue()).trim() === 'Need-by 구분';
 }
 /** 업체정보 탭 SUPPLIER·SITE (업체명 기준). 탭이 없으면 빈 값 */
@@ -1576,7 +1589,7 @@ function apiCreateSpotPurchase(payload) {
   var ss = SpreadsheetApp.openById(file.getId());
   if (!spotTemplateCurrent_(ss)) {
     DriveApp.getFileById(ss.getId()).setTrashed(true);
-    throw new Error('Spot 구매내역서 템플릿이 예전 버전입니다 (견적종합에 Need-by 구분 · 조정 Need-by 열이 없음). ' +
+    throw new Error('Spot 구매내역서 템플릿이 예전 버전입니다 (선정 결과 Need-by 옆 수량 열이 없음). ' +
       'templates/Spot_구매내역서_템플릿.xlsx 를 새로 올려 구글 시트로 저장하고 SPOT_TEMPLATE_ID 를 바꿔 주세요.');
   }
   applyPlan_(ss, buildSpotPlan_(items, vendors, rates, base, payload.schedule, { title: name, confirmer: payload.confirmer, vendorInfo: vendorInfoMap_() }));

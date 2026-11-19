@@ -41,13 +41,13 @@ proto_row(S, 4, 1, same(2, 12))   # 업체 행 (L열: 회색 도우미 글자)
 proto_row(S, 5, 2, same(2, 12))   # CUR 별 합계
 proto_row(S, 6, 3, same(2, 12))   # 총 합계
 proto_row(S, 7, 4, same(2, 12))   # 환율 메모
-# 구매세부내역 (B..V). 원본의 S(구분) 열은 빼고, 비고는 S, Need-by Date는 T,
-# U SUPPLIER(업체정보 정식 이름) · V SITE 는 T 서식으로 추가
+# 구매세부내역 (B..W). 원본의 S(구분) 열은 빼고, 비고는 S, Need-by Date는 T,
+# U 수량(Need-by 별) · V SUPPLIER(업체정보 정식 이름) · W SITE 는 T 서식으로 추가
 detail_map = {**same(2, 18), 19: 20, 20: 18}
 for i, r in enumerate([1, 2, 3, 4, 5, 6]):
-    proto_row(D, r, 11 + i, {**same(2, 20), 21: 20, 22: 20})
-proto_row(D, 7, 17, {**same(2, 18), 19: 18, 20: 20, 21: 20, 22: 20})   # 머리글: S=비고(테두리 있음), T=원본 비고 서식
-proto_row(D, 8, 18, {**same(2, 18), 19: 18, 20: 20, 21: 20, 22: 20})   # 데이터 행
+    proto_row(D, r, 11 + i, {**same(2, 20), 21: 20, 22: 20, 23: 20})
+proto_row(D, 7, 17, {**same(2, 18), 19: 18, 20: 20, 21: 20, 22: 20, 23: 20})   # 머리글: S=비고(테두리 있음), T=원본 비고 서식
+proto_row(D, 8, 18, {**same(2, 18), 19: 18, 20: 20, 21: 20, 22: 20, 23: 20})   # 데이터 행
 
 # 구매요약: 4행 이하 비우기
 for rng in list(S.merged_cells.ranges):
@@ -68,12 +68,13 @@ for row in D.iter_rows(min_row=1, max_row=D.max_row):
 for r in range(1, D.max_row + 1):
     D.row_dimensions[r].height = None
 D.column_dimensions['S'].width = D.column_dimensions['T'].width   # 비고
-D.column_dimensions['T'].width = 20.7                               # Need-by Date ≈150px (여러 건이면 날짜(수량) 줄마다)
-D.column_dimensions['U'].width = 30.7                               # SUPPLIER ≈220px
-D.column_dimensions['V'].width = 22.1                               # SITE ≈160px
-# Need-by 는 줄바꿈되게 (여러 건)
+D.column_dimensions['T'].width = 15.7                               # Need-by Date ≈115px (여러 건이면 날짜를 줄마다)
+D.column_dimensions['U'].width = 10                                 # 수량 ≈75px (Need-by 와 같은 줄)
+D.column_dimensions['V'].width = 30.7                               # SUPPLIER ≈220px
+D.column_dimensions['W'].width = 22.1                               # SITE ≈160px
+# Need-by · 수량은 줄바꿈되게 (여러 건)
 from openpyxl.styles import Alignment
-for c in (20,):
+for c in (20, 21):
     a = copy(P.cell(18, c).alignment); a.wrap_text = True; a.vertical = 'center'
     P.cell(18, c).alignment = a
 D.freeze_panes = None
@@ -81,7 +82,7 @@ D.freeze_panes = None
 # 구매세부내역 예시 모양 (통화 1개 기준): 1~2행 작성일·환율, 3~5행 TTL·Total, 7행 머리글, 8행 품목 행.
 # 열 너비를 보면서 조절할 수 있게 둔다. 웹앱은 만들 때 이 예시 칸을 지우고 품목 수·통화 수에 맞게 다시 그린다.
 for dst, src in zip(range(1, 9), range(11, 19)):
-    for c in range(2, 23):
+    for c in range(2, 24):
         copy_style(P.cell(src, c), D.cell(dst, c))
     if P.row_dimensions[src].height:
         D.row_dimensions[dst].height = P.row_dimensions[src].height
@@ -89,7 +90,7 @@ D.row_dimensions[6].height = 8.25
 D.row_dimensions[7].height = 39.75
 D.row_dimensions[8].height = 15
 for i, h in enumerate(['L/I', 'Program', 'Item No.', 'Material', 'Description', 'Product\n Name', 'Qty', 'CUR', 'Unit Price', 'Amount',
-                       'Ship From', 'Leadtime', 'UoM', 'Shelf Life', 'Supplier', 'Tax\nCode', 'Price \n Mode', '비고', 'Need-by\nDate', 'SUPPLIER', 'SITE']):
+                       'Ship From', 'Leadtime', 'UoM', 'Shelf Life', 'Supplier', 'Tax\nCode', 'Price \n Mode', '비고', 'Need-by\nDate', '수량', 'SUPPLIER', 'SITE']):
     D.cell(7, 2 + i).value = h
 D['P1'] = 'USD'
 D['J3'], D['J4'], D['J5'] = 'TTL(USD)', 'TTL(KRW)', 'Total'
