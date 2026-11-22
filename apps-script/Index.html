@@ -2213,14 +2213,16 @@ var draft = { recordId: null, vendors: null, remind: false };
 function openDraft(recordId, title, remind, mode) {
   draft.recordId = recordId; draft.remind = !!remind;
   var rec = state.records && recById(recordId), revised = !remind && rfqRevisedPending(rec);
-  draft.direct = mode === 'direct' || !!(rec && rec.direct);
+  draft.pick = mode === 'pick';   // 메일 보낸 뒤 견적 입력 업체 더하기 · 빼기 (메일 없음)
+  draft.direct = mode === 'direct' || draft.pick || !!(rec && rec.direct);
+  delete $('dmOk').dataset.ok;
   $('draftModal').classList.toggle('direct', draft.direct);
   $('dmHeadNote').textContent = draft.direct ? '메일은 만들지 않습니다 · 고른 업체마다 견적을 입력합니다' : '바로 보내지 않고 Gmail 임시보관함에 저장합니다';
-  $('dmListLabel').textContent = draft.direct ? '견적을 보내 온 업체' : '받을 업체 (숨은 참조)';
-  $('dmFootNote').textContent = draft.direct ? '견적요청서 없이 직접 입력하는 견적입니다' : '받는 사람은 비워 둡니다 · 첨부: 견적요청서(엑셀)';
-  $('dmTitle').textContent = draft.direct ? '견적을 받은 업체 고르기 (메일 없음)' : remind ? '재요청 메일 만들기' : revised ? '수정 메일 만들기 (품목이 바뀐 견적요청서)' : '메일 초안 만들기';
+  $('dmListLabel').textContent = draft.pick ? '견적을 입력할 업체 (체크 = 더하기 · 체크 풀기 = 빼기)' : draft.direct ? '견적을 보내 온 업체' : '받을 업체 (숨은 참조)';
+  $('dmFootNote').textContent = draft.pick ? '새 업체에 메일을 보내려면 재요청 메일을 쓰세요 · 메일 없이 더한 업체는 회신 대기로 세지 않습니다' : draft.direct ? '견적요청서 없이 직접 입력하는 견적입니다' : '받는 사람은 비워 둡니다 · 첨부: 견적요청서(엑셀)';
+  $('dmTitle').textContent = draft.pick ? '견적 입력 업체 더하기 · 빼기 (메일 없음)' : draft.direct ? '견적을 받은 업체 고르기 (메일 없음)' : remind ? '재요청 메일 만들기' : revised ? '수정 메일 만들기 (품목이 바뀐 견적요청서)' : '메일 초안 만들기';
   $('dmRemind').hidden = !remind;
-  $('dmOk').textContent = draft.direct ? '이 업체들로 견적 입력' : remind ? '재요청 초안 만들기' : revised ? '수정 메일 초안 만들기' : '임시보관함에 만들기';
+  $('dmOk').textContent = draft.pick ? '업체 바꾸기' : draft.direct ? '이 업체들로 견적 입력' : remind ? '재요청 초안 만들기' : revised ? '수정 메일 초안 만들기' : '임시보관함에 만들기';
   if (remind) $('dmDue').value = rec && rec.due ? rec.due : '';
   draft.title = String(title).replace(/^\[(Reminder|Revised)\]\s*/i, '');
   $('dmSubject').textContent = remind ? remindSubject() : revised ? '[Revised] ' + draft.title : title;
@@ -2342,20 +2344,36 @@ $('dmCancel').onclick = function () { $('draftModal').hidden = true; };
 $('draftModal').addEventListener('click', function (e) { if (e.target === this) this.hidden = true; });
 document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('draftModal').hidden) $('draftModal').hidden = true; });
 $('dmOk').onclick = function () {
-  if (draft.direct) {   // 견적 직접 입력: 메일 없이 업체만 정함
-    var bd = this, names0 = chosenVendors();
-    if (!names0.length) { $('dmMsg').textContent = '견적을 받은 업체를 한 곳 이상 골라 주세요.'; return; }
+  if (draft.direct) {   // 메일 없이 업체만 정함 (견적 직접 입력 · 메일 보낸 뒤 더하기 · 빼기)
+    var bd = this, rec0 = recById(draft.recordId) || {}, listed = (draft.vendors || []).map(function (v) { return v.name; });
+    var keep = (rec0.vendors || []).filter(function (v) { return listed.indexOf(v) < 0; });   // 업체정보에 없는 업체는 그대로 둠
+    var names0 = chosenVendors().concat(keep.filter(function (v) { return chosenVendors().indexOf(v) < 0; }));
+    if (!names0.length) { $('dmMsg').textContent = '견적을 입력할 업체를 한 곳 이상 골라 주세요.'; return; }
+    var c0 = state.qcache[draft.recordId] || (rec0.id ? quoteFor(rec0) : null);
+    var losing = (rec0.vendors || []).filter(function (v) { return names0.indexOf(v) < 0 && c0 && c0.items.some(function (x) { return qFilled(x.quotes[v]); }); });
+    if (losing.length && !bd.dataset.ok) {   // 견적을 입력한 업체를 빼면 한 번 더 확인
+      bd.dataset.ok = '1'; bd.textContent = '한 번 더 누르면 바꿉니다';
+      $('dmMsg').textContent = '견적을 입력한 업체를 뺍니다: ' + losing.join(', ') + ' — 그 업체의 견적도 빠집니다.';
+      return;
+    }
+    delete bd.dataset.ok;
     bd.disabled = true;
-    call('apiSetQuoteVendors', draft.recordId, names0).then(function () {
+    call('apiSetQuoteVendors', draft.recordId, names0).then(function (d) {
       $('draftModal').hidden = true;
-      $('recMsg').innerHTML = '<span class="ok-msg">견적을 받은 업체 ' + names0.length + '곳을 정했습니다. 업체마다 견적을 입력하세요.</span>';
+      var pick = draft.pick;
+      $('recMsg').innerHTML = '<span class="ok-msg">' + (pick ? '견적 입력 업체를 바꿨습니다' + (d.added.length ? ' · 더함 ' + esc(d.added.join(', ')) : '') + (d.removed.length ? ' · 뺌 ' + esc(d.removed.join(', ')) : '') + (keep.length ? ' · 업체정보에 없는 ' + esc(keep.join(', ')) + ' 는 그대로' : '')
+        : '견적을 받은 업체 ' + names0.length + '곳을 정했습니다. 업체마다 견적을 입력하세요.') + '</span>';
       var id = draft.recordId;
+      if (pick) {
+        var cc = state.qcache[id]; if (cc) cc.vendors = d.vendors.slice();
+        return loadRecords().then(function () { state.recOpen[id] = true; renderRecords(); if (cc) saveQuoteSilently(quoteFor(recById(id))).catch(function () {}); });
+      }
       return loadRecords().then(function () {
         showView('records');
         state.recOpen[id] = true; renderRecords();
         var rec = recById(id); if (rec) openDrawer(rec, names0[0]);
       });
-    }).catch(function (e) { $('dmMsg').textContent = e.message || e; }).finally(function () { bd.disabled = false; });
+    }).catch(function (e) { $('dmMsg').textContent = e.message || e; }).finally(function () { bd.disabled = false; bd.textContent = draft.pick ? '업체 바꾸기' : '이 업체들로 견적 입력'; });
     return;
   }
   var b = this, bcc = chosenEmails();
@@ -2561,11 +2579,13 @@ function vendorListHtml(rec) {
   }).join('') +
   '<div class="rec-vfoot"><span class="muted">업체별로 모두 입력했으면 종합하세요. 회신이 없는 업체는 입력 창에서 <b>회신 없음</b>을 체크합니다.</span>' +
   '<button class="btn-ghost rec-fold" type="button" data-fold="' + esc(rec.id) + '">접기 ▴</button>' +
+  (!rec.spotFile ? '<button class="btn-ghost" type="button" data-vedit="' + esc(rec.id) + '" title="메일 없이 견적을 입력할 업체를 더하거나 뺍니다">업체 추가 · 빼기</button>' : '') +
   '<span class="row">' + (rec.quoteSheet ? '<a class="btn-ghost" href="' + esc(rec.quoteSheet) + '" target="_blank" rel="noopener">견적 입력용 시트 열기 ↗</a>'
     : '<button class="btn-ghost" type="button" data-qsheet="' + esc(rec.id) + '" title="업체별 탭에 Item code·이름·요청 수량·Need-by 를 채운 구글 시트">견적 입력용 시트 만들기</button>') +
   '<button class="btn" type="button" data-sum="' + esc(rec.id) + '">견적 종합 →</button></span></div>';
 }
 function bindVendorList(box) {
+  box.querySelectorAll('[data-vedit]').forEach(function (b) { b.onclick = function () { var r = recById(b.dataset.vedit); openDraft(r.id, r.title, false, r.direct ? 'direct' : 'pick'); }; });
   box.querySelectorAll('[data-vendor]').forEach(function (b) {
     b.onclick = function () { openDrawer(recById(b.dataset.rec), b.dataset.vendor); };
   });

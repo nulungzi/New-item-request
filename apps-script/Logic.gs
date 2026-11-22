@@ -776,8 +776,10 @@ function spotDeadline_(it) {
 var ALERT = { DUE_SOON: 1, PO_SOON: 14, DONE_STAGES: ['PO 발행', '입고'] };
 function pendingVendors_(rec) {
   var q = rec.quote || {}, noReply = q.noReply || {}, items = q.items || [];
+  var mailed = {}, anyMail = false;   // 메일을 보낸 업체만 (메일 없이 나중에 더한 업체는 회신 대기로 세지 않음)
+  (rec.mails || []).forEach(function (m) { (m.vendors || []).forEach(function (v) { mailed[v] = 1; anyMail = true; }); });
   return (rec.vendors || []).filter(function (v) {
-    if (noReply[v]) return false;
+    if (noReply[v] || (anyMail && !mailed[v])) return false;
     return !items.some(function (x) { var p = x && x.quotes && x.quotes[v]; return p && !p.noReply && String(p.price == null ? '' : p.price).trim(); });
   });
 }

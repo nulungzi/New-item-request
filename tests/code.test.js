@@ -723,3 +723,15 @@ test('견적요청서 없이 견적 바로 입력: 파일·메일 없는 기록,
   assert.strictEqual(rec.items[0].qty, 40);
   assert.strictEqual(ctx.recordAlert_(rec, new Date(2026, 10, 18)).level, '');
 });
+
+test('메일 보낸 뒤 견적 입력 업체 더하기 · 빼기: 상태 그대로, 더한 · 뺀 업체', () => {
+  const H = ['ID', '종류', '담당자', '작성일', '제목', 'URL', '파일ID', '상태', '초안', 'BCC', 'JSON', '수정일'];
+  const db = fakeBook({ 진행기록: [H, ['Q1', '견적요청서', 'me@ke.com', '', 'RFQ', 'u', 'f', '메일 초안', 'D', '', JSON.stringify({ items: [{ item: 'K1' }], vendors: ['OMI', 'CBOL'], mails: [{ no: 1, vendors: ['OMI', 'CBOL'] }] }), '']] });
+  const ctx = inContext({ SpreadsheetApp: { getActive: () => db }, PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }) },
+    LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
+    Session: { getActiveUser: () => ({ getEmail: () => 'me@ke.com' }), getEffectiveUser: () => ({ getEmail: () => 'me@ke.com' }) } });
+  const r = ctx.apiSetQuoteVendors('Q1', ['CBOL', '클레비오', '에스피에어로']);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify([r.added, r.removed])), [['클레비오', '에스피에어로'], ['OMI']]);
+  const rec = ctx.apiMyRecords().records[0];
+  assert.deepStrictEqual(JSON.parse(JSON.stringify([rec.status, rec.vendors, rec.mails.length])), ['메일 초안', ['CBOL', '클레비오', '에스피에어로'], 1]);
+});

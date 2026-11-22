@@ -797,3 +797,9 @@ test('견적요청서 수정: 줄 펼치기, 견적 옮기기(같은 Item), 추�
   assert.strictEqual(L.revisedTitle_('[Reminder] [KE] RFQ // x'), '[Revised] [KE] RFQ // x');
   assert.match(L.rfqEmail_([{ name: 'A', qty: 1 }], '11/20', '', { revised: true }).html, /has been revised[\s\S]*due 11\/20/);
 });
+
+test('회신 대기: 메일을 보낸 업체만 (메일 없이 나중에 더한 업체는 빼고)', () => {
+  const rec = { kind: '견적요청서', draft: 'D', vendors: ['OMI', 'CBOL', 'NEW'], mails: [{ vendors: ['OMI', 'CBOL'] }], quote: { items: [{ quotes: { CBOL: { price: '3' } } }] } };
+  assert.deepStrictEqual(L.pendingVendors_(rec), ['OMI']);
+  assert.deepStrictEqual(L.pendingVendors_(Object.assign({}, rec, { mails: [] })), ['OMI', 'NEW']);   // 예전 기록(메일 기록 없음)은 모두
+});

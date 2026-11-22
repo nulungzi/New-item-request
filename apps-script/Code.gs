@@ -847,16 +847,20 @@ function apiCreateDirectQuote(payload) {
     items: rows, template: 'month', direct: true });
   return { recordId: rec.id, name: title };
 }
-/** 견적 직접 입력: 견적을 받은 업체 정하기 (업체정보의 업체명) */
+/**
+ * 견적을 입력할 업체 정하기 (메일 없이): 견적 직접 입력 기록, 또는 메일을 보낸 뒤 업체를 더하거나 뺄 때
+ *   뺀 업체의 견적은 다음 저장 때 빠짐. 메일로 보낸 견적요청서는 상태를 그대로 둠
+ */
 function apiSetQuoteVendors(recordId, vendors) {
   auth_();
   var found = findRecord_(recordId, true);
   if (found.rec.kind !== '견적요청서') throw new Error('견적 기록이 아닙니다.');
-  if (!found.rec.direct) throw new Error('메일로 보낸 견적요청서는 메일 초안에서 업체를 고릅니다.');
   var names = uniq_((vendors || []).map(function (v) { return String(v || '').trim(); }));
-  if (!names.length) throw new Error('견적을 받은 업체를 한 곳 이상 골라 주세요.');
-  updateRecord_(found, { status: found.rec.spotFile ? found.rec.status : '견적 입력', data: { vendors: names } });
-  return { ok: true, vendors: names };
+  if (!names.length) throw new Error('견적을 입력할 업체를 한 곳 이상 골라 주세요.');
+  var before = found.rec.vendors || [];
+  var status = found.rec.direct && !found.rec.spotFile ? '견적 입력' : undefined;
+  updateRecord_(found, { status: status, data: { vendors: names } });
+  return { ok: true, vendors: names, added: names.filter(function (v) { return before.indexOf(v) < 0; }), removed: before.filter(function (v) { return names.indexOf(v) < 0; }) };
 }
 
 /**
