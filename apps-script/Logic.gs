@@ -406,6 +406,20 @@ function vendorRow_(values, o) {
   return row;
 }
 
+/**
+ * 새 줄을 넣을 자리 (1부터 센 시트 행 번호: 이 행 바로 아래에 넣음).
+ * 기존 업체 연락처는 그 업체 마지막 줄 바로 아래 → 같은 업체 줄이 흩어지지 않음.
+ * 새 업체는 업체명·이메일이 적힌 마지막 줄 아래 (오른쪽 먼 칸의 메모 등은 무시)
+ */
+function vendorInsertAt_(values, o) {
+  var k = vendorCols_(values), key = vendorKey_(o && o.name), last = Math.max(k.hr, 0), lastSame = -1;
+  for (var i = k.hr + 1; i < values.length; i++) {
+    var r = values[i];
+    if (String(r[k.cn] == null ? '' : r[k.cn]).trim() || String(r[k.ce] == null ? '' : r[k.ce]).trim()) last = i;
+    if (!(o && o.isNew) && key && vendorKey_(r[k.cn]) === key) lastSame = i;
+  }
+  return (lastSame >= 0 ? lastSame : last) + 1;
+}
 /** 업체명 → {supplier: SUPPLIER(정식 이름), site: SITE}. 한 업체 여러 줄이면 처음 채워진 값 */
 function vendorInfo_(values) {
   var k = vendorCols_(values), out = {};
@@ -584,6 +598,10 @@ function schedMonths_(schedule) {
   var m = Math.round(Number(schedule && !Array.isArray(schedule) ? schedule.months : 0));
   return m > 0 ? Math.max(SCHEDULE_MONTHS.MIN, Math.min(SCHEDULE_MONTHS.MAX, m)) : SCHEDULE_MONTHS.MIN;
 }
+/** 한 달을 몇 칸으로 나누는지: 2 = 반 달(기본), 4 = 0.25개월 */
+function schedUnit_(schedule) { return schedule && !Array.isArray(schedule) && Number(schedule.unit) === 4 ? 4 : 2; }
+/** 막대 길이(칸) → 'n.nM' (반 달 칸은 소수 한 자리, 0.25개월 칸은 두 자리) */
+function schedLen_(len, unit) { return (len / unit).toFixed(unit === 4 ? 2 : 1) + 'M'; }
 /** 화면에서 받은 막대 값 검사·보정. len 0 = 비어 있음. slots = 표시 개월 × 2 */
 function normSchedule_(sched, slots) {
   slots = slots || SCHEDULE_SLOTS;
@@ -632,6 +650,16 @@ function openItemIndex_(records, me) {
       seen[k] = 1;
       (out[k] = out[k] || []).push({ title: r.title, owner: r.owner, created: r.created, mine: r.owner === me, kind: r.kind });
     });
+  });
+  return out;
+}
+
+/** 견적요청서 rec 의 품목(Item 원래 표기) → 다른 진행 중 기록 목록. 없는 품목은 빠짐 */
+function dupsFor_(rec, others, me) {
+  var idx = openItemIndex_(others, me), out = {};
+  (rec.items || []).forEach(function (it) {
+    var k = itemKey_(it && it.item);
+    if (k && idx[k]) out[it.item] = idx[k].slice(0, 5);
   });
   return out;
 }
@@ -1041,32 +1069,40 @@ function scheduleConfirmOps_(base, schedule, extra) {
   var ops = [];
   var add = function (o) { ops.push(o); };
   var set = function (s, r, c, v) { add({ op: 'set', s: s, r: r, c: c, v: v }); };
-  /* ---------- 구매일정: 작성일 달부터 표시 개월(기본 12) 머리글 (E열부터 달마다 2칸) ---------- */
-  var G = TPL.SCHEDULE, M = schedMonths_(schedule), slots = M * 2, lastCol = 4 + slots, clearTo = Math.max(28, lastCol);
-  // 일정 칸 너비를 모두 같게 (템플릿에 따라 Y·AA·AB가 넓게 남는 경우가 있음)
-  for (var wc = 5; wc <= lastCol; wc++) add({ op: 'width', s: G, c: wc, px: SCHEDULE_COL_PX });
+  /* ---------- 구매일정: 작성일 달부터 표시 개월(기본 12) 머리글 (E열부터 달마다 P칸: 반 달 2칸 · 0.25개월 4칸) ---------- */
+  var G = TPL.SCHEDULE, M = schedMonths_(schedule), P = schedUnit_(schedule), slots = M * P, lastCol = 4 + slots, clearTo = Math.max(28, lastCol);
+  add({ op: 'ensureCols', s: G, n: clearTo });   // 표시 개월·칸이 늘어 탭 열이 모자라면 늘림
+  // 일정 칸 너비를 모두 같게 (템플릿에 따라 Y·AA·AB가 넓게 남는 경우가 있음). 0.25개월 칸은 반 너비 → 한 달 너비는 같음
+  var colPx = P === 4 ? Math.round(SCHEDULE_COL_PX / 2) : SCHEDULE_COL_PX;
+  for (var wc = 5; wc <= lastCol; wc++) add({ op: 'width', s: G, c: wc, px: colPx });
   // 연도(4행)·월(5행) 병합을 먼저 모두 풀어야 서식 복사가 병합 칸과 겹치지 않음
   // (구글 시트: "부분적으로 병합과 교차되는 붙여넣기를 실행할 수 없습니다")
   add({ op: 'unmerge', s: G, r1: 4, c1: 5, r2: 5, c2: clearTo });
-  // 11번째 달(Y)부터는 템플릿에 서식이 없을 수 있어 W·X 서식을 복사 (표시 개월이 늘면 그만큼)
+  // 반 달: 11번째 달(Y)부터는 템플릿에 서식이 없을 수 있어 W·X 서식을 복사 (표시 개월이 늘면 그만큼)
+  // 0.25개월: 템플릿은 반 달 짝이라 모든 칸을 다시 — 달 첫 칸은 W(왼쪽 실선), 나머지는 X(왼쪽 점선·오른쪽 실선)를
+  // 왼쪽부터 차례로 덮어 달 경계는 실선, 달 안 0.25개월 경계는 점선
   for (var fr = 4; fr <= 10; fr++) {
-    for (var fc = 25; fc < lastCol; fc += 2) {
-      add({ op: 'cellFmt', s: G, r: fr, c: fc, fs: G, fr: fr, fc: 23 });
-      add({ op: 'cellFmt', s: G, r: fr, c: fc + 1, fs: G, fr: fr, fc: 24 });
+    if (P === 2) {
+      for (var fc = 25; fc < lastCol; fc += 2) {
+        add({ op: 'cellFmt', s: G, r: fr, c: fc, fs: G, fr: fr, fc: 23 });
+        add({ op: 'cellFmt', s: G, r: fr, c: fc + 1, fs: G, fr: fr, fc: 24 });
+      }
+    } else {
+      for (var qc = 5; qc <= lastCol; qc++) add({ op: 'cellFmt', s: G, r: fr, c: qc, fs: G, fr: fr, fc: (qc - 5) % P === 0 ? 23 : 24 });
     }
   }
-  for (var mc = 5; mc <= lastCol; mc += 2) add({ op: 'merge', s: G, r1: 5, c1: mc, r2: 5, c2: mc + 1 });   // 월 칸: 달마다 2칸
+  for (var mc = 5; mc <= lastCol; mc += P) add({ op: 'merge', s: G, r1: 5, c1: mc, r2: 5, c2: mc + P - 1 });   // 월 칸: 달마다 P칸
   for (var c = 5; c <= clearTo; c++) set(G, 4, c, '');
   var y = base.getFullYear(), m = base.getMonth() + 1, segStart = 5;
   for (var k = 0; k < M; k++) {
-    var col = 5 + k * 2;
+    var col = 5 + k * P;
     set(G, 5, col, m);
     var endOfYear = m === 12 || k === M - 1;
     if (endOfYear) {
       add({ op: 'cellFmt', s: G, r: 4, c: segStart, fs: G, fr: 4, fc: 5 });
       set(G, 4, segStart, y + '년');
-      add({ op: 'merge', s: G, r1: 4, c1: segStart, r2: 4, c2: col + 1 });
-      segStart = col + 2;
+      add({ op: 'merge', s: G, r1: 4, c1: segStart, r2: 4, c2: col + P - 1 });
+      segStart = col + P;
     }
     m++;
     if (m > 12) { m = 1; y++; }
@@ -1075,7 +1111,7 @@ function scheduleConfirmOps_(base, schedule, extra) {
   // 막대: 6~10행, E(5)열부터 표시 칸 수만큼. L/T(D열)는 막대 길이로 계산
   normSchedule_(schedule, slots).forEach(function (b, i) {
     var row = 6 + i;
-    set(G, row, 4, b.len ? (b.len / 2).toFixed(1) + 'M' : '');
+    set(G, row, 4, b.len ? schedLen_(b.len, P) : '');
     for (var k = 0; k < slots; k++) {
       add({ op: 'bg', s: G, r: row, c: 5 + k, color: k >= b.start && k < b.start + b.len ? SCHEDULE_COLORS[i] : '#ffffff' });
     }

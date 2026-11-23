@@ -8,7 +8,7 @@ test('apiCreatePurchase: 템플릿 복사 후 계획 적용', () => {
   const calls = [];
   const range = new Proxy({}, { get: (t, k) => (...a) => { calls.push(k); return range; } });
   const tplHead = { '7,21': '수량', '7,23': 'SITE' };   // 새 계약 템플릿 (Need-by 옆 수량)
-  const sheet = name => ({ getRange: (r, c) => (tplHead[r + ',' + c] ? new Proxy({}, { get: (t, k) => (k === 'getValue' ? () => tplHead[r + ',' + c] : range[k]) }) : range), setRowHeight: () => {}, setColumnWidth: () => calls.push('setColumnWidth'), setFrozenRows: () => {}, setFrozenColumns: () => {},
+  const sheet = name => ({ getRange: (r, c) => (tplHead[r + ',' + c] ? new Proxy({}, { get: (t, k) => (k === 'getValue' ? () => tplHead[r + ',' + c] : range[k]) }) : range), setRowHeight: () => {}, getMaxColumns: () => 200, setColumnWidth: () => calls.push('setColumnWidth'), setFrozenRows: () => {}, setFrozenColumns: () => {},
     getDataRange: () => ({ getValues: () => name === '자재정보'
       ? [['Item', '계약 구분', '업체명', '단가', 'CUR', '계약시작', '계약종료'], ['A1', 'LTA', 'AKZO', 2, 'USD', new Date(2026, 0, 1), new Date(2028, 11, 31)]]
       : [['CUR', 'KRW 환율', '수정일']] }), appendRow: () => {} });
@@ -241,7 +241,7 @@ test('견적 저장 → Spot 견적 구매내역서, 계약+Spot 단가는 두 �
   const db = fakeBook({});
   const ops = [];
   const book = (name) => ({ getUrl: () => 'URL-' + name, getId: () => 'ID-' + name, getName: () => name, deleteSheet: () => {}, setActiveSheet: () => {},
-    getSheetByName: () => { let at = ''; const rec = new Proxy({}, { get: (t, k) => (...a) => { ops.push(k); if (k === 'getRange') at = a[0] + ',' + a[1]; return k === 'getValue' ? ({ '9,23': 'Need-by', '9,24': '수량', '9,26': 'Tax Code', '3,39': 'Need-by 구분', '7,21': '수량', '7,23': 'SITE' })[at] || '' : rec; } }); return rec; } });
+    getSheetByName: () => { let at = ''; const rec = new Proxy({}, { get: (t, k) => k === 'getMaxColumns' ? () => 200 : (...a) => { ops.push(k); if (k === 'getRange') at = a[0] + ',' + a[1]; return k === 'getValue' ? ({ '9,23': 'Need-by', '9,24': '수량', '9,26': 'Tax Code', '3,39': 'Need-by 구분', '7,21': '수량', '7,23': 'SITE' })[at] || '' : rec; } }); return rec; } });
   const made = [];
   const ctx = inContext({
     console: { warn: () => {}, log: () => {} },
@@ -579,7 +579,7 @@ test('파일 만들기 속도: 붙은 칸 쓰기를 묶어도 결과는 칸마�
     const sheet = n => sheets[n] || (sheets[n] = { getRange: (r, c, nr, nc) => rng(n, r, c, nr, nc),
       setRowHeight: (r, h) => { calls.n++; log.push(['h', n, r, h]); }, setColumnWidth: (c, w) => { calls.n++; log.push(['w', n, c, w]); },
       setFrozenRows: x => { calls.n++; log.push(['fr', n, x]); }, setFrozenColumns: x => { calls.n++; log.push(['fc', n, x]); },
-      deleteColumns: (c, k) => { calls.n++; log.push(['delc', n, c, k]); }, getConditionalFormatRules: () => [], setConditionalFormatRules: x => { calls.n++; log.push(['cf', n, x.length]); } });
+      getMaxColumns: () => 200, deleteColumns: (c, k) => { calls.n++; log.push(['delc', n, c, k]); }, getConditionalFormatRules: () => [], setConditionalFormatRules: x => { calls.n++; log.push(['cf', n, x.length]); } });
     return { log, calls, ss: { getSheetByName: sheet, getSpreadsheetTimeZone: () => 'Asia/Seoul' } };
   };
   const chain = new Proxy({}, { get: () => () => chain });
@@ -734,4 +734,47 @@ test('메일 보낸 뒤 견적 입력 업체 더하기 · 빼기: 상태 그대�
   assert.deepStrictEqual(JSON.parse(JSON.stringify([r.added, r.removed])), [['클레비오', '에스피에어로'], ['OMI']]);
   const rec = ctx.apiMyRecords().records[0];
   assert.deepStrictEqual(JSON.parse(JSON.stringify([rec.status, rec.vendors, rec.mails.length])), ['메일 초안', ['CBOL', '클레비오', '에스피에어로'], 1]);
+});
+
+test('환율 탭: 수식(GOOGLEFINANCE) 환율은 덮어쓰지 않고, 손으로 적은 환율만 값·수정일을 바꿈', () => {
+  const writes = [];
+  const vals = [['CUR', 'KRW 환율', '수정일'], ['USD', 1350, new Date(2026, 10, 23)], ['EUR', 1473.47, '=TODAY()'], ['SGD', 1000, new Date(2026, 10, 1)]];
+  const fx = [['', '', ''], ['', '=GOOGLEFINANCE("CURRENCY:USDKRW")', '=TODAY()'], ['', '', '=TODAY()'], ['', '', '']];
+  const sh = { getDataRange: () => ({ getValues: () => vals, getFormulas: () => fx }), appendRow: r => writes.push(['append', r[0], r[1]]),
+    getRange: (r, c, nr, nc) => ({ setValues: v => writes.push(['set', r, c, nc, v[0][0]]), setValue: v => writes.push(['one', r, c, v]) }) };
+  const ctx = inContext({ SpreadsheetApp: { openById: () => ({ getSheetByName: () => sh }) }, PropertiesService: { getScriptProperties: () => ({ getProperty: () => 'X' }) },
+    LockService: { getScriptLock: () => ({ waitLock: () => {}, tryLock: () => true, releaseLock: () => {} }) } });
+  ctx.db_ = () => ({ getSheetByName: () => sh });
+  ctx.saveRates_({ USD: 1400, EUR: 1500, SGD: 1010, JPY: 9 });
+  assert.deepStrictEqual(writes.map(w => w.slice(0, 4)), [['one', 3, 2, 1500], ['set', 4, 2, 2], ['append', 'JPY', 9]]);
+  const t = ctx.rateTable_();
+  delete t.info.JPY;   // 새로 붙인 줄
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(t.info)), { USD: { at: '2026-11-23', auto: true }, EUR: { at: '', auto: false }, SGD: { at: '2026-11-01', auto: false } });
+});
+
+test('업체 추가: 같은 업체 줄 아래에 끼워 넣고 위 줄 서식을 복사 · 견적서 파일 붙이기/빼기', () => {
+  const log = [];
+  const vals = [['업체명', '이메일', 'SUPPLIER', 'SITE', 'CONTACT'], ['CBOL', 'a@cbol.com', 'CBOL', 'CBOL', ''], ['GWT', 'b@gwt.com', 'GWT', 'GWT', '']];
+  const sh = { getDataRange: () => ({ getValues: () => vals }), insertRowAfter: r => log.push(['ins', r]), appendRow: () => log.push(['append']),
+    getRange: (r, c, nr, nc) => ({ copyTo: (d) => log.push(['fmt', r, d.row]), setValues: v => log.push(['val', r, v[0].join('|')]), row: r }) };
+  const ctx = inContext({ SpreadsheetApp: { CopyPasteType: { PASTE_FORMAT: 'F' } }, LockService: { getScriptLock: () => ({ waitLock: () => {}, tryLock: () => true, releaseLock: () => {} }) } });
+  ctx.vendorSheet_ = () => sh; ctx.apiVendors = () => ({ ok: 1 });
+  ctx.apiAddVendor({ name: 'cbol', email: 'c@cbol.com', contact: 'Jin' });
+  assert.deepStrictEqual(log, [['ins', 2], ['fmt', 2, 3], ['val', 3, 'CBOL|c@cbol.com|CBOL|CBOL|Jin']]);
+
+  // 견적서 파일
+  const rec = { id: 'Q1', kind: '견적요청서', fileId: 'F1', qfiles: {} }, data = {}, trashed = [];
+  Object.assign(ctx, {
+    Utilities: { base64Decode: s => Buffer.from(s, 'base64'), formatDate: () => '261123', newBlob: (b, m, n) => ({ n }) },
+    DriveApp: { getFileById: id => ({ getParents: () => ({ next: () => ({ createFile: b => ({ getId: () => 'NEW', getUrl: () => 'URL', name: b.n }) }) }), setTrashed: t => trashed.push(id) }) }
+  });
+  ctx.findRecord_ = () => ({ rec });
+  ctx.updateRecord_ = (f, patch) => { if (patch.edit) patch.edit(data); };
+  const r = ctx.apiAttachQuoteFile({ recordId: 'Q1', vendor: 'CBOL', name: 'q/1.pdf', mime: 'application/pdf', data: Buffer.from('PDF').toString('base64') });
+  assert.strictEqual(r.file.name, 'CBOL_견적서_261123_q_1.pdf');
+  assert.deepStrictEqual(Object.keys(data.qfiles), ['CBOL']);
+  assert.throws(() => ctx.apiAttachQuoteFile({ recordId: 'Q1', vendor: 'CBOL', name: 'x', data: '' }), /빈 파일/);
+  const out = ctx.apiRemoveQuoteFile('Q1', 'CBOL', 'NEW');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(out.qfiles)), {});
+  assert.deepStrictEqual(trashed, ['NEW']);
 });

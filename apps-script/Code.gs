@@ -128,24 +128,41 @@ function rateSheet_() {
   return sh;
 }
 
-function loadRates_() {
-  var rates = {};
-  rateSheet_().getDataRange().getValues().slice(1).forEach(function (r) {
-    if (r[0]) rates[String(r[0]).trim().toUpperCase()] = r[1];
+function loadRates_() { return rateTable_().rates; }
+/**
+ * 환율 탭 읽기: rates {USD: 1350}, info {USD: {at:'yyyy-mm-dd', auto: B열이 수식(예: GOOGLEFINANCE)인지}}
+ * 수식 칸은 계산된 값을 쓰고, 사이트가 덮어쓰지 않음
+ */
+function rateTable_() {
+  var rg = rateSheet_().getDataRange(), v = rg.getValues(), f = rg.getFormulas ? rg.getFormulas() : [];
+  var rates = {}, info = {};
+  v.slice(1).forEach(function (r, i) {
+    if (!r[0]) return;
+    var cur = String(r[0]).trim().toUpperCase(), fr = f[i + 1] || [];
+    rates[cur] = r[1];
+    var at = Object.prototype.toString.call(r[2]) === '[object Date]' ? fmtDate_(r[2]) : toDate_(r[2]) ? fmtDate_(toDate_(r[2])) : '';
+    info[cur] = { at: at, auto: !!fr[1] };
   });
-  return rates;
+  return { rates: rates, info: info };
 }
 
 function saveRates_(rates) {
   var lock = lock_();
   try { saveRatesLocked_(rates); } finally { lock.releaseLock(); }
 }
+/**
+ * 사이트에서 쓴 환율을 환율 탭에 남김. B열(환율)이 수식(GOOGLEFINANCE 등)인 통화는 건드리지 않고,
+ * C열(수정일)도 수식이면 그대로 둠 — 수식이 값으로 바뀌어 풀리던 문제
+ */
 function saveRatesLocked_(rates) {
-  var sh = rateSheet_(), rows = sh.getDataRange().getValues(), now = new Date();
+  var sh = rateSheet_(), rg = sh.getDataRange(), rows = rg.getValues(), fs = rg.getFormulas ? rg.getFormulas() : [], now = new Date();
   Object.keys(rates).forEach(function (cur) {
     var i = -1;
-    rows.forEach(function (r, n) { if (i < 0 && n > 0 && String(r[0]).toUpperCase() === cur) i = n; });
-    if (i < 0) { rows.push([cur, rates[cur], now]); sh.appendRow([cur, rates[cur], now]); }
+    rows.forEach(function (r, n) { if (i < 0 && n > 0 && String(r[0]).trim().toUpperCase() === cur) i = n; });
+    if (i < 0) { rows.push([cur, rates[cur], now]); sh.appendRow([cur, rates[cur], now]); return; }
+    var f = fs[i] || [];
+    if (f[1]) return;                                   // 수식 환율: 시트는 그대로
+    if (f[2]) sh.getRange(i + 1, 2).setValue(rates[cur]);
     else sh.getRange(i + 1, 2, 1, 2).setValues([[rates[cur], now]]);
   });
 }
@@ -236,11 +253,12 @@ function apiGuide() {
 /** 화면이 처음 열릴 때: 작성일, 저장된 환율, 구매일정 설정, Item 안내, 신규 등록 양식 */
 function apiInit(fresh) {
   auth_();
-  var values = masterValues_(!!fresh);   // DB 새로고침이면 시트에서 새로
+  var values = masterValues_(!!fresh), rt;   // DB 새로고침이면 시트에서 새로
   return {
     masterVer: fresh ? masterBump_() : masterVer_(),
     today: fmtDate_(new Date()),
-    rates: loadRates_(),
+    rates: (rt = rateTable_()).rates,
+    rateInfo: rt.info,   // 통화별 수정일 · 자동(수식) 여부 → 환율 칸 옆에 표시
     schedule: { tasks: SCHEDULE_TASKS, example: SCHEDULE_EXAMPLE, slots: SCHEDULE_SLOTS },
     items: itemIndex_(parseContracts_(values)),   // [Item, Description, Ship From, 계약 구분들, Shelf Life]
     fields: masterFields_(values)
@@ -638,6 +656,7 @@ function applyPlan_(ss, ops, opt) {
       case 'freeze': sh(o.s).setFrozenRows(o.rows); sh(o.s).setFrozenColumns(o.cols); break;
       case 'checkbox': sh(o.s).getRange(o.r1, o.c, o.r2 - o.r1 + 1, 1).insertCheckboxes(); break;
       case 'deleteCols': sh(o.s).deleteColumns(o.c, o.n); break;
+      case 'ensureCols': { var ec = sh(o.s), have = ec.getMaxColumns(); if (have < o.n) ec.insertColumnsAfter(have, o.n - have); break; }
       case 'cf': {   // 조건부 서식 규칙을 맨 앞에 추가 (나중에 넣은 규칙이 우선)
         var cfSheet = sh(o.s), rules = cfSheet.getConditionalFormatRules();
         var rule = SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(o.formula).setBackground(o.bg);
@@ -990,7 +1009,12 @@ function apiAddVendor(o) {
   try {
     var sh = vendorSheet_();
     if (!sh) { sh = db_().insertSheet(SHEET_VENDORS[0]); sh.appendRow(['업체명', '이메일', 'SUPPLIER', 'SITE', 'CONTACT']); sh.setFrozenRows(1); }
-    sh.appendRow(vendorRow_(sh.getDataRange().getValues(), o || {}));
+    var values = sh.getDataRange().getValues(), row = vendorRow_(values, o || {}), at = vendorInsertAt_(values, o || {});
+    // 자리에 줄을 끼워 넣고 바로 위 줄 서식(테두리·가운데 정렬·숫자 형식)을 그대로 → 옆 칸으로 밀려 보이지 않음
+    sh.insertRowAfter(at);
+    var dest = sh.getRange(at + 1, 1, 1, row.length);
+    if (at > vendorCols_(values).hr + 1) sh.getRange(at, 1, 1, row.length).copyTo(dest, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+    dest.setValues([row]);
   } finally { lock.releaseLock(); }
   return apiVendors();
 }
@@ -1088,6 +1112,7 @@ function rowToRecord_(r) {
     group: extra && extra.group || '', parent: extra && extra.parent || '', fixed: extra && extra.fixed || [], quoteSheet: extra && extra.quoteSheet || '',
     spotFile: extra && extra.spotFile || '', reqDates: extra && extra.reqDates || [], po: extra && extra.po || null, mails: extra && extra.mails || [],
     confirmMail: extra && extra.confirmMail || null, rev: extra && extra.rev || null, template: extra && extra.template || '', direct: !!(extra && extra.direct),
+    qfiles: extra && extra.qfiles || {}, qfolder: extra && extra.qfolder || '',
     updated: r[11] instanceof Date ? r[11].toISOString() : String(r[11] || '')
   };
 }
@@ -1129,12 +1154,13 @@ function updateRecord_(found, patch) {
     for (var i = 1; i < values.length; i++) if (String(values[i][0]) === id) { r = i; break; }
     if (r < 0) throw new Error('기록을 찾지 못했습니다 (이미 완료되었을 수 있습니다). 새로고침해 주세요.');
     var row = values[r], json = row[10];
-    if (patch.data) {   // 품목(JSON) 칸에 값 합치기
+    if (patch.data || patch.edit) {   // 품목(JSON) 칸에 값 합치기 (edit: 잠금 안에서 지금 값을 고침)
       var cur = {};
       try { cur = JSON.parse(row[10] || '{}'); } catch (e) {}
       if (Array.isArray(cur)) cur = { items: cur };
       if (patch.guard) patch.guard(cur);   // 잠금 안에서 지금 값으로 확인 (예: 다른 창에서 먼저 저장한 견적)
-      Object.keys(patch.data).forEach(function (k) { cur[k] = patch.data[k]; });
+      Object.keys(patch.data || {}).forEach(function (k) { cur[k] = patch.data[k]; });
+      if (patch.edit) patch.edit(cur);
       json = JSON.stringify(cur);
     }
     if (patch.url !== undefined || patch.fileId !== undefined) sh.getRange(r + 1, 6, 1, 2).setValues([[patch.url !== undefined ? patch.url : row[5], patch.fileId !== undefined ? patch.fileId : row[6]]]);
@@ -1561,6 +1587,62 @@ function apiSaveQuotes(recordId, quote) {
     if (was && base !== String(was)) throw new Error(QUOTE_CONFLICT);
   } });
   return { ok: true, saved: savedAt, savedAt: savedAt };
+}
+
+/* ---------- 업체 견적서 파일 (PDF·엑셀 등) ----------
+ * 견적 입력 창에서 올리면 견적요청서 파일이 있는 폴더(직접 입력 견적은 처음 고른 폴더)에 저장하고
+ * 기록 data.qfiles = {업체: [{id, name, url, at}]} 에 링크를 남김 (견적 저장과 따로 → 서로 덮어쓰지 않음)
+ */
+var QFILE_MAX = 20 * 1024 * 1024;
+function apiAttachQuoteFile(p) {
+  auth_();
+  p = p || {};
+  var found = findRecord_(p.recordId, true), rec = found.rec, vendor = String(p.vendor || '').trim();
+  if (rec.kind !== '견적요청서') throw new Error('견적요청서 기록이 아닙니다.');
+  if (!vendor) throw new Error('업체를 골라 주세요.');
+  var bytes = Utilities.base64Decode(String(p.data || ''));
+  if (!bytes.length) throw new Error('빈 파일입니다.');
+  if (bytes.length > QFILE_MAX) throw new Error('파일이 20MB 보다 큽니다. 드라이브에 직접 올려 주세요.');
+  var folder = p.folder ? DriveApp.getFolderById(p.folder) : rec.qfolder ? DriveApp.getFolderById(rec.qfolder) : rec.fileId ? DriveApp.getFileById(rec.fileId).getParents().next() : null;
+  if (!folder) throw new Error('견적서를 저장할 폴더를 골라 주세요.');
+  var orig = String(p.name || '견적서').replace(/[\\/:*?"<>|]/g, '_');
+  var name = vendor + '_견적서_' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyMMdd') + '_' + orig;
+  var file = folder.createFile(Utilities.newBlob(bytes, String(p.mime || 'application/octet-stream'), name));
+  var entry = { id: file.getId(), name: name, url: file.getUrl(), at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') }, out = {};
+  updateRecord_(found, { edit: function (cur) {
+    cur.qfiles = cur.qfiles || {};
+    (cur.qfiles[vendor] = cur.qfiles[vendor] || []).push(entry);
+    if (p.folder) cur.qfolder = p.folder;
+    out = cur.qfiles;
+  } });
+  return { file: entry, qfiles: out, qfolder: p.folder || rec.qfolder || '' };
+}
+/** 붙인 견적서 빼기: 링크를 지우고 파일은 드라이브 휴지통으로 (30일 안에 되살릴 수 있음) */
+function apiRemoveQuoteFile(recordId, vendor, fileId) {
+  auth_();
+  var found = findRecord_(recordId, true), out = {}, hit = false;
+  updateRecord_(found, { edit: function (cur) {
+    var list = (cur.qfiles || {})[vendor] || [];
+    cur.qfiles = cur.qfiles || {};
+    cur.qfiles[vendor] = list.filter(function (f) { if (f.id === fileId) { hit = true; return false; } return true; });
+    if (!cur.qfiles[vendor].length) delete cur.qfiles[vendor];
+    out = cur.qfiles;
+  } });
+  if (hit) { try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) { console.warn('견적서 휴지통 이동 실패: ' + e); } }
+  return { qfiles: out };
+}
+
+/**
+ * 견적 종합에서: 이 견적요청서 품목이 진행 중인 다른 기록(모든 담당자)에도 있는지.
+ * 같은 소요제기에서 나뉜 기록(같은 group)은 빼고, 품목 Item → [{title, owner, mine, kind, created}]
+ */
+function apiQuoteDups(recordId) {
+  auth_();
+  var all = recordSheet_().getDataRange().getValues().slice(1).map(rowToRecord_).filter(function (r) { return r.id; });
+  var rec = all.filter(function (r) { return r.id === String(recordId); })[0];
+  if (!rec) return { dups: {} };
+  var others = all.filter(function (r) { return r.id !== rec.id && !(rec.group && r.group === rec.group); });
+  return { dups: dupsFor_(rec, others, me_()) };
 }
 
 /**

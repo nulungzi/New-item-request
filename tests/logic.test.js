@@ -803,3 +803,44 @@ test('회신 대기: 메일을 보낸 업체만 (메일 없이 나중에 더한 
   assert.deepStrictEqual(L.pendingVendors_(rec), ['OMI']);
   assert.deepStrictEqual(L.pendingVendors_(Object.assign({}, rec, { mails: [] })), ['OMI', 'NEW']);   // 예전 기록(메일 기록 없음)은 모두
 });
+
+test('구매일정 0.25개월 칸: 달마다 4칸, 반 너비, 월·연도 병합, L/T 두 자리', () => {
+  const base = L.toDate_('2026-11-23');
+  const q = L.scheduleConfirmOps_(base, { months: 14, unit: 4, bars: [{ start: 0, len: 18 }, { start: 0, len: 0 }, { start: 0, len: 1 }, { start: 0, len: 0 }, { start: 0, len: 0 }] }, {});
+  const G = L.TPL.SCHEDULE;
+  assert.deepStrictEqual(q.filter(o => o.op === 'ensureCols').map(o => o.n), [60]);
+  assert.strictEqual(q.filter(o => o.op === 'merge' && o.r1 === 5).length, 14);
+  assert.deepStrictEqual(q.filter(o => o.op === 'merge' && o.r1 === 5)[0], { op: 'merge', s: G, r1: 5, c1: 5, r2: 5, c2: 8 });
+  assert.deepStrictEqual(q.filter(o => o.op === 'merge' && o.r1 === 4).map(o => [o.c1, o.c2]), [[5, 12], [13, 60]]);
+  assert.deepStrictEqual([...new Set(q.filter(o => o.op === 'width').map(o => o.px))], [12]);
+  assert.deepStrictEqual(q.filter(o => o.op === 'set' && o.c === 4 && o.r >= 6).map(o => o.v), ['4.50M', '', '0.25M', '', '']);
+  assert.strictEqual(q.filter(o => o.op === 'bg' && o.r === 6 && o.color !== '#ffffff').length, 18);
+  // 반 달(기본)은 예전과 같음: 달마다 2칸, 23px, 소수 한 자리
+  const h = L.scheduleConfirmOps_(base, { months: 12, bars: L.SCHEDULE_EXAMPLE }, {});
+  assert.strictEqual(L.schedUnit_({ months: 12 }), 2);
+  assert.strictEqual(h.filter(o => o.op === 'merge' && o.r1 === 5).length, 12);
+  assert.deepStrictEqual([...new Set(h.filter(o => o.op === 'width').map(o => o.px))], [23]);
+  assert.deepStrictEqual(h.filter(o => o.op === 'set' && o.c === 4 && o.r >= 6).map(o => o.v), ['4.5M', '5.0M', '0.5M', '3.0M', '0.5M']);
+  assert.strictEqual(h.filter(o => o.op === 'cellFmt' && o.c < 25 && o.r > 4).length, 0);   // 템플릿 서식(12개월)은 그대로
+});
+
+test('업체정보: 연락처는 같은 업체 마지막 줄 아래, 새 업체는 이름·이메일이 있는 마지막 줄 아래', () => {
+  const v = [['업체명', '이메일', 'SUPPLIER', 'SITE', 'CONTACT', '', '메모'],
+    ['OMI', 'a@omi.com', 'OMI', 'LA', ''], ['CBOL', 'b@cbol.com', 'CBOL', 'CBOL', ''], ['CBOL', 'c@cbol.com', 'CBOL', 'CBOL', ''],
+    ['ABC인터네셔널', 'd@abc.kr', '에이비씨', 1034900782, ''], ['', '', '', '', '', '', '메모만'], ['', '', '', '', '', '', '']];
+  assert.strictEqual(L.vendorInsertAt_(v, { name: 'cbol' }), 4);        // CBOL 두 줄(시트 3·4행) 바로 아래
+  assert.strictEqual(L.vendorInsertAt_(v, { name: 'OMI' }), 2);
+  assert.strictEqual(L.vendorInsertAt_(v, { name: 'GWT', isNew: true }), 5);   // ABC(5행) 아래, 메모 줄은 무시
+  const row = L.vendorRow_(v, { name: 'CBOL', email: 'x@cbol.com', contact: 'Kim' });
+  assert.deepStrictEqual(row.slice(0, 5), ['CBOL', 'x@cbol.com', 'CBOL', 'CBOL', 'Kim']);
+  assert.strictEqual(row.length, 7);
+});
+
+test('견적 종합 중복 알림: 다른 진행 중 기록의 같은 Item (표기 달라도)', () => {
+  const rec = { items: [{ item: 'KERC00099' }, { item: 'kern00278 ' }, { item: 'KERX1' }] };
+  const others = [{ title: 'A', owner: 'lee@ke.com', items: [{ item: 'KERN00278' }] }, { title: 'B', owner: 'me@ke.com', fixed: [{ item: 'KERC00099' }] }];
+  const d = L.dupsFor_(rec, others, 'me@ke.com');
+  assert.deepStrictEqual(Object.keys(d), ['KERC00099', 'kern00278 ']);
+  assert.strictEqual(d.KERC00099[0].mine, true);
+  assert.strictEqual(d['kern00278 '][0].title, 'A');
+});

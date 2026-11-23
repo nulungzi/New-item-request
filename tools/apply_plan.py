@@ -102,6 +102,8 @@ for o in ops:
         al = copy(cell.alignment); al.wrap_text = True; cell.alignment = al
     elif op == 'checkbox':
         pass   # 엑셀 미리보기에서는 TRUE/FALSE 값 그대로
+    elif op == 'ensureCols':
+        pass   # openpyxl 은 열 수 제한이 없음
     elif op == 'deleteCols':
         ws = wb[o['s']]
         for m in list(ws.merged_cells.ranges):
