@@ -349,6 +349,10 @@ a.btn-ghost { display: inline-block; text-decoration: none; border-radius: 6px }
 .arc-bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); font-size: .86rem }
 .arc-bar label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer }
 .arc-note { margin-left: auto; font-size: .78rem }
+.trash-box { display: grid; gap: 8px; margin-top: 6px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 10px; font-size: .86rem }
+.trash-box > .btn-ghost { justify-self: start }
+.trash-row { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line) }
+.trash-row .rec-title { flex: 1 1 260px }
 .arc-chk { display: inline-flex; margin-right: 8px; vertical-align: -2px; cursor: pointer }
 .btn-ghost.danger { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, var(--line)) }
 .btn-ghost.danger:hover:not(:disabled) { background: var(--warn-soft) }
@@ -1586,6 +1590,12 @@ function call(fn) {
     var mk = makingStart(fn);
     p.then(function (d) { makingDone(mk, d); }, function (e) { makingFail(mk, e); });
   }
+  // 서버가 알려 주는 것: 이미 만든(보낸) 뒤 기록만 실패(warn) · 같은 요청을 10분 안에 다시 보냄(repeated)
+  p.then(function (d) {
+    if (!d || typeof d !== 'object') return;
+    if (d.repeated) toast('<b>방금 같은 요청을 이미 처리했습니다</b><span class="muted">다시 만들거나 보내지 않고 앞의 결과를 보여 드립니다. 정말 한 번 더 하려면 10분 뒤에 누르세요.</span>');
+    if (d.warn) toast('<b>확인해 주세요</b><span class="muted">' + esc(d.warn).replace(/\n/g, '<br>') + '</span>', 'err', true);
+  }, function () {});
   return p;
 }
 
@@ -3095,17 +3105,28 @@ $('qCreate').onclick = function () {
     return { item: it.item, name: it.name, desc: it.desc, material: it.material || '', qpl: it.qpl, uom: it.uom, remark: it.remark, qty: it.qty, needBy: it.needBy, parts: it.parts, taxCode: it.taxCode || '',
       program: x.program, prev: x.prev, quotes: p.items[i].quotes };
   });
+  var again = !!b.dataset.again; delete b.dataset.again;
   pickFolder('Spot 견적 구매내역서').then(function (folder) {
     if (!folder) return;
     b.disabled = true; b.textContent = '만드는 중…';
-    return call('apiCreateSpotPurchase', { recordId: qs.rec.id, baseDate: $('base').value, rates: qs.rates, folder: folder.id, name: p.name, confirmer: p.confirmer,
-      schedule: schedPayload(), vendors: p.vendors, items: items }).then(function (d) {
+    // 저장 중인 견적이 있으면 끝난 뒤에 (그 저장 시각을 base 로 보내 다른 창 저장과 섞이지 않게)
+    return (qs.saving || Promise.resolve()).catch(function () {}).then(function () {
+      return call('apiCreateSpotPurchase', { recordId: qs.rec.id, baseDate: $('base').value, rates: qs.rates, folder: folder.id, name: p.name, confirmer: p.confirmer,
+        schedule: schedPayload(), vendors: p.vendors, items: items, base: qs.savedAt || '', again: again });
+    }).then(function (d) {
       qs.rec.quote = p; qs.savedAt = d.savedAt || qs.savedAt;
       $('qMsg').innerHTML = '<span class="ok-msg">Spot 견적 구매내역서를 ' + esc(folder.name) + '에 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.name) + ' 열기 ↗</a></span>';
       loadRecords();
     });
-  }).catch(function (e) { $('qMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; })
-    .finally(function () { b.disabled = false; b.textContent = 'Spot 견적 구매내역서 만들기'; });
+  }).catch(function (e) {
+    var m = String(e.message || e), sx = /SPOT_EXISTS\|([^|]*)\|([\s\S]*)$/.exec(m);
+    if (sx) {   // 이미 만든 파일이 있음: 한 번 더 누르면 하나 더
+      b.dataset.again = '1';
+      $('qMsg').innerHTML = '<span class="err">' + esc(sx[2]) + (sx[1] ? ' · <a href="' + esc(sx[1]) + '" target="_blank" rel="noopener">만든 파일 열기 ↗</a>' : '') + '</span>';
+      return;
+    }
+    $('qMsg').innerHTML = '<span class="err">' + esc(m) + '</span>';
+  }).finally(function () { b.disabled = false; b.textContent = b.dataset.again ? '하나 더 만들기' : 'Spot 견적 구매내역서 만들기'; });
 };
 
 /* ---------- 진행 중 (내 기록) ---------- */
@@ -3434,13 +3455,17 @@ function renderArchive() {
   $('recList').innerHTML = list.length ? '<div class="arc-bar"><label class="arc-all"><input type="checkbox" id="arcAll"> 보이는 기록 전체 선택</label><span class="muted" id="arcN"></span>' +
       '<label class="muted arc-hist"><input type="checkbox" id="arcHist"' + (state.arcHist === false ? '' : ' checked') + '> 구매 이력에 올린 줄도 같이 지우기</label>' +
       '<button class="btn-ghost" id="arcBack" type="button" disabled title="진행 중으로 되돌림">선택 되돌리기</button><button class="btn-ghost danger" id="arcDel" type="button" disabled>선택 삭제</button>' +
-      '<span class="muted arc-note">기록만 지웁니다 · 드라이브의 파일은 그대로 남습니다</span></div>' +
+      '<span class="muted arc-note">기록만 지웁니다 · 드라이브 파일은 그대로 · 지운 기록은 아래 <b>지운 기록</b>에서 되돌릴 수 있습니다</span></div>' +
     list.map(function (r) {
     return '<div class="rec done-rec' + (state.arcSel[r.id] ? ' picked' : '') + '" data-id="' + esc(r.id) + '"><div><div><label class="arc-chk"><input type="checkbox" data-arc="' + esc(r.id) + '"' + (state.arcSel[r.id] ? ' checked' : '') + ' aria-label="' + esc(r.title) + ' 선택"></label>' +
       '<span class="chip chip-done">' + esc(r.kind) + '</span> <span class="rec-title">' + esc(r.title) + '</span></div>' +
       '<div class="rec-meta"><span>' + esc(r.created) + ' 작성</span><span>완료 <b>' + esc(r.done || '') + '</b></span><span>품목 ' + (r.items || []).length + '개</span>' + poMeta(r) + '</div></div>' +
       '<div class="rec-actions"><a class="btn-ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener">파일 열기 ↗</a><button class="btn-ghost" type="button" data-arcback="' + esc(r.id) + '" title="완료 취소: 진행 중으로 되돌림">되돌리기</button><button class="btn-ghost danger" type="button" data-arcdel="' + esc(r.id) + '">삭제</button></div></div>';
   }).join('') : (state.archived.length ? emptyHtml('search', '찾는 기록이 없습니다.') : emptyHtml('archive', '완료한 기록이 없습니다.'));
+  $('recList').insertAdjacentHTML('beforeend', '<div class="trash-box"><button class="btn-ghost" type="button" id="trashOpen" aria-expanded="' + !!state.trashOpen + '">' +
+    (state.trashOpen ? '지운 기록 접기 ▴' : '지운 기록 보기 ▾') + '</button><span class="muted">삭제한 완료 기록은 보관 파일의 삭제기록 탭에 남아 있어 되돌릴 수 있습니다.</span><div id="trashList"></div></div>');
+  $('trashOpen').onclick = function () { state.trashOpen = !state.trashOpen; if (state.trashOpen) state.trash = null; renderArchive(); };
+  if (state.trashOpen) renderTrash();
   if (!list.length) return;
   var shownIds = list.map(function (r) { return r.id; });
   var sync = function () {
@@ -3468,6 +3493,35 @@ function renderArchive() {
   $('arcBack').onclick = function () { restoreArchived(shownIds.filter(function (id) { return state.arcSel[id]; }), this); };
   sync();
 }
+/* 지운 기록: 되돌리면 완료 기록으로 (같이 뺀 구매 이력 줄도 다시 올림) */
+function renderTrash() {
+  var box = $('trashList');
+  if (!box) return;
+  if (!state.trash) {
+    box.innerHTML = '<div class="muted">불러오는 중…</div>';
+    call('apiDeletedRecords').then(function (d) { state.trash = d.records || []; if (state.trashOpen && state.recArchive) renderTrash(); })
+      .catch(function (e) { box.innerHTML = '<div class="err">' + esc(e.message || e) + '</div>'; });
+    return;
+  }
+  box.innerHTML = state.trash.length ? state.trash.map(function (r) {
+    return '<div class="trash-row" data-id="' + esc(r.id) + '"><span class="chip chip-done">' + esc(r.kind) + '</span><span class="rec-title">' + esc(r.title) + '</span>' +
+      '<span class="muted">완료 ' + esc(r.done) + ' · 삭제 ' + esc(r.deleted) + (r.history ? ' · 구매 이력 ' + r.history + '줄 보관' : '') + '</span>' +
+      (r.url ? '<a class="btn-ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener">파일 ↗</a>' : '') +
+      '<button class="btn-ghost" type="button" data-untrash="' + esc(r.id) + '">되돌리기</button></div>';
+  }).join('') : '<div class="muted">지운 기록이 없습니다.</div>';
+  box.querySelectorAll('[data-untrash]').forEach(function (b) {
+    b.onclick = function () {
+      var id = b.dataset.untrash;
+      b.disabled = true; b.textContent = '되돌리는 중…';
+      call('apiRestoreDeleted', [id]).then(function (d) {
+        state.trash = state.trash.filter(function (r) { return r.id !== id; });
+        state.archived = null; renderArchive();
+        call('apiArchivedRecords').then(function (x) { state.archived = x.records || []; if (state.recArchive) renderArchive(); });
+        toast('<b>완료 기록으로 되돌렸습니다</b><span class="muted">' + (d.history ? '구매 이력 ' + d.history + '줄도 다시 올림' : '구매 이력 줄은 없었음') + '</span>');
+      }).catch(function (e) { b.disabled = false; b.textContent = '되돌리기'; toast('<b>되돌리지 못했습니다</b><span class="muted">' + esc(e.message || e) + '</span>', 'err'); });
+    };
+  });
+}
 /* 완료 기록 삭제: 한 번 더 눌러 확인 → 접히며 사라짐 */
 function deleteArchived(ids, btn) {
   if (!ids.length) return;
@@ -3483,7 +3537,8 @@ function deleteArchived(ids, btn) {
       state.archived = state.archived.filter(function (r) { return ids.indexOf(r.id) < 0; });
       ids.forEach(function (id) { delete state.arcSel[id]; });
       renderArchive();
-      toast('<b>완료 기록 ' + d.deleted + '건을 지웠습니다</b><span class="muted">' + (hist ? '구매 이력 ' + d.history + '줄도 지움 · ' : '') + '드라이브 파일은 그대로' + (d.skipped ? ' · 다른 담당자 기록 ' + d.skipped + '건은 건너뜀' : '') + '</span>');
+      state.trash = null;
+      toast('<b>완료 기록 ' + d.deleted + '건을 지웠습니다</b><span class="muted">' + (hist ? '구매 이력 ' + d.history + '줄도 뺌 · ' : '') + '지운 기록에서 되돌릴 수 있음 · 드라이브 파일은 그대로' + (d.skipped ? ' · 다른 담당자 기록 ' + d.skipped + '건은 건너뜀' : '') + '</span>');
     });
   }).catch(function (e) { btn.disabled = false; delete btn.dataset.ok; btn.textContent = '삭제'; toast('<b>지우지 못했습니다</b><span class="muted">' + esc(e.message || e) + '</span>', 'err'); });
 }
@@ -4000,7 +4055,7 @@ var GUIDES = [
       { id: 'c4', img: 'revise', t: '견적요청서 수정 · [Revised] 메일', d: '메일을 보낸 뒤에도 품목을 더하거나 빼고 수량 · Need-by 를 고칩니다 (초록 = 새 품목, 노랑 = 바뀐 줄). 저장하면 같은 폴더에 새 견적요청서를 만들고 예전 파일은 (수정 전 …) 으로 남깁니다. 입력한 견적은 같은 Item 끼리 이어지고, 다음 메일은 제목 앞에 [Revised] 가 붙습니다.' },
       { id: 'c2', img: 'records', t: '완료 · 구매 이력', d: '소요제기가 끝나면 모두 완료를 누릅니다. 구매 줄 목록이 나오고, 구매 이력(DB)에 올릴지 고릅니다. 긴급 고가 구매처럼 튀는 줄은 체크를 풀고 올립니다. 기록은 보관 파일로 옮겨집니다.' },
       { id: 'c5', img: 'archive', t: '완료 취소 (되돌리기)', d: '완료 기록 보기에서 되돌리기를 누르면 진행 중으로 돌아옵니다. 그 기록으로 올린 구매 이력 줄은 지워지고, 다시 완료할 때 다시 올립니다.' },
-      { id: 'c6', img: 'archive', t: '완료 기록 삭제', d: '테스트로 만든 기록은 체크하고 선택 삭제 (한 번 더 눌러 확인). 기록만 지우고 드라이브 파일은 그대로 남습니다. 구매 이력에 올린 줄도 같이 지울 수 있습니다.' }] },
+      { id: 'c6', img: 'archive', t: '완료 기록 삭제', d: '테스트로 만든 기록은 체크하고 선택 삭제 (한 번 더 눌러 확인). 기록만 지우고 드라이브 파일은 그대로 남습니다. 구매 이력에 올린 줄도 같이 뺄 수 있습니다. 지운 기록은 아래 지운 기록 보기에서 되돌릴 수 있습니다 (구매 이력 줄도 다시 올라감).' }] },
   { id: 'alerts', view: 'records', title: '기한 알림 · 아침 요약', desc: '발주 마감일과 견적 회신 기한을 계산해서 놓치지 않게 알려 줍니다.',
     points: ['발주 마감 = Need-by − L/T − 운송·통관', '회신 기한 · 미회신 업체 배지', '평일 아침 요약 메일 (각자 켜기)'],
     steps: [
@@ -4686,20 +4741,21 @@ function makingDone(m, d) {
   $('mkStep').textContent = '완료';
   setTimeout(function () {
     makingEnd(m);
-    if (m.cfg.quiet) return;
+    if (m.cfg.quiet || (d && d.repeated)) return;
     toast('<b>' + esc(m.cfg.t) + '를 만들었습니다</b>' + files.map(function (f) { return '<a href="' + esc(f.url) + '" target="_blank" rel="noopener">' + esc(f.name || '파일') + ' 열기 ↗</a>'; }).join(''));
     updateFlow();
   }, REDUCE ? 0 : 450);
 }
 function makingFail(m, e) {
   makingEnd(m);
+  if (/SPOT_EXISTS\|/.test(String((e && e.message) || e))) return;   // 이미 만든 파일: 화면에서 한 번 더 확인
   toast('<b>' + esc(m.cfg.t) + '를 만들지 못했습니다</b><span class="muted">' + esc((e && e.message) || e) + '</span>', 'err');
 }
 $('mkHide').onclick = function () { $('mk').classList.add('mini'); };
 $('mkPill').onclick = function () { $('mk').classList.remove('mini'); };
 
 /* 오른쪽 아래 알림: 8초 뒤 사라짐 (마우스를 올리면 멈춤) */
-function toast(html, kind) {
+function toast(html, kind, sticky) {   // sticky: 닫기를 누를 때까지 (중요한 안내)
   var el = document.createElement('div');
   el.className = 'toast' + (kind ? ' ' + kind : '');
   el.setAttribute('role', kind === 'err' ? 'alert' : 'status');
@@ -4707,7 +4763,7 @@ function toast(html, kind) {
   $('toasts').appendChild(el);
   var gone = false, timer;
   var close = function () { if (gone) return; gone = true; el.classList.add('out'); setTimeout(function () { el.remove(); }, 260); };
-  var arm = function () { clearTimeout(timer); timer = setTimeout(close, kind === 'err' ? 12000 : 8000); };
+  var arm = function () { clearTimeout(timer); if (!sticky) timer = setTimeout(close, kind === 'err' ? 12000 : 8000); };
   el.querySelector('button').onclick = close;
   el.onmouseenter = function () { clearTimeout(timer); };
   el.onmouseleave = arm;

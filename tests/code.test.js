@@ -278,6 +278,11 @@ test('견적 저장 → Spot 견적 구매내역서, 계약+Spot 단가는 두 �
   assert.ok(ops.includes('insertCheckboxes') && ops.includes('deleteColumns'));
   mine = ctx.apiMyRecords().records;
   assert.deepStrictEqual(mine.map(r => [r.kind, r.status]).sort(), [['Spot 구매내역서', '작성'], ['견적 구매내역서', '작성'], ['견적요청서', '견적 구매내역서 작성'], ['계약 구매내역서', '작성']].sort());
+  // 이미 만든 견적요청서로 또 누르면 한 번 더 확인 (again 이면 만듦) · 다른 창에서 견적을 먼저 저장했으면 멈춤
+  const again = { recordId: rfq.recordId, baseDate: '2026-11-10', rates: { USD: 1350 }, vendors: ['Hexcel', '3M'], items: [{ item: 'MS20995C20', uom: 'RL', qty: 3, needBy: '2027-01-15', quotes: quote.items[0].quotes }] };
+  assert.throws(() => ctx.apiCreateSpotPurchase(again), /^Error: SPOT_EXISTS\|.*\|이 견적요청서로 이미/);
+  assert.throws(() => ctx.apiCreateSpotPurchase(Object.assign({ again: true, base: 'old-save' }, again)), /다른 창/);
+  assert.ok(ctx.apiCreateSpotPurchase(Object.assign({ again: true, base: sp.savedAt }, again)).url);
 
   // 하나로 만들기: 계약 줄(A1)을 견적요청서에 붙여 두고, 견적 구매내역서를 만들 때 같이 넣고 묶음·부모를 기록
   const rfq2 = ctx.apiCreateRfq({ baseDate: '2026-11-13', title: 'R2', due: '2026-11-20', group: 'G1',
@@ -355,7 +360,8 @@ test('apiCreateQuoteSheet: 업체마다 탭, 사이트 표와 같은 값, 기록
   assert.deepStrictEqual(calls.filter(c => c[0] === 'insertSheet').map(c => c[1][0]), ['OMI', 'CBOL']);
   const vals = calls.filter(c => c[0] === 'setValues').map(c => c[1][0]);
   assert.strictEqual(JSON.stringify(vals[1][1].slice(0, 5)), JSON.stringify([1, 'KERN00736-001', '88TB0110', 1, '2027-03-01']));
-  assert.strictEqual(JSON.stringify(saved), JSON.stringify({ data: { quoteSheet: 'QSURL' } }));
+  assert.strictEqual(JSON.stringify(saved.data), JSON.stringify({ quoteSheet: 'QSURL' }));
+  assert.strictEqual(saved.log, '견적 입력용 시트');
   rec.quoteSheet = 'QSURL';
   assert.strictEqual(ctx.apiCreateQuoteSheet('R1', '').url, 'QSURL');   // 이미 있으면 그 시트
 });
@@ -516,6 +522,21 @@ test('완료 기록 삭제: 본인 기록만, 구매 이력 줄도 같이 (선�
   assert.deepStrictEqual(db.tabs['구매이력'].rows.slice(1).map(x => x[L.HISTORY.HEAD.indexOf('기록 ID')]), ['A4', 'A2', 'A3']);
   assert.strictEqual(ctx.apiDeleteArchived(['A4'], false).history, 0);
   assert.strictEqual(db.tabs['구매이력'].rows.length, 4);
+  // 바로 지우지 않고 삭제기록 탭으로 (같이 뺀 구매이력 줄도 보관) → 되돌리기
+  const trash = arc.tabs['삭제기록'].rows;
+  assert.deepStrictEqual(trash.slice(1).map(x => x[0]), ['A3', 'A1', 'A4']);
+  assert.strictEqual(JSON.parse(trash[1][15]).length, 1);
+  const del = ctx.apiDeletedRecords().records;
+  assert.deepStrictEqual(del.map(x => x.id).sort(), ['A1', 'A3', 'A4']);
+  assert.strictEqual(del.filter(x => x.id === 'A3')[0].history, 1);
+  const back = ctx.apiRestoreDeleted(['A3', 'A2']);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(back)), { restored: 1, history: 1 });
+  assert.deepStrictEqual(arc.tabs['완료기록'].rows.slice(1).map(x => x[0]), ['A2', 'A3']);
+  assert.deepStrictEqual(arc.tabs['삭제기록'].rows.slice(1).map(x => x[0]), ['A1', 'A4']);
+  assert.ok(db.tabs['구매이력'].rows.slice(1).some(x => x[L.HISTORY.HEAD.indexOf('기록 ID')] === 'A3' && x[L.HISTORY.HEAD.indexOf('담당자')] === 'me@ke.com'));
+  // 변경기록
+  const log = db.tabs['변경기록'].rows.slice(1).map(x => x[2] + ':' + x[3]);
+  assert.deepStrictEqual(log.filter(x => /삭제/.test(x)), ['삭제 (삭제기록으로):A3', '삭제 (삭제기록으로):A1', '삭제 (삭제기록으로):A4', '삭제 되돌리기:A3']);
 });
 
 test('완료 취소: 진행 중으로 되돌리고 상태 복원, 올린 구매 이력 줄 지움 · 업체 추천은 이 기록 빼고', () => {
@@ -777,4 +798,83 @@ test('업체 추가: 같은 업체 줄 아래에 끼워 넣고 위 줄 서식을
   const out = ctx.apiRemoveQuoteFile('Q1', 'CBOL', 'NEW');
   assert.deepStrictEqual(JSON.parse(JSON.stringify(out.qfiles)), {});
   assert.deepStrictEqual(trashed, ['NEW']);
+});
+
+test('큰 견적: 진행기록 한 칸(50,000자)을 넘으면 견적데이터 탭에 나눠 담고, 읽을 때 다시 붙임 · 변경기록에 바뀐 단가', () => {
+  const H = ['ID', '종류', '담당자', '작성일', '제목', 'URL', '파일ID', '상태', '초안', 'BCC', 'JSON', '수정일'];
+  const items = Array.from({ length: 30 }, (_, i) => ({ item: 'KERN' + (1000 + i), name: 'N' + i, qty: 5, needBy: '2027-01-10' }));
+  const db = fakeBook({ 진행기록: [H, ['Q1', '견적요청서', 'me@ke.com', '', 'RFQ', '', '', '메일 초안', '', '', JSON.stringify({ items, vendors: [] }), '']] });
+  const ctx = inContext({
+    SpreadsheetApp: { getActive: () => db }, PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }) },
+    LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
+    Session: { getActiveUser: () => ({ getEmail: () => 'me@ke.com' }), getEffectiveUser: () => ({ getEmail: () => 'me@ke.com' }) },
+  });
+  const vendors = Array.from({ length: 12 }, (_, i) => 'Vendor' + i);
+  const mk = p => ({ vendors, items: items.map((it, i) => ({ at: i, program: '787', prev: {}, quotes: Object.fromEntries(vendors.map(v => [v, { price: String(p + i), cur: 'USD', qty: '5', uom: 'EA', mfg: 'MFG-' + v, lt: '8wks', moq: '1', remark: 'remark text for ' + v, shelf: '12M' }])) })) });
+  const r1 = ctx.apiSaveQuotes('Q1', Object.assign(mk(10), { base: '' }));
+  const row = db.tabs['진행기록'].rows[1];
+  assert.ok(row[10].length < 49000, '진행기록 칸 ' + row[10].length);
+  assert.strictEqual(JSON.parse(row[10]).quoteRef, 1);
+  const parts = db.tabs['견적데이터'].rows.slice(1);
+  assert.ok(parts.length >= 2 && parts.every(p => p[0] === 'Q1' && p[2].length <= 45000), '조각 ' + parts.length);
+  // 다른 실행에서 읽기 (메모 없이)
+  ctx.qstoreMemo_ = null;
+  const rec = ctx.findRecord_('Q1', true).rec;
+  assert.strictEqual(rec.quote.items.length, 30);
+  assert.strictEqual(rec.quote.items[29].quotes.Vendor11.price, '39');
+  assert.strictEqual(rec.quote.savedAt, r1.savedAt);
+  // 다시 저장: 저장 시각 확인(guard)은 견적데이터의 값으로, 단가 하나 바꿈 → 변경기록
+  const q2 = mk(10); q2.items[3].quotes.Vendor2.price = '99'; q2.base = r1.savedAt;
+  ctx.qstoreMemo_ = null;
+  ctx.apiSaveQuotes('Q1', q2);
+  assert.throws(() => ctx.apiSaveQuotes('Q1', Object.assign(mk(10), { base: r1.savedAt })), /다른 창/);
+  ctx.qstoreMemo_ = null;
+  assert.strictEqual(ctx.findRecord_('Q1', true).rec.quote.items[3].quotes.Vendor2.price, '99');
+  const log = db.tabs['변경기록'].rows.slice(1).filter(x => x[2] === '견적 저장');
+  assert.strictEqual(log.length, 2);
+  assert.ok(/KERN1003 Vendor2: 단가 13→99/.test(log[1][6]), log[1][6]);
+  // 바뀐 것이 없는 저장은 변경기록에 남기지 않음
+  ctx.qstoreMemo_ = null;
+  const now = ctx.findRecord_('Q1', true).rec.quote.savedAt, q3 = mk(10); q3.items[3].quotes.Vendor2.price = '99'; q3.base = now;
+  ctx.apiSaveQuotes('Q1', q3);
+  assert.strictEqual(db.tabs['변경기록'].rows.slice(1).filter(x => x[2] === '견적 저장').length, 2);
+  // 견적 말고도 너무 크면 한국어 안내
+  assert.throws(() => ctx.updateRecord_(ctx.findRecord_('Q1', true), { data: { items: Array.from({ length: 900 }, (_, i) => ({ item: 'KERX' + i, name: 'x'.repeat(60) })) } }), /품목이 너무 많아/);
+});
+
+test('같은 요청 두 번: 10분 안에 같은 내용이면 다시 보내지 않음 · 보낸 뒤 기록 실패는 오류 대신 안내', () => {
+  const H = ['ID', '종류', '담당자', '작성일', '제목', 'URL', '파일ID', '상태', '초안', 'BCC', 'JSON', '수정일'];
+  const db = fakeBook({ 진행기록: [H, ['P1', '계약 구매내역서', 'me@ke.com', '', '261113 구매내역서', 'https://docs/p1', '', '작성', '', '', '{"items":[]}', '']] });
+  const store = new Map(), sent = [];
+  let lockOk = true;
+  const ctx = inContext({
+    SpreadsheetApp: { getActive: () => db },
+    CacheService: { getUserCache: () => ({ get: k => store.get(k) || null, put: (k, v) => store.set(k, v), remove: k => store.delete(k) }), getScriptCache: () => null },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }), getUserProperties: () => ({ getProperty: () => null, setProperties: () => {} }) },
+    LockService: { getScriptLock: () => ({ waitLock: () => { if (!lockOk) throw new Error('timeout'); }, releaseLock: () => {} }) },
+    Session: { getActiveUser: () => ({ getEmail: () => 'me@ke.com' }), getEffectiveUser: () => ({ getEmail: () => 'me@ke.com' }) },
+    Utilities: { formatDate: () => '2026-11-13 09:00', sleep: () => {} },
+    GmailApp: { createDraft: () => {}, sendEmail: (to, s) => sent.push(s) },
+  });
+  const p = { recordId: 'P1', to: 'biz@ke.com', subject: '날인 요청', mode: 'send' };
+  const a = ctx.apiConfirmMail(p);
+  assert.strictEqual(sent.length, 1);
+  assert.ok(!a.repeated && !a.warn);
+  const b = ctx.apiConfirmMail(Object.assign({}, p));     // 같은 내용으로 다시 누름
+  assert.strictEqual(sent.length, 1);
+  assert.strictEqual(b.repeated, true);
+  // 내용이 다르면 보냄. 보낸 뒤 기록 잠금을 못 받으면 오류가 아니라 warn (다시 누르면 두 번 나가므로)
+  lockOk = false;
+  const c = ctx.apiConfirmMail(Object.assign({}, p, { subject: '날인 요청 2' }));
+  assert.strictEqual(sent.length, 2);
+  assert.ok(/메일은 보냈지만 진행 기록에는 남기지 못했습니다/.test(c.warn), c.warn);
+  assert.ok(!/아무것도 바뀌지 않았습니다/.test(c.warn));
+  // 보내기 전에 실패하면 캐시에 남지 않아 고쳐서 다시 누를 수 있음
+  lockOk = true;
+  assert.throws(() => ctx.apiConfirmMail({ recordId: 'P1', to: 'nope', mode: 'send' }), /이메일 형식/);
+  assert.throws(() => ctx.apiConfirmMail({ recordId: 'P1', to: 'nope', mode: 'send' }), /이메일 형식/);
+  // 처리하는 중에 또 누르면 안내
+  const key = [...store.keys()][0];
+  store.set(key, JSON.stringify({ state: 'run' }));
+  assert.throws(() => ctx.apiConfirmMail(p), /지금 처리하고 있습니다/);
 });

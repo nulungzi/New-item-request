@@ -38,18 +38,155 @@ function masterSheet_() {
 }
 
 /*
- * 자재정보 캐시: 판정·화면 열기 때마다 시트 전체를 읽지 않게 10분 동안 기억 (모든 담당자 공용).
+ * 자재정보 캐시: 판정·화면 열기 때마다 시트 전체를 읽지 않게 6시간 동안 기억 (모든 담당자 공용). 구매내역서 · 견적요청서를 만들 때는 새로 읽음.
  * 자재 등록 · DB 새로고침이면 새로 읽음. 날짜 칸은 'yyyy-mm-dd' 글자로 바꿔 저장 (시간대 밀림 없음)
  */
 var CACHE_SEC = 600, CACHE_CHUNK = 30000, MASTER_CACHE_SEC = 21600;   // 자재정보는 6시간 (자재 등록 · DB 새로고침이면 바로 새로)
 /** 공용 시트에 쓸 때 거는 잠금. 20초 넘게 못 받으면 안내 (데이터는 그대로) */
-var LOCK_BUSY = '다른 분이 지금 저장하는 중이라 기다렸지만 끝나지 않았습니다. 잠시 후 다시 눌러 주세요. (아무것도 바뀌지 않았습니다)';
+var LOCK_BUSY = '다른 분이 지금 저장하는 중이라 기다렸지만 끝나지 않았습니다. 잠시 후 다시 눌러 주세요.';
 function lock_() {
   var lock = LockService.getScriptLock();
   try { lock.waitLock(20000); } catch (e) { throw new Error(LOCK_BUSY); }
   return lock;
 }
 function scriptCache_() { try { return CacheService.getScriptCache(); } catch (e) { return null; } }
+
+/* ================================================================
+ * 같은 요청 두 번 막기 · 이미 만든 뒤의 실패 안내
+ *   메일 · 파일을 만든 다음 기록 저장이 실패하면, 예전에는 "아무것도 바뀌지 않았습니다" 로 끝나 다시 누르면
+ *   메일이 두 번 나가거나 파일이 하나 더 생겼음. 이제:
+ *   - once_: 같은 사람이 같은 내용으로 10분 안에 다시 누르면 다시 하지 않고 앞의 결과를 돌려줌 (repeated)
+ *     처리하는 동안 또 누르면 "처리하는 중" 안내
+ *   - afterEffect_: 이미 만든 뒤의 기록 저장은 한 번 더 해 보고, 그래도 안 되면 오류 대신 warn 으로 알림
+ *   - trashOnFail_: 파일을 채우다 실패하면 반쯤 만든 파일은 휴지통으로
+ * ================================================================ */
+var ONCE_SEC = 600, ONCE_RUN_SEC = 360;
+var ONCE_BUSY = '같은 요청을 지금 처리하고 있습니다. 끝날 때까지 기다려 주세요 (다시 누르지 않아도 됩니다).';
+function userCache_() { try { return CacheService.getUserCache(); } catch (e) { return null; } }
+/** 글자 → 짧은 키 (cyrb53 두 번) */
+function hashKey_(s) {
+  var h = function (seed) {
+    var h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+    for (var i = 0; i < s.length; i++) { var ch = s.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (h2 >>> 0).toString(36) + (h1 >>> 0).toString(36);
+  };
+  return h(1) + h(7);
+}
+function once_(name, payload, fn) {
+  var c = userCache_();
+  if (!c) return fn();
+  var key = 'once_' + name + '_' + hashKey_(JSON.stringify(payload === undefined ? null : payload)), hit = null;
+  try { hit = JSON.parse(c.get(key) || 'null'); } catch (e) { hit = null; }
+  if (hit && hit.state === 'run') throw new Error(ONCE_BUSY);
+  if (hit && hit.state === 'done') { var r = hit.result && typeof hit.result === 'object' ? hit.result : {}; r.repeated = true; return r; }
+  try { c.put(key, JSON.stringify({ state: 'run' }), ONCE_RUN_SEC); } catch (e) { /* 캐시가 안 되면 그냥 진행 */ }
+  var result;
+  try { result = fn(); } catch (e) { try { c.remove(key); } catch (e2) { /* 무시 */ } throw e; }
+  try {
+    var s = JSON.stringify({ state: 'done', result: result });
+    if (s.length < 90000) c.put(key, s, ONCE_SEC); else c.remove(key);
+  } catch (e) { /* 무시 */ }
+  return result;
+}
+/** what: '구매내역서 파일은 만들었지만' 처럼. 성공하면 '', 실패하면 화면에 보여 줄 안내 */
+function afterEffect_(what, fn) {
+  var err = null;
+  for (var t = 0; t < 2; t++) {
+    try { fn(); return ''; } catch (e) {
+      err = e;
+      if (String(e.message || e) === RECORD_TOO_BIG) break;   // 다시 해도 같음
+      if (t === 0) { try { Utilities.sleep(1500); } catch (e2) { /* 시험 환경 */ } }
+    }
+  }
+  console.warn(what + ' 기록 저장 실패: ' + err);
+  return what + ' 진행 기록에는 남기지 못했습니다 (' + String((err && err.message) || err).replace(/\s*\(아무것도 바뀌지 않았습니다\)/, '') + '). ' +
+    '다시 누르지 말고 새로고침해 확인해 주세요. 파일 · 메일은 그대로 있습니다.';
+}
+/** 새로 만든 스프레드시트를 채우다 실패하면 그 파일을 휴지통으로 옮기고 같은 오류를 냄 */
+function trashOnFail_(ss, fn) {
+  try { return fn(); } catch (e) {
+    try { DriveApp.getFileById(ss.getId()).setTrashed(true); } catch (e2) { console.warn('휴지통 이동 실패: ' + e2); }
+    throw new Error(String(e.message || e) + ' — 만들던 파일은 드라이브 휴지통으로 옮겼습니다.');
+  }
+}
+function trashFiles_(list) { (list || []).forEach(function (ss) { try { DriveApp.getFileById(ss.getId()).setTrashed(true); } catch (e) { console.warn('휴지통 이동 실패: ' + e); } }); }
+
+/* ================================================================
+ * 변경기록 탭: 누가 · 언제 · 무엇을 (만들기 · 상태 · 견적 단가 · 업체 · 완료 · 삭제 · 되돌리기 · 업체정보 · 자재 등록 · 환율)
+ *   한 줄씩 쌓기만 함. 탭은 경고 보호(고치려 하면 경고). 기록이 실패해도 본 작업은 계속
+ * ================================================================ */
+var SHEET_LOG = '변경기록', LOG_HEADERS = ['시각', '담당자', '동작', '기록 ID', '종류', '제목', '내용'];
+function logSheet_() {
+  var ss = db_(), sh = ss.getSheetByName(SHEET_LOG);
+  if (!sh) {
+    sh = ss.insertSheet(SHEET_LOG);
+    sh.getRange(1, 1, 1, LOG_HEADERS.length).setValues([LOG_HEADERS]).setFontWeight('bold').setBackground('#c9daf8');
+    sh.setFrozenRows(1);
+    try {
+      sh.getRange(1, 4, sh.getMaxRows(), 1).setNumberFormat('@');   // 기록 ID 는 글자로
+      sh.protect().setDescription('변경기록 (사이트가 쌓음 · 고치지 마세요)').setWarningOnly(true);
+    } catch (e) { console.warn('변경기록 서식·보호 실패: ' + e); }
+  }
+  return sh;
+}
+function logChange_(action, id, kind, title, detail) {
+  try {
+    var d = Array.isArray(detail) ? detail.join('\n') : String(detail == null ? '' : detail);
+    logSheet_().appendRow([new Date(), me_(), action, String(id || ''), String(kind || ''), txt_(String(title || '')), txt_(d.slice(0, 5000))]);
+  } catch (e) { console.warn('변경기록 실패: ' + e); }
+}
+
+/* ================================================================
+ * 견적데이터 탭: 커진 견적(JSON)을 45,000자씩 나눠 담음 (기록 ID · 순서 · 내용 · 수정일)
+ *   진행기록 · 완료기록에는 quoteRef 표시만 남고, 읽을 때 rowToRecord_ 가 여기서 붙여 줌
+ * ================================================================ */
+var SHEET_QDATA = '견적데이터', QDATA_CHUNK = 45000;
+var qstoreMemo_ = null;   // 한 번 실행하는 동안 한 번만 읽음
+function qdataSheet_(create) {
+  var ss = db_(), sh = ss.getSheetByName(SHEET_QDATA);
+  if (!sh && create) {
+    sh = ss.insertSheet(SHEET_QDATA);
+    sh.getRange(1, 1, 1, 4).setValues([['기록 ID', '순서', '견적(JSON 조각)', '수정일']]).setFontWeight('bold').setBackground('#c9daf8');
+    sh.setFrozenRows(1);
+    try {
+      sh.getRange(1, 1, sh.getMaxRows(), 1).setNumberFormat('@');
+      sh.protect().setDescription('견적데이터 (사이트가 씀 · 고치지 마세요)').setWarningOnly(true);
+      sh.hideSheet();
+    } catch (e) { console.warn('견적데이터 서식·보호 실패: ' + e); }
+  }
+  return sh;
+}
+function qstore_() {
+  if (qstoreMemo_) return qstoreMemo_;
+  var sh = qdataSheet_(false), parts = {}, out = {};
+  if (sh) sh.getDataRange().getValues().slice(1).forEach(function (r) {
+    var id = String(r[0] || '');
+    if (id) (parts[id] = parts[id] || []).push([Number(r[1]) || 0, String(r[2] == null ? '' : r[2])]);
+  });
+  Object.keys(parts).forEach(function (id) { out[id] = parts[id].sort(function (a, b) { return a[0] - b[0]; }).map(function (p) { return p[1]; }).join(''); });
+  qstoreMemo_ = out;
+  return out;
+}
+function loadQuoteOf_(id) {
+  var s = qstore_()[String(id)];
+  if (!s) return null;
+  try { return JSON.parse(s); } catch (e) { console.warn('견적데이터 읽기 실패 ' + id + ': ' + e); return null; }
+}
+/** 잠금 안에서 부름. quote 가 null 이면 그 기록의 줄을 지움 */
+function writeQuoteOf_(id, quote) {
+  var sh = qdataSheet_(true), text = quote ? JSON.stringify(quote) : '', chunks = [], now = new Date();
+  for (var i = 0; i < text.length; i += QDATA_CHUNK) chunks.push(text.substr(i, QDATA_CHUNK));
+  var v = sh.getDataRange().getValues(), rows = [];
+  for (var j = 1; j < v.length; j++) if (String(v[j][0]) === String(id)) rows.push(j + 1);
+  if (rows.length === chunks.length) rows.forEach(function (r, k) { sh.getRange(r, 2, 1, 3).setValues([[k, chunks[k], now]]); });
+  else {
+    for (var d = rows.length - 1; d >= 0; d--) sh.deleteRow(rows[d]);
+    if (chunks.length) sh.getRange(sh.getLastRow() + 1, 1, chunks.length, 4).setValues(chunks.map(function (c, k) { return [String(id), k, c, now]; }));
+  }
+  if (qstoreMemo_) { if (text) qstoreMemo_[String(id)] = text; else delete qstoreMemo_[String(id)]; }
+}
 function cachePut_(key, obj, sec) {
   var c = scriptCache_();
   if (!c) return;
@@ -155,16 +292,18 @@ function saveRates_(rates) {
  * C열(수정일)도 수식이면 그대로 둠 — 수식이 값으로 바뀌어 풀리던 문제
  */
 function saveRatesLocked_(rates) {
-  var sh = rateSheet_(), rg = sh.getDataRange(), rows = rg.getValues(), fs = rg.getFormulas ? rg.getFormulas() : [], now = new Date();
+  var sh = rateSheet_(), rg = sh.getDataRange(), rows = rg.getValues(), fs = rg.getFormulas ? rg.getFormulas() : [], now = new Date(), changed = [];
   Object.keys(rates).forEach(function (cur) {
     var i = -1;
     rows.forEach(function (r, n) { if (i < 0 && n > 0 && String(r[0]).trim().toUpperCase() === cur) i = n; });
-    if (i < 0) { rows.push([cur, rates[cur], now]); sh.appendRow([cur, rates[cur], now]); return; }
+    if (i < 0) { rows.push([cur, rates[cur], now]); sh.appendRow([cur, rates[cur], now]); changed.push(cur + ' ' + rates[cur] + ' (새 통화)'); return; }
     var f = fs[i] || [];
     if (f[1]) return;                                   // 수식 환율: 시트는 그대로
+    if (Number(rows[i][1]) !== Number(rates[cur])) changed.push(cur + ' ' + rows[i][1] + ' → ' + rates[cur]);
     if (f[2]) sh.getRange(i + 1, 2).setValue(rates[cur]);
     else sh.getRange(i + 1, 2, 1, 2).setValues([[rates[cur], now]]);
   });
+  if (changed.length) logChange_('환율 저장', '', '환율', '', changed);
 }
 
 /** google.script.run 으로 보낼 수 있게 Date → 'yyyy-mm-dd' */
@@ -325,7 +464,8 @@ function apiRegisterItems(recs) {
       if (k === 'item') sh.getRange(at, i + 1, rows.length, 1).setNumberFormat('@');
       if (k === 'start' || k === 'end') sh.getRange(at, i + 1, rows.length, 1).setNumberFormat('yyyy-mm-dd');
     });
-    target.setValues(rows);
+    target.setValues(rows.map(function (r) { return r.map(txt_); }));   // = - + 로 시작하는 글자는 글자로
+    logChange_('자재 등록', '', '자재정보', ok.length + '줄', ok.map(function (rec) { return rec.item + ' ' + (rec.priceMode || '') + ' ' + (rec.supplier || ''); }));
     cacheDrop_('master');   // 다음 판정은 새 자재 포함
     var ver = masterBump_();
     return { ok: true, masterVer: ver, added: ok.map(function (rec, i) { return { row: at + i, item: rec.item, desc: rec.desc || '', ship: rec.shipFrom || '', shelf: rec.shelfLife || '', mode: rec.priceMode }; }) };
@@ -382,6 +522,9 @@ function apiCreateItemSheet(folderInput) {
  */
 function apiCreatePurchase(payload) {
   auth_();
+  return once_('apiCreatePurchase', payload, function () { return apiCreatePurchase_(payload); });
+}
+function apiCreatePurchase_(payload) {
   var info = vendorInfoMap_();
   // 같은 자재·같은 계약 단가는 한 줄 (Need-by 여러 건은 Need-by 칸에 날짜(수량)으로)
   var lines = mergePurchaseLines_(purchaseLines_(payload)).map(function (l) {
@@ -397,31 +540,45 @@ function apiCreatePurchase(payload) {
     { spot: false, lines: lines.filter(function (l) { return !isSpotMode_(l.priceMode); }) },
     { spot: true, lines: lines.filter(function (l) { return isSpotMode_(l.priceMode); }) }
   ].filter(function (g) { return g.lines.length; });
-  var files = groups.map(function (g) {
+  var made = [], warns = [];
+  var built = groups.map(function (g) {
     var sups = uniq_(g.lines.map(function (l) { return l.supplier; }));
     var name = String(payload.name || '').trim()
       ? purchaseFileName_(payload.name, base, sups) + (groups.length > 1 && g.spot ? ' (Spot)' : '')
       : purchaseFileName_('', base, sups).replace(' 구매내역서_', g.spot ? ' Spot 구매내역서_' : ' 구매내역서_');
     var curs = uniq_(g.lines.map(function (l) { return l.cur; })).filter(function (c) { return c !== 'KRW'; });
-    var ss = copyTemplate_(name, payload.folder);
-    applyPlan_(ss, buildPurchasePlan_(g.lines, curs, rates, base, payload.schedule, { title: name, confirmer: payload.confirmer }));
-    var proto = ss.getSheetByName(TPL.PROTO);
-    if (proto) ss.deleteSheet(proto);
-    ss.setActiveSheet(ss.getSheetByName(TPL.SUMMARY));
-    var rec = addRecord_({ kind: g.spot ? 'Spot 구매내역서' : '계약 구매내역서', title: name, url: ss.getUrl(), fileId: ss.getId(), status: '작성', group: payload.group || '',
+    var ss = null;
+    try {
+      ss = copyTemplate_(name, payload.folder);
+      made.push(ss);
+      applyPlan_(ss, buildPurchasePlan_(g.lines, curs, rates, base, payload.schedule, { title: name, confirmer: payload.confirmer }));
+      var proto = ss.getSheetByName(TPL.PROTO);
+      if (proto) ss.deleteSheet(proto);
+      ss.setActiveSheet(ss.getSheetByName(TPL.SUMMARY));
+    } catch (e) {
+      trashFiles_(made);
+      throw new Error(String(e.message || e) + (made.length ? ' — 만들던 파일은 드라이브 휴지통으로 옮겼습니다.' : ''));
+    }
+    return { g: g, ss: ss, name: name };
+  });
+  var files = built.map(function (b) {
+    var g = b.g, ss = b.ss, name = b.name, rec = { id: '' };
+    var warn = afterEffect_(name + ' 파일은 만들었지만', function () { rec = addRecord_({ kind: g.spot ? 'Spot 구매내역서' : '계약 구매내역서', title: name, url: ss.getUrl(), fileId: ss.getId(), status: '작성', group: payload.group || '',
       reqDates: payload.reqDates || [],
       items: g.lines.map(function (l) { return { item: l.item, qty: l.qty, needBy: fmtDate_(toDate_(l.needBy)), supplier: l.supplier, price: l.price, cur: l.cur,
         desc: l.desc || '', uom: l.uom || '', mfg: l.product || l.qpl || '', priceMode: l.priceMode || '', leadtime: l.leadtime || '', program: l.program || '', reqDate: l.reqDate || '',
-        deadline: (poDeadline_(l.needs && l.needs.length ? l.needs[0].needBy : l.needBy, l.leadtime, l.shipFrom) || {}).date || '' }; }) });
+        deadline: (poDeadline_(l.needs && l.needs.length ? l.needs[0].needBy : l.needBy, l.leadtime, l.shipFrom) || {}).date || '' }; }) }); });
+    if (warn) warns.push(warn);
     return { url: ss.getUrl(), name: name, id: ss.getId(), recordId: rec.id, spot: g.spot };
   });
-  return { files: files, url: files[0].url, name: files[0].name, id: files[0].id, recordId: files[0].recordId };
+  return { files: files, url: files[0].url, name: files[0].name, id: files[0].id, recordId: files[0].recordId, warn: warns.join('\n') };
 }
 
 /** 화면에서 받은 줄 + 자재정보 계약 행 → 구매내역서 한 줄 */
 function purchaseLines_(payload) {
   var byRow = {};
-  loadContracts_().forEach(function (c) { byRow[c.row] = c; });
+  // 파일을 만들 때는 캐시(최대 6시간) 대신 자재정보 시트를 새로 읽음 → 시트에서 단가·기간을 바로 고쳐도 반영
+  parseContracts_(masterValues_(true)).forEach(function (c) { byRow[c.row] = c; });
   var lines = (payload.lines || []).map(function (l) {
     var c = byRow[l.contractRow];
     if (!c || c.item !== l.item) throw new Error(l.item + ': 자재정보가 바뀌었습니다. 다시 판정해 주세요.');
@@ -825,6 +982,9 @@ function checkSetup() {
  */
 function apiCreateRfq(payload) {
   auth_();
+  return once_('apiCreateRfq', payload, function () { return apiCreateRfq_(payload); });
+}
+function apiCreateRfq_(payload) {
   var list = payload.template === 'list';
   // 템플릿 1: 같은 자재는 Need-by 가 달라도 한 줄 · 템플릿 2: 같은 자재여도 Need-by 마다 다음 줄
   var rows = list ? splitRfqItems_(payload.items || []) : mergeRfqItems_(payload.items || []);
@@ -841,13 +1001,18 @@ function apiCreateRfq(payload) {
   if (!tid) throw new Error('스크립트 속성 ' + key + '(' + (list ? '견적요청서 템플릿 2 · 목록형' : '견적요청서 템플릿') + ' 시트 ID)를 설정해 주세요. README 참고.');
   var folder = targetFolder_(payload.folder), tpl = DriveApp.getFileById(tid);
   var file = folder ? tpl.makeCopy(title, folder) : tpl.makeCopy(title);
-  var ss = SpreadsheetApp.openById(file.getId());
-  applyPlan_(ss, list ? buildRfq2Plan_(items) : buildRfqPlan_(items, base));
-  // 하나로 만들기: 계약·Spot 단가 줄을 기록에 붙여 두었다가 견적 종합 때 같은 구매내역서에 넣음
-  var fixed = (payload.fixed || []).length ? fixedLinesFor_(payload.fixed) : [];
-  var rec = addRecord_({ kind: '견적요청서', title: title, url: ss.getUrl(), fileId: ss.getId(), status: '견적요청서 작성', group: payload.group || '', fixed: fixed, reqDates: payload.reqDates || [],
-    items: rows, due: payload.due || '', template: list ? 'list' : 'month' });
-  return { url: ss.getUrl(), name: title, id: ss.getId(), recordId: rec.id };
+  var ss = SpreadsheetApp.openById(file.getId()), fixed = [];
+  trashOnFail_(ss, function () {
+    applyPlan_(ss, list ? buildRfq2Plan_(items) : buildRfqPlan_(items, base));
+    // 하나로 만들기: 계약·Spot 단가 줄을 기록에 붙여 두었다가 견적 종합 때 같은 구매내역서에 넣음
+    fixed = (payload.fixed || []).length ? fixedLinesFor_(payload.fixed) : [];
+  });
+  var rec = { id: '' };
+  var warn = afterEffect_('견적요청서 파일은 만들었지만', function () {
+    rec = addRecord_({ kind: '견적요청서', title: title, url: ss.getUrl(), fileId: ss.getId(), status: '견적요청서 작성', group: payload.group || '', fixed: fixed, reqDates: payload.reqDates || [],
+      items: rows, due: payload.due || '', template: list ? 'list' : 'month' });
+  });
+  return { url: ss.getUrl(), name: title, id: ss.getId(), recordId: rec.id, warn: warn };
 }
 
 /**
@@ -857,6 +1022,9 @@ function apiCreateRfq(payload) {
  */
 function apiCreateDirectQuote(payload) {
   auth_();
+  return once_('apiCreateDirectQuote', payload, function () { return apiCreateDirectQuote_(payload); });
+}
+function apiCreateDirectQuote_(payload) {
   payload = payload || {};
   var rows = mergeRfqItems_(payload.items || []);
   if (!rows.length) throw new Error('견적을 입력할 품목이 없습니다.');
@@ -878,8 +1046,9 @@ function apiSetQuoteVendors(recordId, vendors) {
   if (!names.length) throw new Error('견적을 입력할 업체를 한 곳 이상 골라 주세요.');
   var before = found.rec.vendors || [];
   var status = found.rec.direct && !found.rec.spotFile ? '견적 입력' : undefined;
-  updateRecord_(found, { status: status, data: { vendors: names } });
-  return { ok: true, vendors: names, added: names.filter(function (v) { return before.indexOf(v) < 0; }), removed: before.filter(function (v) { return names.indexOf(v) < 0; }) };
+  var added = names.filter(function (v) { return before.indexOf(v) < 0; }), removed = before.filter(function (v) { return names.indexOf(v) < 0; });
+  updateRecord_(found, { status: status, data: { vendors: names }, log: '견적 업체 바꾸기', logDetail: (added.length ? ['더함: ' + added.join(', ')] : []).concat(removed.length ? ['뺌: ' + removed.join(', ')] : []) });
+  return { ok: true, vendors: names, added: added, removed: removed };
 }
 
 /**
@@ -890,6 +1059,9 @@ function apiSetQuoteVendors(recordId, vendors) {
  */
 function apiReviseRfq(payload) {
   auth_();
+  return once_('apiReviseRfq', payload, function () { return apiReviseRfq_(payload); });
+}
+function apiReviseRfq_(payload) {
   payload = payload || {};
   var found = findRecord_(payload.recordId, true), rec = found.rec;
   if (rec.kind !== '견적요청서') throw new Error('견적요청서 기록이 아닙니다.');
@@ -906,7 +1078,7 @@ function apiReviseRfq(payload) {
     Object.keys(rec.quote || {}).forEach(function (k) { qd[k] = rec.quote[k]; });
     qd.items = md.quoteItems; qd.savedAt = new Date().toISOString();
     var revd = { no: ((rec.rev && rec.rev.no) || 0) + 1, at: stamp0, added: md.added, removed: md.removed, before: (rec.items || []).length, after: rows.length };
-    updateRecord_(found, { data: { items: rows, quote: qd, rev: revd } });
+    updateRecord_(found, { data: { items: rows, quote: qd, rev: revd }, log: '견적요청서 수정 (직접 입력)', logDetail: ['품목 ' + revd.before + ' → ' + revd.after + '줄'] });
     return { url: '', name: rec.title, rev: revd };
   }
   var items = rows.map(function (it) { var o = {}; Object.keys(it).forEach(function (k) { o[k] = it[k]; }); o.needBy = toDate_(it.needBy); return o; });
@@ -915,15 +1087,19 @@ function apiReviseRfq(payload) {
   var old = DriveApp.getFileById(rec.fileId), parents = old.getParents(), folder = parents.hasNext() ? parents.next() : null;
   var file = folder ? DriveApp.getFileById(tid).makeCopy(rec.title, folder) : DriveApp.getFileById(tid).makeCopy(rec.title);
   var ss = SpreadsheetApp.openById(file.getId());
-  applyPlan_(ss, list ? buildRfq2Plan_(items) : buildRfqPlan_(items, toDate_(payload.baseDate) || toDate_(new Date())));
+  trashOnFail_(ss, function () { applyPlan_(ss, list ? buildRfq2Plan_(items) : buildRfqPlan_(items, toDate_(payload.baseDate) || toDate_(new Date()))); });
   var stamp = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
-  old.setName(rec.title + ' (수정 전 ' + stamp.replace(/[-:]/g, '').replace(' ', '-').slice(2) + ')');
+  var oldName = rec.title + ' (수정 전 ' + stamp.replace(/[-:]/g, '').replace(' ', '-').slice(2) + ')';
+  try { old.setName(oldName); } catch (e) { console.warn('예전 견적요청서 이름 바꾸기 실패: ' + e); }
   var m = remapRfqQuote_(rec.items || [], (rec.quote || {}).items, rows), quote = {};
   Object.keys(rec.quote || {}).forEach(function (k) { quote[k] = rec.quote[k]; });
   quote.items = m.quoteItems; quote.savedAt = new Date().toISOString();
   var rev = { no: ((rec.rev && rec.rev.no) || 0) + 1, at: stamp, added: m.added, removed: m.removed, before: (rec.items || []).length, after: rows.length };
-  updateRecord_(found, { url: ss.getUrl(), fileId: ss.getId(), status: '견적요청서 수정', data: { items: rows, quote: quote, rev: rev, template: list ? 'list' : 'month' } });
-  return { url: ss.getUrl(), name: rec.title, rev: rev };
+  var warn = afterEffect_('새 견적요청서 파일은 만들었지만', function () {
+    updateRecord_(found, { url: ss.getUrl(), fileId: ss.getId(), status: '견적요청서 수정', data: { items: rows, quote: quote, rev: rev, template: list ? 'list' : 'month' },
+      log: '견적요청서 수정', logDetail: ['품목 ' + rev.before + ' → ' + rev.after + '줄', '새 파일 ' + ss.getUrl(), '예전 파일 이름: ' + oldName] });
+  });
+  return { url: ss.getUrl(), name: rec.title, rev: rev, warn: warn };
 }
 
 /** 하나로 만들기: 계약 · Spot 단가 줄을 기록에 붙일 모양으로 */
@@ -944,12 +1120,18 @@ function fixedLinesFor_(lines) {
  */
 function apiCreateQuoteSheet(recordId, folderInput) {
   auth_();
+  return once_('apiCreateQuoteSheet', [recordId, folderInput], function () { return apiCreateQuoteSheet_(recordId, folderInput); });
+}
+function apiCreateQuoteSheet_(recordId, folderInput) {
   var found = findRecord_(recordId, true), rec = found.rec;
   if (rec.kind !== '견적요청서') throw new Error('견적요청서 기록이 아닙니다.');
   if (rec.quoteSheet) return { url: rec.quoteSheet, name: rec.title + ' 견적 입력' };
   if (!(rec.vendors || []).length) throw new Error('메일 초안을 먼저 만들어 업체를 골라 주세요.');
   var name = rec.title.replace(/^\[KE\] RFQ \/\/ /, '') + ' 견적 입력';
   var ss = SpreadsheetApp.create(name), folder = targetFolder_(folderInput);
+  return trashOnFail_(ss, function () { return fillQuoteSheet_(found, rec, ss, name, folder); });
+}
+function fillQuoteSheet_(found, rec, ss, name, folder) {
   if (folder) DriveApp.getFileById(ss.getId()).moveTo(folder);
   var values = quoteSheetRows_(rec.items || []), n = values.length, W = QUOTE_SHEET.HEAD.length, F = QUOTE_SHEET.FIXED, used = {};
   var guide = ss.getSheets()[0].setName(sheetTabName_('사용 방법', used));
@@ -964,7 +1146,7 @@ function apiCreateQuoteSheet(recordId, folderInput) {
   rec.vendors.forEach(function (v) {
     var sh = ss.insertSheet(sheetTabName_(v, used));
     sh.getRange(1, 1, n, W).setNumberFormat('@');
-    sh.getRange(1, 1, n, W).setValues(values);
+    sh.getRange(1, 1, n, W).setValues(values);   // 위에서 글자(@) 형식이라 = 로 시작해도 수식이 되지 않음
     sh.getRange(2, 1, Math.max(1, n - 1), 1).setNumberFormat('0');
     sh.getRange(1, 1, 1, W).setFontWeight('bold').setWrap(true).setVerticalAlignment('middle');
     sh.getRange(1, 1, 1, F).setBackground('#d9d9d9');
@@ -979,8 +1161,8 @@ function apiCreateQuoteSheet(recordId, folderInput) {
     sh.setFrozenRows(1); sh.setFrozenColumns(F);
   });
   if (rec.vendors.length) ss.setActiveSheet(ss.getSheets()[1]);
-  updateRecord_(found, { data: { quoteSheet: ss.getUrl() } });
-  return { url: ss.getUrl(), name: name };
+  var warn = afterEffect_('견적 입력용 시트는 만들었지만', function () { updateRecord_(found, { data: { quoteSheet: ss.getUrl() }, log: '견적 입력용 시트', logDetail: [ss.getUrl()] }); });
+  return { url: ss.getUrl(), name: name, warn: warn };
 }
 
 /** 업체정보 탭: [{name, emails:[...]}] */
@@ -1014,7 +1196,8 @@ function apiAddVendor(o) {
     sh.insertRowAfter(at);
     var dest = sh.getRange(at + 1, 1, 1, row.length);
     if (at > vendorCols_(values).hr + 1) sh.getRange(at, 1, 1, row.length).copyTo(dest, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
-    dest.setValues([row]);
+    dest.setValues([row.map(txt_)]);
+    logChange_(o && o.isNew ? '업체 등록' : '업체 연락처 추가', '', '업체정보', row[vendorCols_(values).cn] || '', String((o || {}).email || '') + (o && o.contact ? ' · ' + o.contact : ''));
   } finally { lock.releaseLock(); }
   return apiVendors();
 }
@@ -1055,6 +1238,9 @@ function apiSaveSignature(text) {
  */
 function apiCreateRfqDraft(payload) {
   auth_();
+  return once_('apiCreateRfqDraft', payload, function () { return apiCreateRfqDraft_(payload); });
+}
+function apiCreateRfqDraft_(payload) {
   var bcc = uniq_((payload.bcc || []).map(function (m) { return String(m).trim(); }).filter(function (m) { return /@/.test(m); }));
   if (!bcc.length) throw new Error('메일을 받을 업체를 한 곳 이상 골라 주세요.');
   var found = findRecord_(payload.recordId, true);
@@ -1082,8 +1268,11 @@ function apiCreateRfqDraft(payload) {
   // 첫 요청은 고른 업체가 견적 입력 업체, 재요청은 기존 업체에 새로 고른 업체를 더함
   if (names.length) data.vendors = remind || revised ? uniq_((rec.vendors || []).concat(names)) : names;
   if (remind && due !== rec.due) data.due = due;
-  updateRecord_(found, { status: remind ? '재요청 초안' : revised ? '수정 메일 초안' : '메일 초안', draft: draft.getId(), bcc: bcc.join(', '), data: data });
-  return { draftId: draft.getId(), link: 'https://mail.google.com/mail/#drafts', bccCount: bcc.length, subject: subject };
+  var warn = afterEffect_('Gmail 임시보관함에 초안은 만들었지만', function () {
+    updateRecord_(found, { status: remind ? '재요청 초안' : revised ? '수정 메일 초안' : '메일 초안', draft: draft.getId(), bcc: bcc.join(', '), data: data,
+      log: remind ? '재요청 메일 초안' : revised ? '수정 메일 초안' : '메일 초안', logDetail: ['업체: ' + names.join(', '), '받는 주소 ' + bcc.length + '개 (숨은 참조)', '제목: ' + subject] });
+  });
+  return { draftId: draft.getId(), link: 'https://mail.google.com/mail/#drafts', bccCount: bcc.length, subject: subject, warn: warn };
 }
 
 /* ================================================================
@@ -1108,7 +1297,7 @@ function rowToRecord_(r) {
   return {
     id: String(r[0]), kind: r[1], owner: String(r[2]).toLowerCase(), created: Object.prototype.toString.call(r[3]) === '[object Date]' ? fmtDate_(r[3]) : String(r[3]),
     title: r[4], url: r[5], fileId: r[6], status: r[7], draft: r[8], bcc: r[9],
-    items: extra ? extra.items : items, due: extra ? extra.due : '', vendors: extra && extra.vendors || [], quote: extra && extra.quote || null,
+    items: extra ? extra.items : items, due: extra ? extra.due : '', vendors: extra && extra.vendors || [], quote: extra && (extra.quote || (extra.quoteRef ? loadQuoteOf_(r[0]) : null)) || null,
     group: extra && extra.group || '', parent: extra && extra.parent || '', fixed: extra && extra.fixed || [], quoteSheet: extra && extra.quoteSheet || '',
     spotFile: extra && extra.spotFile || '', reqDates: extra && extra.reqDates || [], po: extra && extra.po || null, mails: extra && extra.mails || [],
     confirmMail: extra && extra.confirmMail || null, rev: extra && extra.rev || null, template: extra && extra.template || '', direct: !!(extra && extra.direct),
@@ -1125,7 +1314,10 @@ function addRecord_(o) {
     var data = { items: o.items || [], due: o.due || '' };
     // group: 같은 소요제기에서 만든 파일 묶음, parent: 이 파일을 만든 견적요청서, fixed: 하나로 만들기 때 같이 들어갈 계약 줄
     ['group', 'parent', 'fixed', 'reqDates', 'template', 'direct'].forEach(function (k) { if (o[k] && (!Array.isArray(o[k]) || o[k].length)) data[k] = o[k]; });
-    sh.appendRow([id, o.kind, me_(), now, o.title, o.url, o.fileId, o.status, '', '', JSON.stringify(data), now]);
+    var json = JSON.stringify(data);
+    if (json.length > RECORD_CELL_MAX) throw new Error(RECORD_TOO_BIG);
+    sh.appendRow([id, o.kind, me_(), now, txt_(o.title), o.url, o.fileId, o.status, '', '', json, now]);
+    logChange_('만들기', id, o.kind, o.title, o.url ? '파일 ' + o.url : '');
     return { id: id };
   } finally { lock.releaseLock(); }
 }
@@ -1153,19 +1345,32 @@ function updateRecord_(found, patch) {
     var sh = recordSheet_(), values = sh.getDataRange().getValues(), id = String(found.values ? found.values[0] : found.rec.id), r = -1;
     for (var i = 1; i < values.length; i++) if (String(values[i][0]) === id) { r = i; break; }
     if (r < 0) throw new Error('기록을 찾지 못했습니다 (이미 완료되었을 수 있습니다). 새로고침해 주세요.');
-    var row = values[r], json = row[10];
+    var row = values[r], json = row[10], detail = [];
     if (patch.data || patch.edit) {   // 품목(JSON) 칸에 값 합치기 (edit: 잠금 안에서 지금 값을 고침)
       var cur = {};
       try { cur = JSON.parse(row[10] || '{}'); } catch (e) {}
       if (Array.isArray(cur)) cur = { items: cur };
+      var outside = !!cur.quoteRef;   // 견적을 견적데이터 탭에 따로 둔 기록
+      if (outside) { cur.quote = loadQuoteOf_(id); delete cur.quoteRef; }
       if (patch.guard) patch.guard(cur);   // 잠금 안에서 지금 값으로 확인 (예: 다른 창에서 먼저 저장한 견적)
+      var before = cur.quote;
       Object.keys(patch.data || {}).forEach(function (k) { cur[k] = patch.data[k]; });
       if (patch.edit) patch.edit(cur);
-      json = JSON.stringify(cur);
+      if (patch.data && patch.data.quote) detail = quoteDiff_(before, cur.quote, cur.items);
+      var pk = packRecord_(cur, outside);   // 시트 한 칸 한도: 커지면 견적을 견적데이터 탭으로
+      if (pk.tooBig) throw new Error(RECORD_TOO_BIG);
+      if (pk.out) writeQuoteOf_(id, pk.quote);
+      json = pk.json;
     }
     if (patch.url !== undefined || patch.fileId !== undefined) sh.getRange(r + 1, 6, 1, 2).setValues([[patch.url !== undefined ? patch.url : row[5], patch.fileId !== undefined ? patch.fileId : row[6]]]);
     sh.getRange(r + 1, 8, 1, 5).setValues([[patch.status !== undefined ? patch.status : row[7], patch.draft !== undefined ? patch.draft : row[8],
       patch.bcc !== undefined ? patch.bcc : row[9], json, new Date()]]);
+    // 변경기록: 견적 저장은 바뀐 값이 있을 때만
+    var action = patch.log || (patch.status !== undefined && patch.status !== row[7] ? '상태: ' + patch.status : '수정');
+    var extra = [].concat(patch.logDetail || []);
+    if (patch.status !== undefined && patch.status !== row[7] && patch.log) extra.push('상태 ' + row[7] + ' → ' + patch.status);
+    if (!patch.log && patch.data) extra.push('바꾼 값: ' + Object.keys(patch.data).join(', '));
+    if (!(patch.log === '견적 저장' && !detail.length)) logChange_(action, id, row[1], row[4], extra.concat(detail));
   } finally { lock.releaseLock(); }
 }
 
@@ -1273,12 +1478,15 @@ function apiCompleteGroup(o) {
   return { ok: true, added: added, completed: ids.length };
 }
 /** 구매이력에서 이 기록들(기록 ID · 본인)로 올린 줄 지우기. 지운 줄 수 */
-function removeHistoryOf_(hs, ids, who) {
+function removeHistoryOf_(hs, ids, who, keep) {
   if (!hs) return 0;
   var want = {}; ids.forEach(function (id) { want[String(id)] = 1; });
   var hv = hs.getDataRange().getValues(), idCol = HISTORY.HEAD.indexOf('기록 ID'), whoCol = HISTORY.HEAD.indexOf('담당자'), n = 0;
   for (var j = hv.length - 1; j >= 1; j--) {
-    if (want[String(hv[j][idCol])] && String(hv[j][whoCol]).toLowerCase() === who) { hs.deleteRow(j + 1); n++; }
+    if (want[String(hv[j][idCol])] && String(hv[j][whoCol]).toLowerCase() === who) {
+      if (keep) (keep[String(hv[j][idCol])] = keep[String(hv[j][idCol])] || []).unshift(hv[j].map(function (x) { return Object.prototype.toString.call(x) === '[object Date]' ? fmtDate_(x) : x; }));   // 삭제기록에 같이 보관
+      hs.deleteRow(j + 1); n++;
+    }
   }
   return n;
 }
@@ -1373,6 +1581,9 @@ function apiConfirmDefaults() {
 }
 function apiConfirmMail(p) {
   auth_();
+  return once_('apiConfirmMail', p, function () { return apiConfirmMail_(p); });
+}
+function apiConfirmMail_(p) {
   p = p || {};
   var found = findRecord_(p.recordId, true), rec = found.rec;
   if (!/구매내역서/.test(rec.kind)) throw new Error('구매내역서 기록에서만 보낼 수 있습니다.');
@@ -1387,12 +1598,17 @@ function apiConfirmMail(p) {
   var send = p.mode === 'send', link = 'https://mail.google.com/mail/#drafts';
   if (send) { GmailApp.sendEmail(to.join(','), subject, mail.text, opt); link = 'https://mail.google.com/mail/#sent'; }
   else GmailApp.createDraft(to.join(','), subject, mail.text, opt);
-  var up = PropertiesService.getUserProperties();
-  up.setProperties({ CONFIRM_TO: to.join(', '), CONFIRM_CC: cc.join(', '), CONFIRM_NAME: String(p.name || '').trim(), CONFIRM_BODY: String(p.body || '').trim() });
+  // 여기부터는 메일을 이미 보냈거나(초안을 만들었거나) 한 뒤: 실패해도 오류로 끝내지 않음 (다시 누르면 두 번 나감)
+  try {
+    PropertiesService.getUserProperties().setProperties({ CONFIRM_TO: to.join(', '), CONFIRM_CC: cc.join(', '), CONFIRM_NAME: String(p.name || '').trim(), CONFIRM_BODY: String(p.body || '').trim() });
+  } catch (e) { console.warn('사업부 확인 메일 기본값 저장 실패: ' + e); }
   var at = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
   var log = { at: at, to: to, cc: cc, mode: send ? 'send' : 'draft', subject: subject };
-  updateRecord_(found, { status: send ? '사업부 확인 요청' : '사업부 확인 초안', data: { confirmMail: log } });
-  return { ok: true, sent: send, link: link, at: at, to: to };
+  var warn = afterEffect_(send ? '메일은 보냈지만' : '초안은 만들었지만', function () {
+    updateRecord_(found, { status: send ? '사업부 확인 요청' : '사업부 확인 초안', data: { confirmMail: log }, log: send ? '사업부 확인 메일 보냄' : '사업부 확인 메일 초안',
+      logDetail: ['받는 사람: ' + to.join(', ') + (cc.length ? ' · 참조: ' + cc.join(', ') : ''), '제목: ' + subject] });
+  });
+  return { ok: true, sent: send, link: link, at: at, to: to, warn: warn };
 }
 
 /** 완료 보관 파일에서 내 기록 (최근 순, 최대 300건). 화면의 '완료 기록 보기' */
@@ -1488,6 +1704,7 @@ function apiRestoreArchived(ids) {
         row[11] = new Date();
         rs.appendRow(row);
         sh.deleteRow(i + 1); restored++; back[String(v[i][0])] = 1;
+        logChange_('완료 취소', v[i][0], v[i][1], v[i][4], '진행 중으로 되돌림 · 상태 ' + row[7]);
       }
     }
     if (restored) history = removeHistoryOf_(db_().getSheetByName(HISTORY.SHEET), Object.keys(back), who);
@@ -1496,9 +1713,20 @@ function apiRestoreArchived(ids) {
 }
 
 /**
- * 완료 기록 삭제 (본인 기록만). 드라이브 파일은 지우지 않음
- *   withHistory: 그 기록으로 구매이력 탭에 올린 줄(기록 ID · 담당자 본인)도 같이 지움
+ * 완료 기록 삭제 (본인 기록만). 드라이브 파일은 지우지 않음.
+ *   바로 지우지 않고 보관 파일의 '삭제기록' 탭으로 옮김 → 화면의 '지운 기록'에서 되돌릴 수 있음
+ *   withHistory: 그 기록으로 구매이력 탭에 올린 줄(기록 ID · 담당자 본인)도 빼서 같이 보관
  */
+var TRASH_SHEET = '삭제기록', TRASH_EXTRA = ['완료일', '삭제일', '삭제한 사람', '구매이력(JSON)'];
+function trashSheet_(aid) {
+  var arc = SpreadsheetApp.openById(aid), sh = arc.getSheetByName(TRASH_SHEET);
+  if (!sh) {
+    sh = arc.insertSheet(TRASH_SHEET);
+    sh.getRange(1, 1, 1, RECORD_HEADERS.length + TRASH_EXTRA.length).setValues([RECORD_HEADERS.concat(TRASH_EXTRA)]).setFontWeight('bold').setBackground('#f4cccc');
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
 function apiDeleteArchived(ids, withHistory) {
   auth_();
   var want = {};
@@ -1508,18 +1736,73 @@ function apiDeleteArchived(ids, withHistory) {
   if (!aid) throw new Error('스크립트 속성 ARCHIVE_SHEET_ID(완료 보관 스프레드시트 ID)를 설정해 주세요.');
   var who = me_(), lock = lock_();
   try {
-    var deleted = 0, skipped = 0, history = 0;
+    var deleted = 0, skipped = 0, history = 0, mine = [], now = new Date();
     var sh = SpreadsheetApp.openById(aid).getSheetByName('완료기록');
-    if (sh) {
-      var v = sh.getDataRange().getValues();
-      for (var i = v.length - 1; i >= 1; i--) {   // 아래에서부터 지워야 줄 번호가 안 밀림
-        if (!want[String(v[i][0])]) continue;
-        if (String(v[i][2]).toLowerCase() !== who) { skipped++; continue; }
-        sh.deleteRow(i + 1); deleted++;
-      }
+    if (!sh) return { deleted: 0, skipped: 0, history: 0 };
+    var v = sh.getDataRange().getValues(), rows = [];
+    for (var i = v.length - 1; i >= 1; i--) {
+      if (!want[String(v[i][0])]) continue;
+      if (String(v[i][2]).toLowerCase() !== who) { skipped++; continue; }
+      rows.push({ i: i, row: v[i] }); mine.push(String(v[i][0]));
     }
-    if (withHistory) history = removeHistoryOf_(db_().getSheetByName(HISTORY.SHEET), Object.keys(want), who);
+    if (!rows.length) return { deleted: 0, skipped: skipped, history: 0 };
+    var hist = {};
+    if (withHistory) history = removeHistoryOf_(db_().getSheetByName(HISTORY.SHEET), mine, who, hist);
+    var ts = trashSheet_(aid), W = RECORD_HEADERS.length;
+    ts.getRange(ts.getLastRow() + 1, 1, rows.length, W + TRASH_EXTRA.length).setValues(rows.map(function (x) {
+      var id = String(x.row[0]), h = hist[id] || [];
+      return x.row.slice(0, W).concat([x.row[W] || '', now, who, h.length ? JSON.stringify(h) : '']);
+    }));
+    rows.forEach(function (x) {   // 아래에서부터 지워야 줄 번호가 안 밀림 (rows 는 아래부터)
+      sh.deleteRow(x.i + 1); deleted++;
+      logChange_('삭제 (삭제기록으로)', x.row[0], x.row[1], x.row[4], (hist[String(x.row[0])] || []).length ? '구매이력 ' + hist[String(x.row[0])].length + '줄도 같이' : '');
+    });
     return { deleted: deleted, skipped: skipped, history: history };
+  } finally { lock.releaseLock(); }
+}
+/** 지운 기록 (본인 것, 최근 순 200건) */
+function apiDeletedRecords() {
+  auth_();
+  var aid = prop_('ARCHIVE_SHEET_ID');
+  if (!aid) return { records: [] };
+  var sh = SpreadsheetApp.openById(aid).getSheetByName(TRASH_SHEET), who = me_(), W = RECORD_HEADERS.length;
+  if (!sh) return { records: [] };
+  var d = function (x) { return Object.prototype.toString.call(x) === '[object Date]' ? fmtDate_(x) : String(x || ''); };
+  var list = sh.getDataRange().getValues().slice(1).filter(function (r) { return r[0] && String(r[2]).toLowerCase() === who; }).map(function (r) {
+    var h = 0;
+    try { h = (JSON.parse(r[W + 3] || '[]') || []).length; } catch (e) { h = 0; }
+    return { id: String(r[0]), kind: r[1], title: r[4], created: d(r[3]), url: r[5], done: d(r[W]), deleted: d(r[W + 1]), history: h };
+  });
+  list.sort(function (a, b) { return String(b.deleted + b.id).localeCompare(String(a.deleted + a.id)); });
+  return { records: list.slice(0, 200) };
+}
+/** 지운 기록 되돌리기 → 완료기록으로 (같이 뺀 구매이력 줄도 다시 올림) */
+function apiRestoreDeleted(ids) {
+  auth_();
+  var want = {};
+  (ids || []).forEach(function (id) { if (String(id || '').trim()) want[String(id)] = 1; });
+  if (!Object.keys(want).length) throw new Error('되돌릴 기록을 골라 주세요.');
+  var aid = prop_('ARCHIVE_SHEET_ID');
+  if (!aid) throw new Error('스크립트 속성 ARCHIVE_SHEET_ID(완료 보관 스프레드시트 ID)를 설정해 주세요.');
+  var who = me_(), lock = lock_();
+  try {
+    var ts = SpreadsheetApp.openById(aid).getSheetByName(TRASH_SHEET), W = RECORD_HEADERS.length, restored = 0, history = 0;
+    if (!ts) return { restored: 0, history: 0 };
+    var arc = archiveSheet_(aid), v = ts.getDataRange().getValues(), hs = null;
+    for (var i = v.length - 1; i >= 1; i--) {
+      if (!want[String(v[i][0])] || String(v[i][2]).toLowerCase() !== who) continue;
+      arc.appendRow(v[i].slice(0, W).concat([v[i][W] || new Date()]));
+      var h = [];
+      try { h = JSON.parse(v[i][W + 3] || '[]') || []; } catch (e) { h = []; }
+      if (h.length) {
+        hs = hs || historySheet_();
+        hs.getRange(hs.getLastRow() + 1, 1, h.length, h[0].length).setValues(h);
+        history += h.length;
+      }
+      ts.deleteRow(i + 1); restored++;
+      logChange_('삭제 되돌리기', v[i][0], v[i][1], v[i][4], '완료기록으로' + (h.length ? ' · 구매이력 ' + h.length + '줄 다시 올림' : ''));
+    }
+    return { restored: restored, history: history };
   } finally { lock.releaseLock(); }
 }
 
@@ -1537,7 +1820,7 @@ function apiSetPoStatus(id, po) {
   var clean = { stage: stage };
   ['approval', 'pr', 'po', 'poDate', 'memo'].forEach(function (k) { var v = String(po[k] == null ? '' : po[k]).trim().slice(0, 200); if (v) clean[k] = v; });
   if (clean.poDate && toDate_(clean.poDate)) clean.poDate = fmtDate_(toDate_(clean.poDate));
-  updateRecord_(found, { status: stage, data: { po: clean } });
+  updateRecord_(found, { status: stage, data: { po: clean }, log: 'PO 상태', logDetail: Object.keys(clean).map(function (k) { return k + ': ' + clean[k]; }) });
   return { ok: true, po: clean };
 }
 
@@ -1567,11 +1850,13 @@ function completeLocked_(id, sh) {
   row[7] = '완료';
   sh.appendRow(row.concat([new Date()]));
   found.sheet.deleteRow(found.row);
+  logChange_('완료', id, row[1], row[4], '완료기록으로 옮김');
 }
 
 /* ================================================================
  * Spot 견적 구매내역서 — 견적요청서 기록에서 견적값을 입력해 만든다
  * ================================================================ */
+var SPOT_EXISTS = 'SPOT_EXISTS';
 var QUOTE_CONFLICT = '이 견적은 다른 창(또는 다른 기기)에서 먼저 저장되어, 덮어쓰지 않도록 이번 저장은 하지 않았습니다. 새로고침한 뒤 이어서 입력해 주세요.';
 /** 견적 입력 임시 저장. quote = {vendors, items:[{prev, program, quotes}], rates} */
 function apiSaveQuotes(recordId, quote) {
@@ -1582,7 +1867,7 @@ function apiSaveQuotes(recordId, quote) {
   quote = quote || {};
   delete quote.base;
   quote.savedAt = savedAt;
-  updateRecord_(found, { data: { quote: quote }, guard: function (cur) {
+  updateRecord_(found, { data: { quote: quote }, log: '견적 저장', guard: function (cur) {
     var was = cur.quote && cur.quote.savedAt;
     if (was && base !== String(was)) throw new Error(QUOTE_CONFLICT);
   } });
@@ -1609,19 +1894,24 @@ function apiAttachQuoteFile(p) {
   var name = vendor + '_견적서_' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyMMdd') + '_' + orig;
   var file = folder.createFile(Utilities.newBlob(bytes, String(p.mime || 'application/octet-stream'), name));
   var entry = { id: file.getId(), name: name, url: file.getUrl(), at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') }, out = {};
-  updateRecord_(found, { edit: function (cur) {
-    cur.qfiles = cur.qfiles || {};
-    (cur.qfiles[vendor] = cur.qfiles[vendor] || []).push(entry);
-    if (p.folder) cur.qfolder = p.folder;
-    out = cur.qfiles;
-  } });
+  try {
+    updateRecord_(found, { log: '견적서 파일 붙임', logDetail: [vendor + ': ' + name, entry.url], edit: function (cur) {
+      cur.qfiles = cur.qfiles || {};
+      (cur.qfiles[vendor] = cur.qfiles[vendor] || []).push(entry);
+      if (p.folder) cur.qfolder = p.folder;
+      out = cur.qfiles;
+    } });
+  } catch (e) {
+    try { file.setTrashed(true); } catch (e2) { /* 무시 */ }
+    throw new Error(String(e.message || e) + ' — 올린 파일은 휴지통으로 옮겼습니다. 다시 붙여 주세요.');
+  }
   return { file: entry, qfiles: out, qfolder: p.folder || rec.qfolder || '' };
 }
 /** 붙인 견적서 빼기: 링크를 지우고 파일은 드라이브 휴지통으로 (30일 안에 되살릴 수 있음) */
 function apiRemoveQuoteFile(recordId, vendor, fileId) {
   auth_();
   var found = findRecord_(recordId, true), out = {}, hit = false;
-  updateRecord_(found, { edit: function (cur) {
+  updateRecord_(found, { log: '견적서 파일 뺌', logDetail: [vendor + ': ' + fileId], edit: function (cur) {
     var list = (cur.qfiles || {})[vendor] || [];
     cur.qfiles = cur.qfiles || {};
     cur.qfiles[vendor] = list.filter(function (f) { if (f.id === fileId) { hit = true; return false; } return true; });
@@ -1651,10 +1941,18 @@ function apiQuoteDups(recordId) {
  */
 function apiCreateSpotPurchase(payload) {
   auth_();
+  return once_('apiCreateSpotPurchase', payload, function () { return apiCreateSpotPurchase_(payload); });
+}
+function apiCreateSpotPurchase_(payload) {
   var found = findRecord_(payload.recordId, true);
   if (found.rec.kind !== '견적요청서') throw new Error('견적요청서 기록이 아닙니다.');
   var tid = prop_('SPOT_TEMPLATE_ID');
   if (!tid) throw new Error('스크립트 속성 SPOT_TEMPLATE_ID(Spot 견적 구매내역서 템플릿 시트 ID)를 설정해 주세요. README 참고.');
+  // 이미 만든 파일이 있으면 한 번 더 확인 (화면이 again 으로 다시 보냄) · 다른 창에서 견적을 먼저 저장했으면 멈춤
+  if (found.rec.spotFile && !payload.again) throw new Error(SPOT_EXISTS + '|' + found.rec.spotFile + '|이 견적요청서로 이미 Spot 견적 구매내역서를 만들었습니다. 하나 더 만들려면 한 번 더 누르세요.');
+  var base0 = payload.base === undefined ? null : String(payload.base || '');
+  var quoteGuard = function (cur) { var was = cur.quote && cur.quote.savedAt; if (base0 !== null && was && String(was) !== base0) throw new Error(QUOTE_CONFLICT); };
+  quoteGuard({ quote: found.rec.quote });
   var items = (payload.items || []).map(function (it) {
     var o = {};
     Object.keys(it).forEach(function (k) { o[k] = it[k]; });
@@ -1678,15 +1976,23 @@ function apiCreateSpotPurchase(payload) {
     throw new Error('Spot 구매내역서 템플릿이 예전 버전입니다 (선정 결과 Need-by 옆 수량 열이 없음). ' +
       'templates/Spot_구매내역서_템플릿.xlsx 를 새로 올려 구글 시트로 저장하고 SPOT_TEMPLATE_ID 를 바꿔 주세요.');
   }
-  applyPlan_(ss, buildSpotPlan_(items, vendors, rates, base, payload.schedule, { title: name, confirmer: payload.confirmer, vendorInfo: vendorInfoMap_() }));
-  var proto = ss.getSheetByName(SPOT.PROTO);
-  if (proto) ss.deleteSheet(proto);
-  ss.setActiveSheet(ss.getSheetByName(SPOT.SUMMARY));
+  trashOnFail_(ss, function () {
+    applyPlan_(ss, buildSpotPlan_(items, vendors, rates, base, payload.schedule, { title: name, confirmer: payload.confirmer, vendorInfo: vendorInfoMap_() }));
+    var proto = ss.getSheetByName(SPOT.PROTO);
+    if (proto) ss.deleteSheet(proto);
+    ss.setActiveSheet(ss.getSheetByName(SPOT.SUMMARY));
+  });
   var savedAt = new Date().toISOString(), prevQuote = found.rec.quote || {}, quote = {};
   Object.keys(prevQuote).forEach(function (k) { quote[k] = prevQuote[k]; });   // 회신 없음 · 제목 · 담당자는 그대로 두고
   quote.vendors = vendors; quote.items = payload.items; quote.rates = payload.rates; quote.savedAt = savedAt;
-  updateRecord_(found, { status: '견적 구매내역서 작성', data: { quote: quote, spotFile: ss.getUrl() } });
-  var rec = addRecord_({ kind: '견적 구매내역서', title: name, url: ss.getUrl(), fileId: ss.getId(), status: '작성', parent: found.rec.id, group: found.rec.group || found.rec.id,
-    items: items.map(function (it) { return { item: it.item, qty: it.qty, needBy: fmtDate_(it.needBy), supplier: it.fixed ? it.fixed.vendor : selectedVendor_(it), deadline: (spotDeadline_(it) || {}).date || '' }; }) });
-  return { url: ss.getUrl(), name: name, id: ss.getId(), recordId: rec.id, savedAt: savedAt };
+  var rec = { id: '' };
+  var warn = afterEffect_('Spot 견적 구매내역서 파일은 만들었지만', function () {
+    updateRecord_(found, { status: '견적 구매내역서 작성', data: { quote: quote, spotFile: ss.getUrl() }, guard: quoteGuard, log: 'Spot 견적 구매내역서 만듦', logDetail: [ss.getUrl()] });
+  });
+  warn += (warn ? '\n' : '') + afterEffect_('Spot 견적 구매내역서 파일은 만들었지만', function () {
+    if (rec.id) return;
+    rec = addRecord_({ kind: '견적 구매내역서', title: name, url: ss.getUrl(), fileId: ss.getId(), status: '작성', parent: found.rec.id, group: found.rec.group || found.rec.id,
+      items: items.map(function (it) { return { item: it.item, qty: it.qty, needBy: fmtDate_(it.needBy), supplier: it.fixed ? it.fixed.vendor : selectedVendor_(it), deadline: (spotDeadline_(it) || {}).date || '' }; }) });
+  });
+  return { url: ss.getUrl(), name: name, id: ss.getId(), recordId: rec.id, savedAt: savedAt, warn: warn.replace(/^\n+|\n+$/g, '') };
 }

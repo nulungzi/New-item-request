@@ -28,6 +28,70 @@ var MASTER_COLUMNS = {
   qpl: ['QPL', 'QPL(Mfg)', 'MFG']
 };
 
+/**
+ * 사람이 적은 글자를 시트에 쓸 때: = + - @ 로 시작하면 시트가 수식으로 읽으므로 앞에 ' 를 붙여 글자로 둠
+ * (화면에는 ' 없이 보이고, 엑셀로 내려받아도 글자). 숫자(-5, +1.2)와 숫자·날짜가 아닌 값은 그대로
+ */
+function txt_(v) {
+  return typeof v === 'string' && /^\s*[=+\-@]/.test(v) && !/^\s*[-+]?[\d,]*\.?\d+\s*$/.test(v) ? "'" + v : v;
+}
+
+/*
+ * 진행기록 한 칸(품목 JSON)은 구글 시트 한 칸 한도(50,000자) 안에 있어야 함.
+ * 커지면 견적(quote)을 '견적데이터' 탭으로 빼고 기록에는 quoteRef 표시만 남김 (Code.gs 가 나눠 저장)
+ */
+var RECORD_JSON_MAX = 40000, RECORD_CELL_MAX = 49000;
+var RECORD_TOO_BIG = '이 기록은 품목이 너무 많아 저장할 수 없습니다 (시트 한 칸 한도). 품목을 나눠 두 건으로 만들어 주세요.';
+/** cur: 기록 JSON 객체(quote 포함), keepOut: 이미 견적을 따로 둔 기록 → {json, out, quote, tooBig} */
+function packRecord_(cur, keepOut) {
+  var s = JSON.stringify(cur);
+  if (!keepOut && s.length <= RECORD_JSON_MAX) return { json: s, out: false, quote: null, tooBig: s.length > RECORD_CELL_MAX };
+  var rest = {};
+  Object.keys(cur).forEach(function (k) { if (k !== 'quote' && k !== 'quoteRef') rest[k] = cur[k]; });
+  if (cur.quote) rest.quoteRef = 1;
+  var t = JSON.stringify(rest);
+  return { json: t, out: true, quote: cur.quote || null, tooBig: t.length > RECORD_CELL_MAX };
+}
+
+/**
+ * 견적 저장 때 바뀐 것 (변경기록용): 단가 · 통화 · 수량 · 선정 · 회신 없음 · 유효기간 · 업체
+ * items: 견적요청서 품목(Item code 를 찾으려고). 최대 limit 줄, 넘으면 '외 n건'
+ */
+function quoteDiff_(a, b, items, limit) {
+  a = a || {}; b = b || {}; limit = limit || 30;
+  var out = [], lab = function (x, i) {
+    var at = x && x.at !== undefined ? x.at : i, it = (items || [])[at] || {};
+    return String(it.item || ('L/I ' + (at + 1))) + (x && x.part !== undefined ? ' #' + (x.part + 1) : '');
+  };
+  var key = function (x, i) { return (x && x.at !== undefined ? x.at : i) + '/' + (x && x.part !== undefined ? x.part : ''); };
+  var ia = {}; (a.items || []).forEach(function (x, i) { ia[key(x, i)] = x; });
+  var va = a.vendors || [], vb = b.vendors || [];
+  vb.forEach(function (v) { if (va.length && va.indexOf(v) < 0) out.push('업체 추가 ' + v); });
+  va.forEach(function (v) { if (vb.indexOf(v) < 0) out.push('업체 뺌 ' + v); });
+  var F = [['price', '단가'], ['cur', '통화'], ['qty', '수량']];
+  (b.items || []).forEach(function (x, i) {
+    var old = ia[key(x, i)] || {}, qa = old.quotes || {}, qb = (x && x.quotes) || {};
+    Object.keys(qb).concat(Object.keys(qa).filter(function (v) { return !qb[v]; })).forEach(function (v) {
+      var p = qa[v] || {}, q = qb[v] || {}, ch = [];
+      F.forEach(function (f) {
+        var o = String(p[f[0]] == null ? '' : p[f[0]]).trim(), n = String(q[f[0]] == null ? '' : q[f[0]]).trim();
+        if (o !== n) ch.push(f[1] + ' ' + (o || '빈칸') + '→' + (n || '빈칸'));
+      });
+      if (!!p.sel !== !!q.sel) ch.push(q.sel ? '선정' : '선정 해제');
+      if (ch.length) out.push(lab(x, i) + ' ' + v + ': ' + ch.join(', '));
+    });
+  });
+  var nr = function (o) { return Object.keys(o || {}).filter(function (v) { return o[v]; }); };
+  nr(b.noReply).forEach(function (v) { if (!(a.noReply || {})[v]) out.push(v + ' 회신 없음'); });
+  nr(a.noReply).forEach(function (v) { if (!(b.noReply || {})[v]) out.push(v + ' 회신 없음 풀림'); });
+  Object.keys(b.valid || {}).concat(Object.keys(a.valid || {})).forEach(function (v, k, all) {
+    if (all.indexOf(v) !== k) return;
+    var o = (a.valid || {})[v] || '', n = (b.valid || {})[v] || '';
+    if (o !== n) out.push(v + ' 유효기간 ' + (o || '빈칸') + '→' + (n || '빈칸'));
+  });
+  return out.length > limit ? out.slice(0, limit).concat(['외 ' + (out.length - limit) + '건']) : out;
+}
+
 /** 중복 없이 처음 나온 순서대로 (빈 값 제외) */
 function uniq_(arr) {
   var out = [];
@@ -990,9 +1054,9 @@ function buildPurchasePlan_(lines, curs, rates, base, schedule, extra) {
     var needs = l.needs || [{ needBy: l.needBy, qty: l.qty }], multi = needs.length > 1;
     add({ op: 'height', s: D, r: n, pt: 15 * (multi ? needs.length : 1) });
     // T Need-by · U 수량: 여러 건이면 줄마다 (같은 줄끼리 짝)
-    var row = [i + 1, l.program || '', l.item, l.material, l.desc, l.product, l.qty, l.cur, l.price, '=J' + n + '*H' + n,
-      l.shipFrom, l.leadtime, l.uom, l.shelfLife, l.supplier, l.taxCode, l.priceMode, remarkWithDeadline_(l),
-      multi ? needDates_(needs) : (l.needBy ? { date: fmtDate_(toDate_(l.needBy)) } : ''), multi ? needQtys_(needs) : l.qty, l.supplierName || '', l.site || ''];
+    var row = [i + 1, txt_(l.program || ''), txt_(l.item), txt_(l.material), txt_(l.desc), txt_(l.product), l.qty, l.cur, l.price, '=J' + n + '*H' + n,
+      txt_(l.shipFrom), txt_(l.leadtime), txt_(l.uom), txt_(l.shelfLife), txt_(l.supplier), l.taxCode, l.priceMode, txt_(remarkWithDeadline_(l)),
+      multi ? needDates_(needs) : (l.needBy ? { date: fmtDate_(toDate_(l.needBy)) } : ''), multi ? needQtys_(needs) : l.qty, txt_(l.supplierName || ''), txt_(l.site || '')];
     row.forEach(function (v, j) { if (v !== '' && v !== null && v !== undefined) set(D, n, 2 + j, v); });
     nf(D, n, 10, curFmt_(l.cur));
     nf(D, n, 11, curFmt_(l.cur));
@@ -1123,7 +1187,7 @@ function scheduleConfirmOps_(base, schedule, extra) {
   if (who) set(TPL.CONFIRM, 2, 1, who);
   else add({ op: 'bg', s: TPL.CONFIRM, r: 2, c: 1, color: TPL.FILL });
   set(TPL.CONFIRM, 1, 2, '구매내역서 제목');
-  set(TPL.CONFIRM, 2, 2, extra.title || '');
+  set(TPL.CONFIRM, 2, 2, txt_(extra.title || ''));
   add({ op: 'bg', s: TPL.CONFIRM, r: 2, c: 3, color: TPL.FILL });
 
   return ops;
@@ -1254,11 +1318,11 @@ function buildRfqPlan_(items, base) {
     ops.push({ op: 'height', s: S, r: r, pt: RFQ.ROW_PT });
     set(r, C.LI, i + 1);
     set(r, C.KE, it.registered ? it.item : 'TBD');
-    set(r, C.NAME, it.name || '');
-    set(r, C.DESC, it.desc || '');
-    set(r, C.QPL, it.qpl || '');
-    set(r, C.UOM, it.uom || '');
-    set(r, C.REMARK, it.remark === undefined ? RFQ.REMARK : it.remark);
+    set(r, C.NAME, txt_(it.name || ''));
+    set(r, C.DESC, txt_(it.desc || ''));
+    set(r, C.QPL, txt_(it.qpl || ''));
+    set(r, C.UOM, txt_(it.uom || ''));
+    set(r, C.REMARK, txt_(it.remark === undefined ? RFQ.REMARK : it.remark));
     var mq = rfqMonthQty_(base, it);
     for (var m = 0; m < RFQ.MONTHS; m++) set(r, C.M0 + m, mq[m] ? mq[m] : '');
     set(r, C.TOTAL, '=SUM(' + colA_(C.M0) + r + ':' + colA_(C.M0 + RFQ.MONTHS - 1) + r + ')');
@@ -1418,15 +1482,15 @@ function buildRfq2Plan_(items) {
     var r = RFQ2.FIRST + i;
     if (i) ops.push({ op: 'rowFmt', s: S, fs: S, fr: RFQ2.FIRST, r: r, c1: 1, c2: RFQ2.LAST });
     set(r, C.LI, i + 1);
-    set(r, C.PN, it.name || it.item || '');
-    set(r, C.DESC, it.desc || '');
+    set(r, C.PN, txt_(it.name || it.item || ''));
+    set(r, C.DESC, txt_(it.desc || ''));
     set(r, C.QTY, Number(it.qty) || 0);
     set(r, C.UOM, it.uom || '');
     set(r, C.TP, '=IF(ISNUMBER(F' + r + '), D' + r + '*F' + r + ', "")');
-    set(r, C.QPL, it.qpl || '');
+    set(r, C.QPL, txt_(it.qpl || ''));
     set(r, C.NEED, dot(it.needBy));                 // 샘플처럼 2027.02.01 글자
-    set(r, C.DOC, it.remark === undefined ? RFQ.REMARK : it.remark);
-    set(r, C.PROGRAM, it.program || '');
+    set(r, C.DOC, txt_(it.remark === undefined ? RFQ.REMARK : it.remark));
+    set(r, C.PROGRAM, txt_(it.program || ''));
   });
   return ops;
 }
@@ -1451,7 +1515,7 @@ function historyRow_(h, who, today) {
   var price = toNumber_(h.price), qty = toNumber_(h.qty);
   return [today, h.reqDate || '', h.item || '', h.desc || '', h.supplier || '', h.supplierName || '', price === null ? (h.price || '') : price, String(h.cur || '').toUpperCase(),
     qty === null ? (h.qty || '') : qty, h.uom || '', price !== null && qty !== null ? Math.round(price * qty * 100) / 100 : '', h.mfg || '', h.lt || '', h.mode || '',
-    h.reason || '', h.program || '', who || '', h.url || '', h.recId || ''];
+    h.reason || '', h.program || '', who || '', h.url || '', h.recId || ''].map(txt_);
 }
 /** 견적종합 값(5행부터)에서 선정(A열 TRUE)한 줄 → 이력 후보 */
 function quoteSheetSelected_(values) {
@@ -1591,16 +1655,16 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
       var r = qRow++, q = fx ? { sel: true, review: fx.reason, qty: it.qty, mfg: fx.mfg || '', uom: it.uom, price: fx.price, cur: fx.cur, lt: fx.lt, moq: fx.moq } : (it.quotes || {})[v] || {};
       add({ op: 'fmt', s: Q, r: r, from: SPOT.P_Q_ROW, c1: 1, c2: SPOT.Q_LAST, fs: SPOT.PROTO });
       set(Q, r, 1, !!q.sel);
-      if (q.review) set(Q, r, 2, q.review);
+      if (q.review) set(Q, r, 2, txt_(q.review));
       set(Q, r, 3, '=E' + r + '&AD' + r);   // 찾기 키: L/I & 업체 (같은 자재 여러 줄도 줄마다)
       set(Q, r, 4, '=A' + r + '&E' + r);    // 찾기 키: 선정(TRUE) & L/I
       set(Q, r, 5, i + 1);
-      set(Q, r, 6, it.item);
-      set(Q, r, 7, it.desc || it.name || '');
-      set(Q, r, 8, it.material || '');
-      set(Q, r, 9, it.qpl || '');
-      set(Q, r, 10, it.uom || '');
-      set(Q, r, 11, it.remark === undefined ? RFQ.REMARK : it.remark);
+      set(Q, r, 6, txt_(it.item));
+      set(Q, r, 7, txt_(it.desc || it.name || ''));
+      set(Q, r, 8, txt_(it.material || ''));
+      set(Q, r, 9, txt_(it.qpl || ''));
+      set(Q, r, 10, txt_(it.uom || ''));
+      set(Q, r, 11, txt_(it.remark === undefined ? RFQ.REMARK : it.remark));
       Object.keys(mq).forEach(function (k2) { if (mq[k2]) set(Q, r, SPOT.Q_M0 + Number(k2), mq[k2]); });
       set(Q, r, 24, '=AE' + r);
       set(Q, r, 25, '=IF(OR(Z' + r + '="", Z' + r + '="NO BID"), "", COUNTA(L' + r + ':W' + r + '))');
@@ -1612,8 +1676,8 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
         cur + '="JPY", ' + amt + '*$AS$2, IF(' + cur + '="EUR", ' + amt + '*$AT$2, IF(' + cur + '="SGD", ' + amt + '*$AU$2, ""))))), "")');
       // 순위: 같은 품목(E열 L/I) 안에서 원화가격이 낮은 순
       set(Q, r, 29, '=IF(AB' + r + '="", "", COUNTIFS($E$' + SPOT.Q_FIRST + ':$E$' + RANKEND + ', E' + r + ', $AB$' + SPOT.Q_FIRST + ':$AB$' + RANKEND + ', "<"&AB' + r + ')+1)');
-      set(Q, r, 30, v);
-      var put = function (c, x) { if (x !== undefined && x !== null && String(x).trim() !== '') set(Q, r, c, x); };
+      set(Q, r, 30, txt_(v));
+      var put = function (c, x) { if (x !== undefined && x !== null && String(x).trim() !== '') set(Q, r, c, txt_(x)); };   // 업체가 적은 값 (수식 아님)
       if (q.noReply) q = { qty: q.qty, uom: q.uom, price: 'NO BID', remark: q.remark || '회신 없음' };   // 회신 없음 = NO BID 로 회색 줄
       put(31, num(q.qty)); put(32, q.mfg); put(33, q.uom);
       put(34, /^no\s*bid$/i.test(String(q.price || '').trim()) ? 'NO BID' : num(q.price));
@@ -1688,7 +1752,7 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
     [p.year, p.qty, p.cur, p.price].forEach(function (x, k2) { if (x !== undefined && x !== null && String(x).trim() !== '') set(D, r, 6 + k2, k2 === 2 ? String(x).toUpperCase() : num(x)); });
     set(D, r, 10, '=Q' + r); set(D, r, 11, '=T' + r); set(D, r, 12, '=R' + r);
     set(D, r, 13, '=IF(ISNUMBER(L' + r + '), J' + r + ' * L' + r + ', "")');
-    if (it.program) set(D, r, 14, it.program); else add({ op: 'bg', s: D, r: r, c: 14, color: TPL.FILL });
+    if (it.program) set(D, r, 14, txt_(it.program)); else add({ op: 'bg', s: D, r: r, c: 14, color: TPL.FILL });
     var key = 'TRUE&$A' + r;   // 이 줄(L/I)에서 선정한 업체
     set(D, r, 15, xl(key, 'D:B', '', true));
     set(D, r, 16, xl(key, 'D:AD', '미정', true));

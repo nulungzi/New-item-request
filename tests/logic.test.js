@@ -844,3 +844,36 @@ test('견적 종합 중복 알림: 다른 진행 중 기록의 같은 Item (표�
   assert.strictEqual(d.KERC00099[0].mine, true);
   assert.strictEqual(d['kern00278 '][0].title, 'A');
 });
+
+test('시트에 쓰는 사람 글자: = + - @ 로 시작하면 글자로 (숫자는 그대로)', () => {
+  assert.strictEqual(L.txt_('=> 납기 협의'), "'=> 납기 협의");
+  assert.strictEqual(L.txt_('- 별도 운송'), "'- 별도 운송");
+  assert.strictEqual(L.txt_('+추가비용'), "'+추가비용");
+  assert.strictEqual(L.txt_('@HOME'), "'@HOME");
+  assert.strictEqual(L.txt_('-5'), '-5');
+  assert.strictEqual(L.txt_('+1.25'), '+1.25');
+  assert.strictEqual(L.txt_('MFG COC/TR'), 'MFG COC/TR');
+  assert.strictEqual(L.txt_(12), 12);
+  // Spot 견적종합: 업체 비고가 = 로 시작해도 수식이 아님, 계산 칸은 그대로 수식
+  const ops = L.buildSpotPlan_([{ item: 'KERC1', name: 'A', qty: 1, uom: 'EA', needBy: L.toDate_('2027-01-10'), quotes: { OMI: { price: '10', cur: 'USD', remark: '=비용 별도', review: '-최저가', sel: true } } }],
+    ['OMI'], { USD: 1400 }, L.toDate_('2026-11-24'), null, { title: '=t' });
+  const at = (s, r, c) => ops.filter(o => o.op === 'set' && o.s === s && o.r === r && o.c === c).map(o => o.v)[0];
+  const r = L.SPOT.Q_FIRST;
+  assert.strictEqual(at(L.SPOT.QUOTE, r, L.SPOT.Q_REMARK), "'=비용 별도");
+  assert.strictEqual(at(L.SPOT.QUOTE, r, 2), "'-최저가");
+  assert.ok(/^=E\d+&AD\d+$/.test(at(L.SPOT.QUOTE, r, 3)));
+});
+
+test('진행기록 칸 나누기 · 견적 바뀐 것 요약', () => {
+  const small = L.packRecord_({ items: [1], quote: { a: 1 } }, false);
+  assert.deepStrictEqual([small.out, JSON.parse(small.json).quote.a], [false, 1]);
+  const big = L.packRecord_({ items: [1], quote: { t: 'x'.repeat(45000) } }, false);
+  assert.deepStrictEqual([big.out, JSON.parse(big.json).quoteRef, big.quote.t.length, big.tooBig], [true, 1, 45000, false]);
+  const kept = L.packRecord_({ items: [1], quote: { a: 1 } }, true);   // 한 번 뺀 기록은 계속 따로
+  assert.strictEqual(kept.out, true);
+  assert.strictEqual(L.packRecord_({ items: ['y'.repeat(50000)] }, false).tooBig, true);
+  const d = L.quoteDiff_({ vendors: ['A', 'B'], items: [{ at: 0, quotes: { A: { price: '10', cur: 'USD' }, B: { price: '9' } } }] },
+    { vendors: ['A', 'C'], noReply: { C: true }, valid: { A: '2026-12-31' }, items: [{ at: 0, quotes: { A: { price: '12', cur: 'USD', sel: true } } }] }, [{ item: 'KERC1' }]);
+  assert.deepStrictEqual(d, ['업체 추가 C', '업체 뺌 B', 'KERC1 A: 단가 10→12, 선정', 'KERC1 B: 단가 9→빈칸', 'C 회신 없음', 'A 유효기간 빈칸→2026-12-31']);
+  assert.deepStrictEqual(L.quoteDiff_({ items: [{ quotes: { A: { price: '1' } } }] }, { items: [{ quotes: { A: { price: '1' } } }] }, []), []);
+});

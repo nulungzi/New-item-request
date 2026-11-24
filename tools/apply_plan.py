@@ -39,7 +39,12 @@ for o in ops:
             v = datetime.datetime.strptime(v['date'], '%Y-%m-%d')
         if v == '':
             v = None
-        wb[o['s']].cell(o['r'], o['c']).value = v
+        cell = wb[o['s']].cell(o['r'], o['c'])
+        if isinstance(v, str) and v.startswith("'"):   # 시트의 ' 글자 표시 → 엑셀에서도 글자로
+            cell.value = v[1:]
+            cell.data_type = 's'
+        else:
+            cell.value = v
     elif op == 'nf':
         wb[o['s']].cell(o['r'], o['c']).number_format = o['f']
     elif op == 'bg':
