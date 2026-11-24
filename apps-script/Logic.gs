@@ -92,6 +92,34 @@ function quoteDiff_(a, b, items, limit) {
   return out.length > limit ? out.slice(0, limit).concat(['외 ' + (out.length - limit) + '건']) : out;
 }
 
+/** Spot 견적 구매내역서에 들어갈 외화 (KRW 제외): 계약 줄 통화 + 회신 없음 · NO BID 가 아닌 견적의 통화 */
+function spotCurrencies_(items, vendors) {
+  var out = [];
+  var add = function (c) { c = String(c || '').trim().toUpperCase(); if (c && c !== 'KRW' && out.indexOf(c) < 0) out.push(c); };
+  (items || []).forEach(function (it) {
+    if (it.fixed) { add(it.fixed.cur); return; }
+    (vendors || Object.keys(it.quotes || {})).forEach(function (v) {
+      var q = (it.quotes || {})[v];
+      if (!q || q.noReply) return;
+      var pr = String(q.price == null ? '' : q.price).trim();
+      if (pr && !/^no\s*bid$/i.test(pr)) add(q.cur);
+    });
+  });
+  return out;
+}
+/** 글자를 size 자 안팎으로 나눔. 이모지 같은 두 칸짜리 글자(서로게이트 쌍)는 가운데서 자르지 않음 */
+function chunkText_(text, size) {
+  var out = [], i = 0;
+  text = String(text || '');
+  while (i < text.length) {
+    var end = Math.min(text.length, i + size), c = text.charCodeAt(end - 1);
+    if (end < text.length && c >= 0xD800 && c <= 0xDBFF) end--;
+    out.push(text.slice(i, end));
+    i = end;
+  }
+  return out;
+}
+
 /** 중복 없이 처음 나온 순서대로 (빈 값 제외) */
 function uniq_(arr) {
   var out = [];
@@ -110,7 +138,9 @@ function itemKey_(s) {
 function toDate_(v) {
   if (Object.prototype.toString.call(v) === '[object Date]') return isNaN(v) ? null : new Date(v.getFullYear(), v.getMonth(), v.getDate());
   var m = String(v == null ? '' : v).trim().match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
-  return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
+  if (!m) return null;
+  var d = new Date(+m[1], +m[2] - 1, +m[3]);
+  return d.getMonth() === +m[2] - 1 && d.getDate() === +m[3] ? d : null;   // 2027-02-30 · 13월 같은 없는 날짜는 null (다음 달로 넘기지 않음)
 }
 
 function fmtDate_(d) {
@@ -348,6 +378,7 @@ function classify_(requests, contracts, today) {
       res.status = '계약'; res.route = 'contract';
       res.reason = valid.length > 1 ? '유효 계약 ' + valid.length + '건 — 업체 선택 필요' : '';
       res.warnings = needByWarnings_(q, valid[0], today);
+      if (valid[0].price === null || valid[0].price === undefined || valid[0].price === '') res.warnings.unshift('자재정보에 계약 단가가 비어 있음 — 단가를 채운 뒤 다시 판정하세요');
     } else if (spotPriced.length) {
       // SPOT 인데 DB에 단가가 있음 → 견적 없이 Spot 구매내역서
       res.status = 'Spot'; res.route = 'spotPriced'; res.candidates = spotPriced;

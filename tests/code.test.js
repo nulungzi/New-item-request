@@ -816,7 +816,7 @@ test('큰 견적: 진행기록 한 칸(50,000자)을 넘으면 견적데이터 �
   assert.ok(row[10].length < 49000, '진행기록 칸 ' + row[10].length);
   assert.strictEqual(JSON.parse(row[10]).quoteRef, 1);
   const parts = db.tabs['견적데이터'].rows.slice(1);
-  assert.ok(parts.length >= 2 && parts.every(p => p[0] === 'Q1' && p[2].length <= 45000), '조각 ' + parts.length);
+  assert.ok(parts.length >= 2 && parts.every(p => p[0] === 'Q1' && p[2].charAt(0) === '~' && p[2].length <= 45001), '조각 ' + parts.length);
   // 다른 실행에서 읽기 (메모 없이)
   ctx.qstoreMemo_ = null;
   const rec = ctx.findRecord_('Q1', true).rec;
@@ -877,4 +877,52 @@ test('같은 요청 두 번: 10분 안에 같은 내용이면 다시 보내지 �
   const key = [...store.keys()][0];
   store.set(key, JSON.stringify({ state: 'run' }));
   assert.throws(() => ctx.apiConfirmMail(p), /지금 처리하고 있습니다/);
+});
+
+test('견적데이터 기록: 잠금 안에서는 시트를 새로 읽음 · 못 읽으면 지우지 않고 멈춤 · 수정 중 들어온 견적도 옮김 · 같은 요청은 기록이 바뀌었으면 다시', () => {
+  const H = ['ID', '종류', '담당자', '작성일', '제목', 'URL', '파일ID', '상태', '초안', 'BCC', 'JSON', '수정일'];
+  const items = Array.from({ length: 30 }, (_, i) => ({ item: 'KERN' + (1000 + i), name: 'N' + i, qty: 5, needBy: '2027-01-10' }));
+  const db = fakeBook({ 진행기록: [H, ['Q1', '견적요청서', 'me@ke.com', '', 'RFQ', '', '', '메일 초안', '', '', JSON.stringify({ items, vendors: ['Vendor0'], direct: true }), '']] });
+  const store = new Map();
+  const ctx = inContext({
+    SpreadsheetApp: { getActive: () => db }, PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }) },
+    CacheService: { getUserCache: () => ({ get: k => store.get(k) || null, put: (k, v) => store.set(k, v), remove: k => store.delete(k) }), getScriptCache: () => null },
+    LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
+    Session: { getActiveUser: () => ({ getEmail: () => 'me@ke.com' }), getEffectiveUser: () => ({ getEmail: () => 'me@ke.com' }) },
+    Utilities: { formatDate: () => '2026-11-24 10:00', sleep: () => {} },
+  });
+  const vendors = Array.from({ length: 12 }, (_, i) => 'Vendor' + i);
+  const mk = p => ({ vendors, items: items.map((it, i) => ({ at: i, quotes: Object.fromEntries(vendors.map(v => [v, { price: String(p), cur: 'USD', qty: '5', mfg: 'M-' + v, remark: '=비고 ' + 'r'.repeat(60) }])) })) });
+  const s1 = ctx.apiSaveQuotes('Q1', Object.assign(mk(10), { base: '' }));
+  assert.strictEqual(JSON.parse(db.tabs['진행기록'].rows[1][10]).quoteRef, 1);
+  // 1) 잠금 밖에서 읽어 둔 뒤 다른 창이 단가 500 저장 → 견적과 상관없는 수정이 옛 견적으로 덮어쓰지 않음
+  ctx.qstoreMemo_ = null;
+  const found = ctx.findRecord_('Q1', true);                 // 메모에 단가 10
+  const other = inContext({ SpreadsheetApp: { getActive: () => db }, PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }) },
+    LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
+    Session: { getActiveUser: () => ({ getEmail: () => 'me@ke.com' }), getEffectiveUser: () => ({ getEmail: () => 'me@ke.com' }) } });
+  other.apiSaveQuotes('Q1', Object.assign(mk(500), { base: s1.savedAt }));
+  ctx.updateRecord_(found, { data: { quoteSheet: 'X' } });
+  ctx.qstoreMemo_ = null;
+  assert.strictEqual(ctx.findRecord_('Q1', true).rec.quote.items[0].quotes.Vendor0.price, '500');
+  assert.ok(db.tabs['견적데이터'].rows.slice(1).every(r => r[2].charAt(0) === '~'));   // = 로 시작하는 조각도 글자로
+  // 2) 수정 중 다른 창 견적도 같이 옮김 (잠금 안의 값으로)
+  const rows = items.map(it => ({ item: it.item, name: it.name, qty: 5, needBy: '2027-01-10' }));
+  const rv = ctx.apiReviseRfq({ recordId: 'Q1', items: rows });
+  ctx.qstoreMemo_ = null;
+  assert.strictEqual(ctx.findRecord_('Q1', true).rec.quote.items[0].quotes.Vendor0.price, '500');
+  assert.strictEqual(rv.rev.no, 1);
+  // 같은 내용으로 다시 수정: 기록이 그대로면 repeated, 그 사이 기록이 바뀌었으면 다시 함
+  assert.strictEqual(ctx.apiReviseRfq({ recordId: 'Q1', items: rows }).repeated, true);
+  db.tabs['진행기록'].rows[1][11] = new Date(Date.now() + 5000);
+  const rv2 = ctx.apiReviseRfq({ recordId: 'Q1', items: rows });
+  assert.ok(!rv2.repeated && rv2.rev.no === 2);
+  // 3) 견적데이터 조각이 깨지면 저장을 멈추고 줄을 지우지 않음
+  const qd = db.tabs['견적데이터'].rows;
+  qd[1][2] = '#ERROR!';
+  const n = qd.length;
+  ctx.qstoreMemo_ = null;
+  assert.throws(() => ctx.apiSetQuoteVendors('Q1', ['Vendor0', 'Vendor1']), /견적데이터 탭\)을 읽지 못해/);
+  assert.strictEqual(db.tabs['견적데이터'].rows.length, n);
+  assert.strictEqual(JSON.parse(db.tabs['진행기록'].rows[1][10]).quoteRef, 1);
 });

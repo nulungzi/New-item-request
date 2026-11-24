@@ -77,7 +77,8 @@ main { max-width: 1600px; margin: 0 auto; display: grid; gap: 18px }
 .views { min-width: 0 }
 @media (max-width: 900px) {
   .app { grid-template-columns: minmax(0, 1fr) }
-  .side { position: static; display: flex; gap: 6px; border-bottom: 1px solid var(--line); padding: 0 0 6px }
+  .side { position: static; display: flex; gap: 6px; border-bottom: 1px solid var(--line); padding: 0 0 6px; overflow-x: auto; scrollbar-width: thin }
+  .side-btn { flex: none; white-space: nowrap }   /* 좁은 화면: 메뉴는 옆으로 밀어 보고, 글자가 한 자씩 줄바꿈되지 않게 */
   .side-btn.on { box-shadow: inset 0 -2px 0 var(--accent) }
 }
 /* 견적요청서 편집 */
@@ -137,9 +138,10 @@ main { max-width: 1600px; margin: 0 auto; display: grid; gap: 18px }
 .dm-sign textarea { width: 100%; margin: 8px 0; font-family: var(--font-body) }
 /* 견적 입력 */
 .q-items { display: grid; gap: 14px }
-.q-item { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 10px; background: var(--surface) }
+.q-item { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; background: var(--surface); min-width: 0 }
 .q-head { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline }
 .q-head .data { font-weight: 600 }
+.q-head > span, .rec-title, .v-row b, .vq-table td.nm, .dup { overflow-wrap: anywhere; min-width: 0 }   /* 띄어쓰기 없는 아주 긴 이름도 화면을 넘지 않게 */
 .q-meta { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px }
 .q-meta .field input { width: 100%; text-align: left; font-family: var(--font-body) }
 .q-table input, .q-table select { width: 100%; min-width: 64px; padding: 5px 6px; font-size: .82rem }
@@ -605,7 +607,7 @@ body.locked { overflow: hidden }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 18px 20px; min-width: 0; display: grid; gap: 14px }
 .panel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px }
 .panel-head h2 { font-size: 1.08rem; font-weight: 600 }
-.sub { display: grid; gap: 10px; padding-top: 14px; border-top: 1px dashed var(--line); min-width: 0 }
+.sub { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding-top: 14px; border-top: 1px dashed var(--line); min-width: 0 }   /* 넓은 표는 안에서 옆으로 밀고 화면을 넘지 않게 */
 .sub.first { border-top: 0; padding-top: 0 }
 .sub h3 { font-size: .95rem; font-weight: 600 }
 .lead { margin: 0; max-width: 120ch }
@@ -699,6 +701,7 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-size: .
 .ok-msg { color: var(--ok); font-size: .9rem }
 
 /* 폴더 선택 창 */
+#picker { z-index: 80 }   /* 견적 입력 창(60) 위에서도 폴더 고르기 */
 .modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(10, 16, 32, .45);
   padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)) }
 .modal-box { width: min(560px, 100%); max-height: 100%; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto auto; gap: 12px;
@@ -772,6 +775,7 @@ table.list td.nw { white-space: nowrap }
 .qf-x:hover, .qf-x.arm { color: var(--warn) }
 .qf-hint { font-size: .74rem }
 .qprog { display: inline-flex; align-items: center; gap: 6px }
+.qprog-wrap { display: contents }
 .qprog i { width: 46px; height: 6px; border-radius: 3px; background: linear-gradient(to right, var(--accent) var(--p), var(--surface-2) var(--p)); border: 1px solid var(--line) }
 .qprog.full i { background: var(--ok) }
 .rate-src { display: block; margin-top: 3px; font: .7rem var(--font-body); color: var(--muted); font-weight: 400 }
@@ -938,6 +942,7 @@ td .empty { border: 0; padding: 18px 8px }
 .mk-pill::before { content: ''; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--accent-soft); border-top-color: var(--accent); animation: spin .8s linear infinite }
 
 /* 알림 (오른쪽 아래) */
+.mk-mini .toasts { bottom: 72px }   /* 만드는 중 알약 위로 */
 .toasts { position: fixed; right: 16px; bottom: 16px; z-index: 70; display: grid; gap: 8px; width: min(420px, calc(100vw - 32px)) }
 .toast { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface);
   box-shadow: 0 10px 30px rgba(10, 16, 32, .18); animation: popIn .25s cubic-bezier(.2, .7, .3, 1); transition: opacity .25s, transform .25s; font-size: .88rem }
@@ -1864,7 +1869,7 @@ $('pkOk').onclick = function () {
 };
 $('pkCancel').onclick = function () { closePicker(null); };
 $('picker').addEventListener('click', function (e) { if (e.target === this) closePicker(null); });
-document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('picker').hidden) closePicker(null); });
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('picker').hidden) { closePicker(null); e.stopImmediatePropagation(); } });   // 맨 위 창만 닫음 (아래 견적 창은 그대로)
 $('pkNewBtn').onclick = function () {
   var b = this; b.disabled = true;
   call('apiCreateFolder', picker.cur ? picker.cur.id : '', $('pkNewName').value).then(function (f) { $('pkNewName').value = ''; loadFolder(f.id); })
@@ -2259,7 +2264,7 @@ function openDraft(recordId, title, remind, mode) {
   $('dmFootNote').textContent = draft.pick ? '새 업체에 메일을 보내려면 재요청 메일을 쓰세요 · 메일 없이 더한 업체는 회신 대기로 세지 않습니다' : draft.direct ? '견적요청서 없이 직접 입력하는 견적입니다' : '받는 사람은 비워 둡니다 · 첨부: 견적요청서(엑셀)';
   $('dmTitle').textContent = draft.pick ? '견적 입력 업체 더하기 · 빼기 (메일 없음)' : draft.direct ? '견적을 받은 업체 고르기 (메일 없음)' : remind ? '재요청 메일 만들기' : revised ? '수정 메일 만들기 (품목이 바뀐 견적요청서)' : '메일 초안 만들기';
   $('dmRemind').hidden = !remind;
-  $('dmOk').textContent = draft.pick ? '업체 바꾸기' : draft.direct ? '이 업체들로 견적 입력' : remind ? '재요청 초안 만들기' : revised ? '수정 메일 초안 만들기' : '임시보관함에 만들기';
+  $('dmOk').textContent = draft.okLabel = draft.pick ? '업체 바꾸기' : draft.direct ? '이 업체들로 견적 입력' : remind ? '재요청 초안 만들기' : revised ? '수정 메일 초안 만들기' : '임시보관함에 만들기';
   if (remind) $('dmDue').value = rec && rec.due ? rec.due : '';
   draft.title = String(title).replace(/^\[(Reminder|Revised)\]\s*/i, '');
   $('dmSubject').textContent = remind ? remindSubject() : revised ? '[Revised] ' + draft.title : title;
@@ -2281,7 +2286,7 @@ function openDraft(recordId, title, remind, mode) {
     }
     renderDraftVendors(d, keep);
   }).catch(function (e) { $('dmMsg').textContent = e.message || e; });
-  call('apiSignature').then(showSign);
+  call('apiSignature').then(showSign).catch(function (e) { $('dmSignState').textContent = '서명: 불러오지 못했습니다 (' + (e.message || e) + ') — 메일 초안에는 서명이 빠질 수 있습니다'; });
 }
 function remindSubject() {   // 서버 remindTitle_ 과 같게: 회신 기한을 바꾸면 (due m/d) 도 바꿈
   var t = draft.title, d = ($('dmDue').value || '').split('-');
@@ -2424,7 +2429,7 @@ $('dmOk').onclick = function () {
     $('recMsg').innerHTML = msg;
     loadRecords();
   }).catch(function (e) { $('dmMsg').textContent = e.message || e; })
-    .finally(function () { b.disabled = false; b.textContent = draft.remind ? '재요청 초안 만들기' : '임시보관함에 만들기'; });
+    .finally(function () { b.disabled = false; b.textContent = draft.okLabel || (draft.remind ? '재요청 초안 만들기' : '임시보관함에 만들기'); });
 };
 
 /* ---------- 견적 입력 → Spot 견적 구매내역서 ----------
@@ -2692,6 +2697,7 @@ function closeDrawer() {
   dr.closing = setTimeout(function () { w.hidden = true; }, 230);
   var c = quoteFor(dr.rec);
   refreshVendorList(dr.rec);
+  refreshProgress(dr.rec);   // 카드의 '견적 n/m 입력'도 바로
   saveQuoteSilently(c).then(function () { $('recMsg').innerHTML = '<span class="muted">' + esc(dr.v) + ' 견적을 저장했습니다.</span>'; })
     .catch(function (e) { $('recMsg').innerHTML = '<span class="err">저장하지 못했습니다: ' + esc(e.message || e) + '</span>'; });
 }
@@ -2856,6 +2862,7 @@ $('vdBody').addEventListener('paste', function (e) {
   var el = e.target.closest('[data-c]'), tr = e.target.closest('tr.vq');
   var text = (e.clipboardData || window.clipboardData).getData('text');
   if (!el || !tr || !/[\t\n]/.test(String(text).replace(/\n$/, ''))) return;   // 한 칸짜리는 그냥 붙여넣기
+  if (el.tagName === 'TEXTAREA' && !/\t/.test(text)) return;                      // 비고 칸에 여러 줄 글: 그 칸에 그대로
   e.preventDefault();
   var c = quoteFor(dr.rec), n = pasteQuotes(c, dr.v, parseTsv(text), +tr.dataset.i, +el.dataset.c);
   renderDrawer();
@@ -2875,11 +2882,14 @@ document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$
 function openSummary(rec) {
   var c = quoteFor(rec), empty = c.vendors.filter(function (v) { return !c.noReply[v] && !c.items.some(function (x) { return qFilled(x.quotes[v]); }); });
   qs = c;
+  var qb = $('qCreate'); delete qb.dataset.again; delete qb.dataset.ok; qb.textContent = 'Spot 견적 구매내역서 만들기';   // 앞에 연 견적요청서의 확인 상태가 남지 않게
   $('recPanel').hidden = true; $('quoteView').hidden = false;
   $('qTitle').textContent = rec.title;
   $('qName').value = c.name; $('qConfirmer').value = c.confirmer;
   $('qMsg').innerHTML = empty.length ? '<span class="err">아직 견적을 입력하지 않은 업체: ' + esc(empty.join(', ')) + ' — 회신이 없으면 입력 창에서 회신 없음을 체크하세요.</span>' : '';
   if (!state.schedHome) state.schedHome = { parent: $('schedSub').parentNode, next: $('schedSub').nextElementSibling };
+  if (!$('schedAwayNote')) state.schedHome.parent.insertBefore(Object.assign(document.createElement('div'), { id: 'schedAwayNote', className: 'sub muted',
+    innerHTML: '<b>구매일정</b> — 지금 진행 중의 견적 종합 화면에서 쓰고 있습니다. 견적 종합을 닫으면 여기에 다시 나옵니다.' }), $('schedSub'));
   $('qSchedSlot').appendChild($('schedSub'));    // 구매일정 편집기를 이 화면으로 옮겨 씀
   $('schedSub').classList.add('first');
   state.schedBack = { owner: state.schedOwner, sched: state.sched };   // 구매내역서 탭 일정과 따로
@@ -2895,10 +2905,12 @@ function openSummary(rec) {
 function closeSummary() {
   if (qs) { qs.name = $('qName').value; qs.confirmer = $('qConfirmer').value; saveQuoteSilently(qs).catch(function () {}); }
   $('quoteView').hidden = true; $('recPanel').hidden = false;
-  if (state.schedHome) state.schedHome.parent.insertBefore($('schedSub'), state.schedHome.next);
+  if (state.schedHome) state.schedHome.parent.insertBefore($('schedSub'), $('schedAwayNote') || state.schedHome.next);
+  if ($('schedAwayNote')) $('schedAwayNote').remove();
   $('schedSub').classList.remove('first');
   if (state.schedBack) {
-    if (state.schedBack.owner) useSched(state.schedBack.owner); else { state.schedOwner = null; state.sched = state.schedBack.sched; PER = 2; SLOTS = 24; $('schedMonths').value = 12; $('schedUnit').value = '2'; }
+    var back = state.docs && state.docs[state.docKey] && !$('purchaseCard').hidden ? state.docs[state.docKey] : state.schedBack.owner;
+    if (back) useSched(back); else { state.schedOwner = null; state.sched = state.schedBack.sched; PER = 2; SLOTS = 24; $('schedMonths').value = 12; $('schedUnit').value = '2'; }
     state.schedBack = null; if (state.sched) renderGantt();
   }
   if (qs) refreshVendorList(qs.rec);
@@ -2920,7 +2932,13 @@ function loadDups(c) {
   c.dupsAt = Date.now();
   call('apiQuoteDups', c.rec.id).then(function (d) {
     c.dups = d.dups || {};
-    if (qs === c && !$('quoteView').hidden && Object.keys(c.dups).length) { qs.name = $('qName').value; qs.confirmer = $('qConfirmer').value; renderQSum(); }
+    if (qs !== c || $('quoteView').hidden) return;
+    c.items.forEach(function (x, i) {   // 입력 중인 칸을 건드리지 않게 경고만 끼워 넣음
+      var box = $('qItems').querySelector('.q-item[data-i="' + i + '"]'), html = dupHtml(c, x.src.item);
+      if (!box || !html) return;
+      var old = box.querySelector('.dup');
+      if (old) old.outerHTML = html; else box.querySelector('.q-head').insertAdjacentHTML('afterend', html);
+    });
   }).catch(function () { c.dupsAt = 0; });
 }
 function renderQSum() {
@@ -2937,7 +2955,7 @@ function renderQSum() {
   var fx = qs.rec.fixed || [];
   $('qFixed').innerHTML = !fx.length ? '' : '<h3>계약 품목 · 같이 들어감 (' + fx.length + ')</h3><p class="muted">견적종합에 계약 업체로 미리 선정된 줄로 들어가고, 업체선정사유는 LTA·3PP (Spot 단가는 Sole source) 입니다.</p>' +
     '<div class="scroll"><table class="list"><tr><th>ITEM</th><th>업체</th><th class="n">수량</th><th>Need-by</th><th class="n">단가</th><th>구분</th></tr>' + fx.map(function (l) {
-      var nb = (l.needs && l.needs.length > 1) ? l.needs.map(function (x) { return x.needBy + '(' + fmt(x.qty) + ')'; }).join('<br>') : esc(l.needBy || '');
+      var nb = (l.needs && l.needs.length > 1) ? l.needs.map(function (x) { return esc(x.needBy) + '(' + fmt(x.qty) + ')'; }).join('<br>') : esc(l.needBy || '');
       return '<tr><td><div class="data">' + esc(l.item) + '</div><div class="desc">' + esc(l.desc || '') + '</div></td><td>' + esc(l.supplier) + '</td><td class="n data">' + fmt(l.qty) + ' ' + esc(l.uom || '') +
         '</td><td class="data nw">' + nb + '</td><td class="n data">' + fmt(l.price) + ' ' + esc(l.cur) + '</td><td>' + esc(isSpotMode(l.priceMode) ? 'Sole source' : l.priceMode) + '</td></tr>';
     }).join('') + '</table></div>';
@@ -3103,7 +3121,7 @@ $('qCreate').onclick = function () {
   var items = qs.items.map(function (x, i) {
     var it = x.src;
     return { item: it.item, name: it.name, desc: it.desc, material: it.material || '', qpl: it.qpl, uom: it.uom, remark: it.remark, qty: it.qty, needBy: it.needBy, parts: it.parts, taxCode: it.taxCode || '',
-      program: x.program, prev: x.prev, quotes: p.items[i].quotes };
+      program: x.program, prev: x.prev, quotes: p.items[i].quotes, at: x.at, part: x.part };
   });
   var again = !!b.dataset.again; delete b.dataset.again;
   pickFolder('Spot 견적 구매내역서').then(function (folder) {
@@ -3345,13 +3363,15 @@ function progMeta(r) {
     '<i style="--p:' + Math.round((p.done + p.none) / p.all * 100) + '%"></i>견적 ' + p.done + '/' + p.all + ' 입력' + (p.none ? ' · 회신 없음 ' + p.none : '') + '</span>' +
     (nf ? '<span title="붙인 업체 견적서">📎 ' + nf + '</span>' : '');
 }
+function progWrap(r) { return '<span class="qprog-wrap" data-prog="' + esc(r.id) + '">' + progMeta(r) + '</span>'; }
+function refreshProgress(r) { var el = document.querySelector('[data-prog="' + r.id + '"]'); if (el) el.innerHTML = progMeta(r); }
 function recCard(r, child) {
   var rfq = r.kind === '견적요청서', open = rfq && state.recOpen[r.id];
   var chipCls = rfq ? 'chip-spot' : r.kind === '견적 구매내역서' ? 'chip-priced' : 'chip-ok';
   var head = '<div>' + (child ? '<span class="rec-arrow" aria-hidden="true">↳</span>' : '') + '<span class="chip ' + chipCls + '">' + esc(r.direct ? '견적 직접 입력' : r.kind) + '</span> <span class="rec-title">' + esc(r.title) + '</span></div>' +
     '<div class="rec-meta"><span>' + esc(r.created) + '</span><span>상태: <b>' + esc(r.status) + '</b></span><span>품목 ' + (r.items || []).length + '개</span>' +
       (rfq && (r.fixed || []).length ? '<span>+ 계약 ' + r.fixed.length + '개 같이</span>' : '') +
-      (rfq && (r.vendors || []).length ? progMeta(r) : '') + poMeta(r) + alertChips(r) + cfMeta(r) + revMeta(r) + '</div>' +
+      (rfq && (r.vendors || []).length ? progWrap(r) : '') + poMeta(r) + alertChips(r) + cfMeta(r) + revMeta(r) + '</div>' +
     (rfq ? mailLine(r) : '');
   return '<div class="rec' + (rfq ? ' rfq' : '') + (open ? ' open' : '') + (child ? ' child' : '') + '" data-id="' + esc(r.id) + '">' +
     (rfq ? '<button type="button" class="rec-toggle" data-toggle="' + esc(r.id) + '" aria-expanded="' + !!open + '">' + head + '</button>' : '<div>' + head + '</div>') +
@@ -3380,9 +3400,13 @@ function loadRecords() {
     if (urgent && String(urgent) !== prevUrgent) { $('recAlert').classList.remove('pop'); void $('recAlert').offsetWidth; $('recAlert').classList.add('pop'); }
     $('recAlert').title = urgent ? '회신 기한·발주 마감이 가깝거나 지난 기록 ' + urgent + '건' : '';
     $('recMe').textContent = d.me ? d.me + ' 기록' : '';
+    if ($('recMsg').querySelector('.load-err')) $('recMsg').innerHTML = '';
     if (!d.archiveReady) $('recMsg').innerHTML = '<span class="err">완료 보관 파일이 설정되지 않았습니다 (스크립트 속성 ARCHIVE_SHEET_ID).</span>';
     renderRecords();
-  }).catch(function (e) { $('recMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; });
+  }).catch(function (e) {
+    $('recMsg').innerHTML = '<span class="err load-err">기록을 불러오지 못했습니다: ' + esc(e.message || e) + '</span>';
+    if (!state.records && !state.recArchive) $('recList').innerHTML = '<div class="rec-empty err">기록을 불러오지 못했습니다. 잠시 뒤 새로고침해 주세요.</div>';
+  });
 }
 /* 검색·종류 필터: 묶음 안에 맞는 파일이 하나라도 있으면 묶음째 보임 */
 state.recKind = 'all'; state.recArchive = false;
@@ -3516,7 +3540,8 @@ function renderTrash() {
       call('apiRestoreDeleted', [id]).then(function (d) {
         state.trash = state.trash.filter(function (r) { return r.id !== id; });
         state.archived = null; renderArchive();
-        call('apiArchivedRecords').then(function (x) { state.archived = x.records || []; if (state.recArchive) renderArchive(); });
+        call('apiArchivedRecords').then(function (x) { state.archived = x.records || []; if (state.recArchive) renderArchive(); })
+          .catch(function (e) { $('recList').innerHTML = '<div class="rec-empty err">완료 기록을 다시 불러오지 못했습니다: ' + esc(e.message || e) + ' — 완료 기록 보기를 다시 눌러 주세요.</div>'; });
         toast('<b>완료 기록으로 되돌렸습니다</b><span class="muted">' + (d.history ? '구매 이력 ' + d.history + '줄도 다시 올림' : '구매 이력 줄은 없었음') + '</span>');
       }).catch(function (e) { b.disabled = false; b.textContent = '되돌리기'; toast('<b>되돌리지 못했습니다</b><span class="muted">' + esc(e.message || e) + '</span>', 'err'); });
     };
@@ -3720,7 +3745,8 @@ function renderPurchase() {
   });
   if (keys.indexOf(state.docKey) < 0) state.docKey = keys[0];
   var doc = curDoc(), K = DOC_KINDS[state.docKey], lines = docLines(state.docKey);
-  useSched(doc);
+  var schedAway = !!state.schedBack;   // 견적 종합이 구매일정 편집기를 쓰는 중
+  if (schedAway) state.schedBack.owner = doc; else useSched(doc);
   $('docTabs').hidden = $('docNote').hidden = keys.length < 2;
   $('docTabs').innerHTML = keys.map(function (k) {
     var n = docLines(k).length, d = state.docs[k];
@@ -3748,7 +3774,7 @@ function renderPurchase() {
   $('fileName').placeholder = state.autoName;
   $('confirmer').value = doc.confirmer;
   $('btnCreate').textContent = K.title + ' 만들기';
-  renderGantt();
+  if (!schedAway) renderGantt();
 }function autoFileName(sups, word) {
   var d = ($('base').value || '').replace(/-/g, '').slice(2);
   return d + (word || ' 구매내역서_') + sups.join('_');
@@ -4284,8 +4310,11 @@ function fillLastPurchases(c) {
       var p = m[String(x.src.item || '').trim().toUpperCase()], v = x.prev || {};
       if (!p || [v.year, v.qty, v.cur, v.price].some(function (t) { return String(t || '').trim(); })) return;
       x.prev = { year: p.year, qty: p.qty, cur: p.cur, price: p.price }; n++;
+      if (qs !== c || $('quoteView').hidden) return;
+      var box = $('qItems').querySelector('.q-item[data-i="' + c.items.indexOf(x) + '"]');   // 그 품목 칸에만 값 (입력 중인 곳은 그대로)
+      if (box) box.querySelectorAll('[data-p]').forEach(function (el) { if (document.activeElement !== el && !el.value) el.value = x.prev[el.dataset.p] == null ? '' : x.prev[el.dataset.p]; });
     });
-    if (n && qs === c && !$('quoteView').hidden) { renderQSum(); $('qMsg').innerHTML = '<span class="ok-msg">직전 구매 ' + n + '개를 구매 이력에서 채웠습니다 (고칠 수 있습니다).</span>'; }
+    if (n && qs === c && !$('quoteView').hidden) { updateRanks(); $('qMsg').innerHTML = '<span class="ok-msg">직전 구매 ' + n + '개를 구매 이력에서 채웠습니다 (고칠 수 있습니다).</span>'; }
   }).catch(function () { /* 이력 없음 */ });
 }
 
@@ -4351,7 +4380,11 @@ $('dgToggle').onclick = function () {
   call('apiSetDigest', !dg.on, +$('dgHour').value).then(function (d) { dg = d; renderDigest(); })
     .catch(function (e) { $('recMsg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; b.disabled = false; });
 };
-$('dgHour').onchange = function () { if (dg.on) call('apiSetDigest', true, +this.value).then(function (d) { dg = d; renderDigest(); }); };
+$('dgHour').onchange = function () {
+  if (!dg.on) return;
+  call('apiSetDigest', true, +this.value).then(function (d) { dg = d; renderDigest(); })
+    .catch(function (e) { renderDigest(); $('recMsg').innerHTML = '<span class="err">아침 요약 시간을 바꾸지 못했습니다: ' + esc(e.message || e) + '</span>'; });   // 예전 시간으로 되돌려 보여 줌
+};
 $('dgPreview').onclick = function () {
   var out = $('dgOut');
   if (!out.hidden) { out.hidden = true; return; }
@@ -4734,7 +4767,7 @@ function makingStart(fn) {
   mkCur.iv = setInterval(mkTick, 500);
   return mkCur;
 }
-function makingEnd(m) { clearInterval(m.iv); if (mkCur === m) { mkCur = null; $('mk').hidden = true; } }
+function makingEnd(m) { clearInterval(m.iv); if (mkCur === m) { mkCur = null; $('mk').hidden = true; document.body.classList.remove('mk-mini'); } }
 function makingDone(m, d) {
   var files = d && d.files && d.files.length ? d.files : d && d.url ? [d] : [];
   $('mk').classList.add('ok');
@@ -4751,8 +4784,16 @@ function makingFail(m, e) {
   if (/SPOT_EXISTS\|/.test(String((e && e.message) || e))) return;   // 이미 만든 파일: 화면에서 한 번 더 확인
   toast('<b>' + esc(m.cfg.t) + '를 만들지 못했습니다</b><span class="muted">' + esc((e && e.message) || e) + '</span>', 'err');
 }
-$('mkHide').onclick = function () { $('mk').classList.add('mini'); };
-$('mkPill').onclick = function () { $('mk').classList.remove('mini'); };
+$('mkHide').onclick = function () { $('mk').classList.add('mini'); document.body.classList.add('mk-mini'); };
+$('mkPill').onclick = function () { $('mk').classList.remove('mini'); document.body.classList.remove('mk-mini'); };
+
+/* 한 번 더 눌러 확인하는 버튼(data-ok): 더블클릭의 두 번째 누름으로 바로 실행되지 않게 0.5초 안의 누름은 무시 */
+document.addEventListener('click', function (e) {
+  var b = e.target && e.target.closest ? e.target.closest('button') : null;
+  if (!b) return;
+  if (b.dataset.ok && b._armAt && Date.now() - b._armAt < 500) { e.stopImmediatePropagation(); e.preventDefault(); return; }
+  if (!b.dataset.ok) setTimeout(function () { if (b.dataset.ok) b._armAt = Date.now(); }, 0);
+}, true);
 
 /* 오른쪽 아래 알림: 8초 뒤 사라짐 (마우스를 올리면 멈춤) */
 function toast(html, kind, sticky) {   // sticky: 닫기를 누를 때까지 (중요한 안내)
@@ -4978,7 +5019,9 @@ document.querySelectorAll('[data-ms]').forEach(function (b) {
 $('msMore').onclick = function () { ms.limit += 100; renderMaster(); };
 $('msReload').onclick = function () {
   var b = this; b.disabled = true; b.textContent = '받는 중…';
-  loadDb(false).then(function () { return loadMaster(true); }).finally(function () { b.disabled = false; b.textContent = '시트에서 다시 받기'; });
+  loadDb(false).then(function () { return loadMaster(true); })
+    .catch(function (e) { $('msStamp').innerHTML = '<span class="err">시트에서 받지 못했습니다: ' + esc(e.message || e) + '</span>'; })
+    .finally(function () { b.disabled = false; b.textContent = '시트에서 다시 받기'; });
 };
 
 checkAuth();   // 로그인 확인 → 화면 시작

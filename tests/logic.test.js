@@ -89,7 +89,7 @@ test('공백이 들어간 품번 (탭·공백 붙여넣기 모두)', () => {
 });
 
 test('MOQ 미달 경고', () => {
-  const c = L.parseContracts_([['Item', '업체명', '계약시작', '계약종료', 'MOQ'], ['A1', 'S', '2026-01-01', '2028-12-31', '6,000'], ['B1', 'S', '2026-01-01', '2028-12-31', '-']]);
+  const c = L.parseContracts_([['Item', '업체명', '단가', '계약시작', '계약종료', 'MOQ'], ['A1', 'S', 1, '2026-01-01', '2028-12-31', '6,000'], ['B1', 'S', 1, '2026-01-01', '2028-12-31', '-']]);
   const r = L.classify_(L.parseRequest_('A1 50 2027-06-10\nA1 6000 2027-06-10\nB1 1 2027-06-10').requests, c, L.toDate_('2026-11-09'));
   assert.deepStrictEqual(r.map(x => x.warnings), [['수량 50 → MOQ(최소 6000) · 6000개로 주문'], [], []]);
 });
@@ -876,4 +876,20 @@ test('진행기록 칸 나누기 · 견적 바뀐 것 요약', () => {
     { vendors: ['A', 'C'], noReply: { C: true }, valid: { A: '2026-12-31' }, items: [{ at: 0, quotes: { A: { price: '12', cur: 'USD', sel: true } } }] }, [{ item: 'KERC1' }]);
   assert.deepStrictEqual(d, ['업체 추가 C', '업체 뺌 B', 'KERC1 A: 단가 10→12, 선정', 'KERC1 B: 단가 9→빈칸', 'C 회신 없음', 'A 유효기간 빈칸→2026-12-31']);
   assert.deepStrictEqual(L.quoteDiff_({ items: [{ quotes: { A: { price: '1' } } }] }, { items: [{ quotes: { A: { price: '1' } } }] }, []), []);
+});
+
+test('계약 단가가 비면 경고 · 없는 날짜는 null · 이모지 경계에서 자르지 않음 · Spot 외화', () => {
+  const c = L.parseContracts_([['Item', '계약 구분', '업체명', '단가', 'CUR', '계약시작', '계약종료'], ['A1', 'LTA', 'S', '', 'USD', '2026-01-01', '2028-12-31']]);
+  const r = L.classify_(L.parseRequest_('A1 5 2027-06-10').requests, c, L.toDate_('2026-11-09'));
+  assert.strictEqual(r[0].route, 'contract');
+  assert.ok(/단가가 비어/.test(r[0].warnings[0]));
+  assert.strictEqual(L.toDate_('2027-02-30'), null);
+  assert.strictEqual(L.toDate_('2027-13-01'), null);
+  assert.strictEqual(L.fmtDate_(L.toDate_('2028-02-29')), '2028-02-29');
+  const t = 'a'.repeat(4) + '😀' + 'b';
+  const parts = L.chunkText_(t, 5);
+  assert.strictEqual(parts.join(''), t);
+  assert.ok(parts.every(p => !/[\uD800-\uDBFF]$/.test(p)), JSON.stringify(parts));
+  assert.deepStrictEqual(L.spotCurrencies_([{ quotes: { A: { price: '1', cur: 'jpy' }, B: { price: 'NO BID', cur: 'EUR' }, C: { price: '2', cur: 'KRW' }, D: { price: '3', cur: 'SGD', noReply: true } } },
+    { fixed: { cur: 'USD' } }], ['A', 'B', 'C', 'D']), ['JPY', 'USD']);
 });
