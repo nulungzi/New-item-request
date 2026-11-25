@@ -28,7 +28,7 @@ const VSHEET = [[], ['', '업체명', '이메일', 'SUPPLIER', 'SITE', 'CONTACT'
 const rfqItems = [{ item: 'KERN00736-001', registered: true, name: '88TB0110', desc: 'TAPE, MASKING', qty: 3, uom: 'SH', needBy: '2027-03-01' },
   { item: 'KERN02113-001', registered: true, name: 'A88TB0092-6', desc: 'SPACER', qty: 10, uom: 'PC', needBy: '2027-03-15' },
   { item: 'KERN00278-014', registered: true, name: 'A5000V 2MIL', desc: 'FEP FILM', qty: 64, uom: 'RL', needBy: '2027-05-10', parts: [{ qty: 32, needBy: '2027-05-10' }, { qty: 32, needBy: '2027-08-10' }] }];
-const quote = { vendors: ['OMI', 'CBOL', 'Armacorp', 'Aerovac'], noReply: { Armacorp: true }, valid: { OMI: '2026-12-31', CBOL: '2026-11-18' }, rates: { USD: 1350 }, items: [
+const quote = { vendors: ['OMI', 'CBOL', 'Armacorp', 'Aerovac'], noReply: { Armacorp: true }, valid: { OMI: '2026-12-31', CBOL: '2026-11-18' }, extra: { OMI: { costs: [{ name: 'Freight', amount: '120', cur: 'USD' }, { name: 'Hazmat', amount: '45', cur: 'USD' }], mov: { amount: '300', cur: 'USD' } } }, rates: { USD: 1350 }, items: [
   { prev: { year: 2026, qty: 5, cur: 'USD', price: 9.4 }, quotes: { OMI: { price: 12.5, cur: 'USD', qty: 3, uom: 'SH', lt: '4wks', mfg: '3M' }, CBOL: { price: 11.8, cur: 'USD', qty: 3, uom: 'SH', lt: '6wks', mfg: '3M', sel: true }, Aerovac: { price: 'NO BID', qty: 3, uom: 'SH' } } },
   { quotes: { OMI: { price: 2.1, cur: 'USD', qty: 10, uom: 'PC', lt: '8wks', sel: true }, CBOL: { price: 1.95, cur: 'USD', qty: 10, uom: 'PC', lt: '10wks' } } },
   { quotes: { OMI: { price: 'NO BID' }, Aerovac: { price: 79, cur: 'USD', qty: 64, uom: 'RL', lt: '3wks', mfg: 'AEROVAC', sel: true } } }] };
@@ -163,7 +163,7 @@ const vendorsResp = () => { const info = L.vendorInfo_(VSHEET); return { vendors
   await pg.click('#rpCancel');
   // 5. 진행 중
   await pg.evaluate(() => showView('records')); await pg.waitForTimeout(300);
-  await shot('records', '#recPanel', { c1: '.rec-ghead', c2: '[data-gdone]', c3: '.rec[data-id="R1"] [data-step="revise"]', c7: '.rec[data-id="R2"] .fx-meta' }, { top: '.rec-group' });
+  await shot('records', '#recPanel', { c1: '.rec-ghead', c2: '[data-gdone]', c3: '.rec[data-id="R1"] [data-step="revise"]', c7: '.rec[data-id="R2"] .fx-meta', c10: '[data-po="R3"]' }, { top: '.rec-group' });
   await pg.evaluate(() => openRevise(recById('R1'))); await pg.waitForTimeout(200);
   await pg.fill('#rvTbl tr[data-i="0"] [data-f="qty"]', '5');
   await pg.click('#rvAdd'); await pg.fill('#rvTbl tr:last-child [data-f="item"]', 'KERN02200-001'); await pg.fill('#rvTbl tr:last-child [data-f="name"]', 'A88TB0100'); await pg.fill('#rvTbl tr:last-child [data-f="qty"]', '20');
@@ -194,14 +194,15 @@ const vendorsResp = () => { const info = L.vendorInfo_(VSHEET); return { vendors
   await pg.click('#dmCancel');
   // 견적 입력 표
   await pg.click('[data-vendor="OMI"]'); await pg.waitForTimeout(400);
-  await shot('qtable', '#vDrawer .drawer', { q3: '#vdBody tr[data-i="0"] [data-f="price"]', q8: '#vdAttach', q9: '#vdValid' });
+  await pg.click('#vdExtra summary').catch(() => {}); await pg.waitForTimeout(150);
+  await shot('qtable', '#vDrawer .drawer', { q3: '#vdBody tr[data-i="0"] [data-f="price"]', q8: '#vdAttach', q9: '#vdValid', q12: '#vdExtra summary', q13: '#vdBody [data-qsplit]' });
   await pg.click('#vdDone'); await pg.waitForTimeout(300);
   // 견적 종합
   await pg.click('[data-sum="R1"]'); await pg.waitForTimeout(300);
   await pg.selectOption('#qItems .q-item[data-i="0"] tr[data-v="CBOL"] [data-f="nbMode"]', 'adj'); await pg.waitForTimeout(100);
   await shot('qnb', '#qItems .q-item[data-i="0"]', { q4: '#qItems .q-item[data-i="0"] tr[data-v="CBOL"] input[type="radio"]', q7: '#qItems .q-item[data-i="0"] tr[data-v="CBOL"] [data-f="nbMode"]' });
   await shot('qdup', '#qItems .q-item[data-i="1"]', { q11: '#qItems .q-item[data-i="1"] .dup' });
-  await shot('qbest', '#qItems', { q5: '#qBest .warn-txt' }, { top: '#qBest', maxH: 820 });
+  await shot('qbest', '#qItems', { q5: '#qBest .warn-txt', q14: '#qVendorTot h3' }, { top: '#qBest', maxH: 900 });
   await pg.click('#qBack'); await pg.waitForTimeout(200);
   await pg.click('[data-vendor="Aerovac"]'); await pg.waitForTimeout(400);
   await pg.click('[data-split="2"]'); await pg.waitForTimeout(200);

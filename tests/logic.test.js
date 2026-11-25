@@ -597,8 +597,8 @@ test('견적 입력용 시트: 사이트 표와 같은 열, Need-by 여러 건�
     { item: 'KERN00736-001', name: '88TB0110', qty: 1, uom: 'SH', needBy: '2027-03-01' },
     { item: 'KERC00064', name: 'PRIMER', qty: 1020, uom: 'KT', needBy: '2027-03-15', parts: [{ qty: 500, needBy: '2027-03-15' }, { qty: 520, needBy: '2027-04-15' }] }]);
   assert.deepStrictEqual(rows[0].slice(0, 6), ['No', 'Item code', 'Item name', '요청 수량', 'Need-by', 'U/P (단가)']);
-  assert.strictEqual(rows[0].length, 14);
-  assert.deepStrictEqual(rows[1], [1, 'KERN00736-001', '88TB0110', 1, '2027-03-01', '', '', 1, 'SH', '', '', '', '', '']);
+  assert.strictEqual(rows[0].length, 15);
+  assert.deepStrictEqual(rows[1], [1, 'KERN00736-001', '88TB0110', 1, '2027-03-01', '', '', 1, 'SH', '', '', '', '', '', '']);
   assert.strictEqual(rows[2][4], '2027-03-15(500), 2027-04-15(520)');
   const used = {};
   assert.deepStrictEqual(['A/B:C', 'a/b:c', '사용 방법'].map(n => L.sheetTabName_(n, used)), ['A B C', 'a b c (2)', '사용 방법']);
@@ -707,7 +707,7 @@ test('진행 중 알림: 회신 기한(미회신 업체 있을 때) · 발주 �
     quote: { noReply: { AERO: true }, items: [{ quotes: { CBOL: { price: '11' }, OMI: { price: '' } } }] } };
   assert.deepStrictEqual(L.pendingVendors_(rfq), ['OMI']);
   const a = L.recordAlert_(rfq, today);
-  assert.strictEqual(JSON.stringify(a), JSON.stringify({ level: 'soon', due: { date: '2026-11-14', days: 1, pending: ['OMI'], level: 'soon' } }));
+  assert.strictEqual(JSON.stringify(a), JSON.stringify({ level: 'soon', due: { date: '2026-11-14', days: 1, pending: ['OMI'], partial: [], level: 'soon' } }));
   assert.strictEqual(L.recordAlert_(Object.assign({}, rfq, { due: '2026-11-10' }), today).level, 'late');
   assert.strictEqual(L.recordAlert_(Object.assign({}, rfq, { due: '2026-11-30' }), today).level, '');      // 아직 여유 → 배지만
   assert.strictEqual(L.recordAlert_(Object.assign({}, rfq, { draft: '' }), today).due, undefined);          // 메일 전
@@ -900,4 +900,67 @@ test('확정 환율 기록: 출처(자동 · 환율 탭 · 직접 입력)와 시
   assert.deepStrictEqual(JSON.parse(JSON.stringify(fx)), { at: '2026-11-25 10:12', rates: {
     USD: { v: 1473.47, src: 'auto', tabAt: '2026-11-25' }, JPY: { v: 9.4, src: 'tab', tabAt: '2026-11-20' }, EUR: { v: 1590, src: 'typed', tab: 1600, tabAt: '2026-11-01' } } });
   assert.strictEqual(L.fxText_(fx), 'USD 1,473.47 (자동 · 환율 탭 수식) · JPY 9.40 (환율 탭 2026-11-20) · EUR 1,590.00 (직접 입력, 환율 탭 1,600.00)');
+});
+
+test('단가 읽기: 천 단위 쉼표 · 통화 표시는 빼고 읽음', () => {
+  assert.deepStrictEqual(['1,234.50', '$12.50', 'USD 12.5', '12,500원', '₩ 1,250,000', '1,200', 'NO BID', ''].map(L.toNumber_), [1234.5, 12.5, 12.5, 12500, 1250000, 1200, null, null]);
+});
+
+test('견적요청서 수정 내역 · [Revised] 메일 표 · KE No 규칙 하나', () => {
+  const old = [{ item: 'A1', name: 'A', qty: 100, needBy: '2027-01-10', registered: true }, { item: 'B1', name: 'B', qty: 5, needBy: '2027-02-01', registered: true }, { item: 'C1', name: 'C', qty: 1, needBy: '2027-03-01' }];
+  const neu = [{ item: 'A1', name: 'A', qty: 50, needBy: '2027-01-10', registered: true }, { item: 'C1', name: 'C', qty: 1, needBy: '2027-03-01' }, { item: '', name: 'NEW PART', qty: 2, needBy: '', registered: false }];
+  const ch = L.rfqChanges_(old, neu);
+  assert.deepStrictEqual(ch.map(c => [c.item, c.kind, c.before, c.after]), [
+    ['A1', 'changed', '100 · 2027-01-10', '50 · 2027-01-10'], ['B1', 'removed', '5 · 2027-02-01', ''], ['NEW PART', 'added', '', '2 · ASAP']]);
+  const m = L.rfqEmail_(neu, '2026-12-01', '', { revised: true, changes: ch });
+  assert.ok(/Changes in this revision/.test(m.html) && /<b>Removed<\/b>/.test(m.html) && /- Changed: A1 A \| before 100/.test(m.text));
+  assert.strictEqual(L.keNo_({ item: 'A1' }), 'A1');
+  assert.strictEqual(L.keNo_({ item: 'A1', registered: false }), 'TBD');
+  const ops = L.buildRfqPlan_([{ item: 'A1', name: 'A', qty: 1, needBy: L.toDate_('2027-01-10') }], L.toDate_('2026-11-25'));
+  assert.strictEqual(ops.filter(o => o.op === 'set' && o.c === L.RFQ.C.KE)[0].v, 'A1');   // registered 가 없어도 메일과 같게 코드
+  const r = L.rfqEmail_([{ item: 'Z9', name: 'Z', qty: 1 }], '', '', { sentOn: '11/20' });
+  assert.ok(/remaining items/.test(r.text));
+});
+
+test('일부 품목만 견적 낸 업체 → 일부 회신 (재요청 대상)', () => {
+  const rec = { kind: '견적요청서', draft: 'D', due: '2026-11-26', vendors: ['A', 'B', 'C'], items: [{ item: 'X' }, { item: 'Y' }], mails: [{ vendors: ['A', 'B', 'C'] }],
+    quote: { items: [{ at: 0, quotes: { A: { price: '1' }, B: { price: '2' } } }, { at: 1, quotes: { A: { price: 'NO BID' } } }] } };
+  assert.deepStrictEqual(L.partialVendors_(rec), ['B']);
+  assert.deepStrictEqual(L.pendingVendors_(rec), ['C']);
+  const a = L.recordAlert_(rec, L.toDate_('2026-11-25'));
+  assert.deepStrictEqual([a.due.pending, a.due.partial], [['C'], ['B']]);
+  assert.strictEqual(L.recordAlert_({ kind: '견적 구매내역서', status: '대체됨', replacedBy: 'N', items: [{ deadline: '2026-11-20' }] }, L.toDate_('2026-11-25')).level, '');
+});
+
+test('계약 공백: 곧 시작하는 계약 안내 · 끝난 계약 단가 참고', () => {
+  const c = L.parseContracts_([['Item', '계약 구분', '업체명', '단가', 'CUR', '계약시작', '계약종료'],
+    ['A1', 'LTA', 'AKZO', 10, 'USD', '2025-01-01', '2026-10-31'], ['A1', 'LTA', 'AKZO', 11, 'USD', '2027-01-01', '2028-12-31']]);
+  const r = L.classify_(L.parseRequest_('A1 5 2026-12-15').requests, c, L.toDate_('2026-11-25'))[0];
+  assert.strictEqual(r.route, 'rfq');
+  assert.ok(r.warnings.some(w => /2027-01-01 이후로 옮기면 LTA \(AKZO, USD 11\)/.test(w)), r.warnings.join('|'));
+  assert.ok(r.warnings.some(w => /끝난 계약 단가 참고: USD 10 \(AKZO, 2026-10-31 종료\)/.test(w)));
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(r.refPrice)), { price: 10, cur: 'USD', supplier: 'AKZO', end: '2026-10-31', mode: 'LTA' });
+});
+
+test('업체 추가 비용 (선택): 업체 · 통화별 줄, 선정했을 때만 금액 (COUNTIFS), VAT 포함은 /1.1, 없으면 그대로', () => {
+  const costs = { V1: { costs: [{ name: 'Freight', amount: '150', cur: 'USD' }, { name: 'Hazmat', amount: '50', cur: 'usd' }, { name: 'Handling', amount: '30,000', cur: 'KRW' }, { name: 'x', amount: '' }], mov: { amount: 500, cur: 'USD' } }, V2: { vat: true } };
+  assert.deepStrictEqual(L.extraLines_(costs, ['V1', 'V2']).map(x => [x.vendor, x.cur, x.amount, x.names.join('+')]), [['V1', 'USD', 200, 'Freight+Hazmat'], ['V1', 'KRW', 30000, 'Handling']]);
+  assert.strictEqual(L.extraNote_(costs.V1), '추가 비용 Freight USD 150 · Hazmat USD 50 · Handling KRW 30,000 / 최소주문 USD 500');
+  assert.strictEqual(L.exVat_('110,000'), 100000);
+  const items = [{ item: 'K1', name: 'A', qty: 1, uom: 'EA', needBy: L.toDate_('2027-01-10'), quotes: { V1: { price: '10', cur: 'USD', sel: true }, V2: { price: '11,000', cur: 'KRW' } } }];
+  const ops = L.buildSpotPlan_(items, ['V1', 'V2'], { USD: 1400 }, L.toDate_('2026-11-25'), null, { costs });
+  const at = (s, r, c) => (ops.filter(o => o.op === 'set' && o.s === s && o.r === r && o.c === c).pop() || {}).v;
+  const D = L.SPOT.DETAIL, f = L.SPOT.D_FIRST;
+  assert.strictEqual(at(D, f + 1, 2), '추가 비용');
+  assert.ok(/^=IF\(COUNTIFS\('견적종합'!\$A:\$A, TRUE, '견적종합'!\$AD:\$AD, "V1"\)>0, 200, 0\)$/.test(at(D, f + 1, 12)), at(D, f + 1, 12));
+  assert.strictEqual(at(D, f + 2, 11), 'KRW');
+  assert.strictEqual(at(L.SPOT.QUOTE, L.SPOT.Q_FIRST + 1, 34), 10000);   // V2 VAT 포함 11,000 → 10,000
+  assert.ok(/VAT 포함 견적 11,000/.test(at(L.SPOT.QUOTE, L.SPOT.Q_FIRST + 1, L.SPOT.Q_REMARK)));
+  // 추가 비용이 없으면 예전과 같은 계획
+  const a = JSON.stringify(L.buildSpotPlan_(items, ['V1', 'V2'], { USD: 1400 }, L.toDate_('2026-11-25'), null, {}));
+  const b = JSON.stringify(L.buildSpotPlan_(items, ['V1', 'V2'], { USD: 1400 }, L.toDate_('2026-11-25'), null, { costs: {} }));
+  assert.strictEqual(a, b);
+  assert.ok(!/추가 비용/.test(a));
+  // 품목 사이 굵은 줄
+  assert.ok(ops.some(o => o.op === 'bottom' && o.s === L.SPOT.QUOTE && o.style === 'medium' && o.r === L.SPOT.Q_FIRST + 1));
 });

@@ -63,7 +63,7 @@ for o in ops:
         for c in range(o['c1'], o['c2'] + 1):
             cell = ws.cell(o['r'], c)
             b = copy(cell.border)
-            cell.border = Border(left=b.left, right=b.right, top=b.top, bottom=Side(style='thin', color='FF000000'))
+            cell.border = Border(left=b.left, right=b.right, top=b.top, bottom=Side(style=o.get('style', 'thin'), color='FF000000'))
     elif op == 'list':
         ws = wb[o['s']]
         dv = DataValidation(type='list', formula1='"' + ','.join(o['items']) + '"', showErrorMessage=False)

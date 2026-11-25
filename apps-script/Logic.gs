@@ -119,10 +119,43 @@ function fxText_(fx) {
   }).join(' · ');
 }
 
+/*
+ * 업체별 추가 비용 · 조건 (선택): extra[업체] = {costs:[{name, amount, cur}], vat: 단가가 VAT 포함, mov:{amount, cur} 최소주문금액}
+ *   없으면 아무것도 바뀌지 않음
+ */
+var EXTRA_NAMES = ['Freight', 'Hazmat', 'Handling', 'Packing', '통관 · 검사', '기타'];
+/** 업체 · 통화별로 합친 추가 비용 줄 [{vendor, cur, amount, names}] (금액이 0 보다 큰 것만, vendors 순서) */
+function extraLines_(extra, vendors) {
+  var out = [];
+  (vendors || []).forEach(function (v) {
+    var by = {}, order = [];
+    (((extra || {})[v] || {}).costs || []).forEach(function (c) {
+      var a = toNumber_(c && c.amount), cur = String((c && c.cur) || '').trim().toUpperCase() || 'KRW';
+      if (!(a > 0)) return;
+      if (!by[cur]) { by[cur] = { vendor: v, cur: cur, amount: 0, names: [] }; order.push(cur); }
+      by[cur].amount = Math.round((by[cur].amount + a) * 100) / 100;
+      by[cur].names.push(String(c.name || '기타').trim() || '기타');
+    });
+    order.forEach(function (c) { out.push(by[c]); });
+  });
+  return out;
+}
+/** 견적종합 Supplier Remarks 에 붙일 글: '추가 비용 Freight USD 150 · Hazmat USD 50 / 최소주문 USD 500' */
+function extraNote_(x) {
+  if (!x) return '';
+  var f = function (n) { return qtyText_(n); };
+  var cs = (x.costs || []).filter(function (c) { return toNumber_(c && c.amount) > 0; }).map(function (c) { return (String(c.name || '기타').trim() || '기타') + ' ' + (String(c.cur || 'KRW').toUpperCase()) + ' ' + f(toNumber_(c.amount)); });
+  var mov = x.mov && toNumber_(x.mov.amount) > 0 ? '최소주문 ' + String(x.mov.cur || 'KRW').toUpperCase() + ' ' + f(toNumber_(x.mov.amount)) : '';
+  return [cs.length ? '추가 비용 ' + cs.join(' · ') : '', mov].filter(Boolean).join(' / ');
+}
+/** VAT 포함 견적이면 VAT 제외 단가 (/1.1, 소수 둘째 자리) */
+function exVat_(price) { var n = toNumber_(price); return n === null ? price : Math.round(n / 1.1 * 100) / 100; }
+
 /** Spot 견적 구매내역서에 들어갈 외화 (KRW 제외): 계약 줄 통화 + 회신 없음 · NO BID 가 아닌 견적의 통화 */
-function spotCurrencies_(items, vendors) {
+function spotCurrencies_(items, vendors, extra) {
   var out = [];
   var add = function (c) { c = String(c || '').trim().toUpperCase(); if (c && c !== 'KRW' && out.indexOf(c) < 0) out.push(c); };
+  extraLines_(extra, vendors || []).forEach(function (x) { add(x.cur); });   // 업체 추가 비용 통화
   (items || []).forEach(function (it) {
     if (it.fixed) { add(it.fixed.cur); return; }
     (vendors || Object.keys(it.quotes || {})).forEach(function (v) {
@@ -176,9 +209,15 @@ function fmtDate_(d) {
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
 }
 
+/**
+ * 글자 → 숫자. 천 단위 쉼표(1,234.50)와 띄어쓰기, 앞뒤의 통화 표시($ € ¥ ₩ £ · USD 12 · 12원)는 빼고 읽음.
+ * 쉼표는 늘 천 단위로 봄 (유럽식 소수점 쉼표 12,50 은 쓰지 않음)
+ */
 function toNumber_(v) {
   if (typeof v === 'number') return v;
-  var n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
+  var s = String(v == null ? '' : v).replace(/[,\s\u00a0]/g, '')
+    .replace(/^(?:US\$|S\$|[A-Za-z]{3}(?=[\d.+-]))|^[$€¥₩£￦]/, '').replace(/(?:[A-Za-z]{3}|원)$/, '');
+  var n = parseFloat(s);
   return isNaN(n) ? null : n;
 }
 
@@ -421,6 +460,11 @@ function classify_(requests, contracts, today) {
           ? 'Need-by 시점 계약 만료 (' + last.supplier + ', ' + fmtDate_(last.end) + ' 종료)'
           : 'Need-by 시점 계약 시작 전 (' + last.supplier + ', ' + fmtDate_(last.start) + ' 시작)';
       } else res.reason = 'Spot 자재 · DB 단가 없음' + (spots.some(function (c) { return c.price !== null && c.price !== ''; }) ? ' (단가 기간 지남)' : '');
+      // 계약 공백: 곧 시작하는 계약이 있으면 Need-by 를 옮기면 계약을 쓸 수 있음 · 끝난 계약 단가는 견적 적정성 참고
+      var next = deals.filter(function (c) { return c.start && c.start > d; }).sort(function (a, b) { return a.start - b.start; })[0];
+      if (next) res.warnings.push('Need-by 를 ' + fmtDate_(next.start) + ' 이후로 옮기면 ' + (next.priceMode || '계약') + ' (' + next.supplier + (next.price !== null && next.price !== '' ? ', ' + next.cur + ' ' + qtyText_(next.price) : '') + ') 적용 가능 — 사업부와 협의');
+      var prevC = deals.filter(function (c) { return c.end && c.end < d && c.price !== null && c.price !== ''; }).sort(function (a, b) { return b.end - a.end; })[0];
+      if (prevC) { res.refPrice = { price: prevC.price, cur: prevC.cur, supplier: prevC.supplier, end: fmtDate_(prevC.end), mode: prevC.priceMode }; res.warnings.push('끝난 계약 단가 참고: ' + prevC.cur + ' ' + qtyText_(prevC.price) + ' (' + prevC.supplier + ', ' + fmtDate_(prevC.end) + ' 종료) — 견적 단가 비교용'); }
       var ref = all[0];
       if (ref) { res.desc = ref.desc; res.qpl = ref.qpl; res.uom = ref.uom; res.material = ref.material; }
     }
@@ -933,15 +977,30 @@ function pendingVendors_(rec) {
     return !items.some(function (x) { var p = x && x.quotes && x.quotes[v]; return p && !p.noReply && String(p.price == null ? '' : p.price).trim(); });
   });
 }
+/** 메일을 보낸 업체 중 일부 품목만 견적을 낸 업체 (NO BID 도 답으로 셈) — 재요청 대상 */
+function partialVendors_(rec) {
+  var q = rec.quote || {}, noReply = q.noReply || {}, lines = quoteLines_(q.items || []);
+  var mailed = {}, anyMail = false;
+  (rec.mails || []).forEach(function (m) { (m.vendors || []).forEach(function (v) { mailed[v] = 1; anyMail = true; }); });
+  var keys = uniq_((rec.items || []).map(function (it, i) { return String(i); }));
+  return (rec.vendors || []).filter(function (v) {
+    if (noReply[v] || (anyMail && !mailed[v])) return false;
+    var done = {};
+    lines.forEach(function (l) { var p = l.x.quotes && l.x.quotes[v]; if (p && !p.noReply && String(p.price == null ? '' : p.price).trim()) done[String(l.at)] = 1; });
+    var n = Object.keys(done).length;
+    return n > 0 && n < keys.length;
+  });
+}
 function recordAlert_(rec, today) {
   var t = toDate_(today), out = { level: '' };
   var days = function (d) { d = toDate_(d); return d && t ? Math.round((d - t) / 86400000) : null; };
   var lv = function (n, soon) { return n === null ? '' : n < 0 ? 'late' : n <= soon ? 'soon' : ''; };
+  if (rec.replacedBy || rec.status === '대체됨') return out;   // 하나 더 만들어 대체된 구매내역서
   if (rec.kind === '견적요청서') {
-    var pend = rec.draft ? pendingVendors_(rec) : [], due = toDate_(rec.due);
-    if (due && pend.length && !rec.spotFile) {
+    var pend = rec.draft ? pendingVendors_(rec) : [], part = rec.draft ? partialVendors_(rec) : [], due = toDate_(rec.due);
+    if (due && (pend.length || part.length) && !rec.spotFile) {
       var n = days(due);
-      out.due = { date: fmtDate_(due), days: n, pending: pend, level: lv(n, ALERT.DUE_SOON) };
+      out.due = { date: fmtDate_(due), days: n, pending: pend, partial: part, level: lv(n, ALERT.DUE_SOON) };
       out.level = out.due.level;
     }
   } else {
@@ -987,8 +1046,8 @@ function digest_(records, expiring, today, url) {
     text.push('');
   };
   block('견적 회신 기한', rfq.map(function (x) {
-    return '<b>' + e(dd(x.a.days)) + '</b> ' + e(x.r.title) + ' · 회신 기한 ' + e(x.a.date) + ' · 미회신 ' + e(x.a.pending.join(', '));
-  }), rfq.map(function (x) { return dd(x.a.days) + ' ' + x.r.title + ' · 회신 기한 ' + x.a.date + ' · 미회신 ' + x.a.pending.join(', '); }));
+    return '<b>' + e(dd(x.a.days)) + '</b> ' + e(x.r.title) + ' · 회신 기한 ' + e(x.a.date) + (x.a.pending.length ? ' · 미회신 ' + e(x.a.pending.join(', ')) : '') + ((x.a.partial || []).length ? ' · 일부 회신 ' + e(x.a.partial.join(', ')) : '');
+  }), rfq.map(function (x) { return dd(x.a.days) + ' ' + x.r.title + ' · 회신 기한 ' + x.a.date + (x.a.pending.length ? ' · 미회신 ' + x.a.pending.join(', ') : '') + ((x.a.partial || []).length ? ' · 일부 회신 ' + x.a.partial.join(', ') : ''); }));
   block('발주 마감', po.map(function (x) {
     return '<b>' + e(dd(x.a.days)) + '</b> ' + e(x.r.title) + ' · 발주 마감 ' + e(x.a.date) + (x.a.count > 1 ? ' (' + x.a.count + '품목)' : '') + ' · 상태 ' + e((x.r.po && x.r.po.stage) || x.r.status);
   }), po.map(function (x) { return dd(x.a.days) + ' ' + x.r.title + ' · 발주 마감 ' + x.a.date; }));
@@ -1375,7 +1434,7 @@ function buildRfqPlan_(items, base) {
     if (i) ops.push({ op: 'rowFmt', s: S, fs: S, fr: RFQ.FIRST, r: r, c1: 1, c2: C.LAST });
     ops.push({ op: 'height', s: S, r: r, pt: RFQ.ROW_PT });
     set(r, C.LI, i + 1);
-    set(r, C.KE, it.registered ? it.item : 'TBD');
+    set(r, C.KE, keNo_(it));
     set(r, C.NAME, txt_(it.name || ''));
     set(r, C.DESC, txt_(it.desc || ''));
     set(r, C.QPL, txt_(it.qpl || ''));
@@ -1392,6 +1451,32 @@ function buildRfqPlan_(items, base) {
  * 메일 본문 (HTML + 글자). items 는 견적요청서와 같은 목록, due 'm/d', signature HTML
  * remind: {sentOn: 'm/d'} 이면 재요청(아직 견적을 못 받은 업체에 다시) 문구
  */
+/** 견적요청서 · 메일의 KE No: 자재정보에 없는 자재(registered false)나 빈 코드는 TBD */
+function keNo_(it) { return !it || it.registered === false || !String(it.item || '').trim() ? 'TBD' : String(it.item).trim(); }
+
+/**
+ * 견적요청서 수정 내역 (메일 · 기록용): 예전 품목 → 새 품목, 같은 Item 끼리 비교
+ *   [{item, name, kind: 'added'|'removed'|'changed', before, after}] (before/after = '수량 · Need-by')
+ */
+function rfqChanges_(oldRows, newRows) {
+  var sum = function (rows, key) {
+    var ps = [];
+    (rows || []).forEach(function (r) { if (rfqRowKey_(r) === key) rfqParts_(r).forEach(function (p) { ps.push(p); }); });
+    if (!ps.length) return null;
+    var tot = ps.reduce(function (t, p) { return t + (Number(toNumber_(p.qty)) || 0); }, 0);
+    return { qty: tot, text: qtyText_(tot) + ' · ' + ps.map(function (p) { var d = toDate_(p.needBy); return (d ? fmtDate_(d) : 'ASAP') + (ps.length > 1 ? ' (' + qtyText_(p.qty) + ')' : ''); }).join(', ') };
+  };
+  var keys = uniq_((oldRows || []).map(rfqRowKey_).concat((newRows || []).map(rfqRowKey_))), out = [];
+  keys.forEach(function (k) {
+    var a = sum(oldRows, k), b = sum(newRows, k), row = (newRows || []).concat(oldRows || []).filter(function (r) { return rfqRowKey_(r) === k; })[0] || {};
+    var base = { item: keNo_(row) === 'TBD' ? (row.name || row.item || '') : row.item, name: row.name || '' };
+    if (!a && b) out.push(Object.assign(base, { kind: 'added', before: '', after: b.text }));
+    else if (a && !b) out.push(Object.assign(base, { kind: 'removed', before: a.text, after: '' }));
+    else if (a && b && a.text !== b.text) out.push(Object.assign(base, { kind: 'changed', before: a.text, after: b.text }));
+  });
+  return out;
+}
+
 function rfqEmail_(items, due, signatureHtml, remind) {
   var e = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
   var qty = function (n) { return Number(n).toLocaleString('en-US', { maximumFractionDigits: 4 }); };
@@ -1403,7 +1488,7 @@ function rfqEmail_(items, due, signatureHtml, remind) {
   };
   var cell = 'border:1px solid #000;padding:4px 6px;font-family:Arial,sans-serif;font-size:10pt;';
   var head = ['L/I', 'KE No', 'Product Name', 'Description', 'QPL<br>(Mfg)', 'UOM', 'Remark', 'Qty', 'Need-By'];
-  var keNo = function (it) { return it.registered === false || !String(it.item || '').trim() ? 'TBD' : String(it.item).trim(); };   // 견적요청서 파일과 같게 (미등록은 TBD)
+  var keNo = keNo_;   // 견적요청서 파일과 같은 규칙 (미등록은 TBD)
   var table = '<table style="border-collapse:collapse;margin:8px 0 16px">' +
     '<tr>' + head.map(function (h, i) {
       return '<th style="' + cell + 'background:#deeaf6;font-weight:bold;text-align:' + (i === 2 ? 'left' : 'center') + ';white-space:nowrap">' + h + '</th>';
@@ -1414,14 +1499,25 @@ function rfqEmail_(items, due, signatureHtml, remind) {
     }).join('') + '</table>';
   var p = function (t) { return '<p style="margin:0 0 14px;font-family:Arial,sans-serif;font-size:10pt">' + t + '</p>'; };
   var dueLine = 'We would like to have a quote on the items as you can find in the below' + (due ? ' due ' + e(due) : ' ASAP') + '.';
-  if (remind && remind.revised) dueLine = 'Please note that our RFQ has been revised (items or quantities have changed). ' + dueLine;
+  if (remind && remind.revised) dueLine = 'Please note that our RFQ has been revised (items or quantities have changed' + (remind.changes && remind.changes.length ? ' as shown below' : '') + '). ' + dueLine;
   else if (remind) dueLine = 'This is a kind reminder of our RFQ' + (remind.sentOn ? ' sent on ' + e(remind.sentOn) : '') + '. We have not received your quotation yet, ' +
-    'and we would appreciate it if you could send it' + (due ? ' by ' + e(due) : ' as soon as possible') + '.';
+    'and we would appreciate it if you could send it' + (due ? ' by ' + e(due) : ' as soon as possible') + '. ' +
+    'If you have already quoted some of the items, please send your quotation for the remaining items.';
+  // 수정 메일: 바뀐 내용 표 (추가 · 삭제 · 수량/Need-by 변경)
+  var KIND = { added: 'Added', removed: 'Removed', changed: 'Changed' };
+  var ch = remind && remind.revised ? (remind.changes || []) : [];
+  var chTable = !ch.length ? '' : '<table style="border-collapse:collapse;margin:8px 0 16px">' +
+    '<tr>' + ['KE No / Item', 'Product Name', 'Change', 'Before (Qty · Need-By)', 'After (Qty · Need-By)'].map(function (h) { return '<th style="' + cell + 'background:#fff2cc;font-weight:bold;text-align:center;white-space:nowrap">' + h + '</th>'; }).join('') + '</tr>' +
+    ch.map(function (c) {
+      return '<tr>' + [e(c.item), e(c.name), '<b>' + KIND[c.kind] + '</b>', e(c.before || '-'), e(c.after || '-')].map(function (x, j) { return '<td style="' + cell + 'text-align:' + (j === 1 ? 'left' : 'center') + '">' + x + '</td>'; }).join('') + '</tr>';
+    }).join('') + '</table>';
   var html = '<div>' + p('Dear Sir/Madam,') + p('Hope you are doing well.') + p(dueLine) +
+    (chTable ? p('Changes in this revision') + chTable : '') +
     p('Please review and let us know the relevant information attached.') + p('Below is the summary of the RFQ') +
     table + p('Thank you') + (signatureHtml ? '<div>' + signatureHtml + '</div>' : '') + '</div>';
-  var text = ['Dear Sir/Madam,', '', 'Hope you are doing well.', '', dueLine.replace(/&amp;/g, '&'), '',
-    'Please review and let us know the relevant information attached.', '', 'Below is the summary of the RFQ', '']
+  var text = ['Dear Sir/Madam,', '', 'Hope you are doing well.', '', dueLine.replace(/&amp;/g, '&'), '']
+    .concat(ch.length ? ['Changes in this revision'].concat(ch.map(function (c) { return '- ' + KIND[c.kind] + ': ' + [c.item, c.name].filter(Boolean).join(' ') + (c.before ? ' | before ' + c.before : '') + (c.after ? ' | after ' + c.after : ''); }), ['']) : [])
+    .concat(['Please review and let us know the relevant information attached.', '', 'Below is the summary of the RFQ', ''])
     .concat(items.map(function (it, i) { return (i + 1) + '. ' + [keNo(it), it.name, it.desc, it.qpl, it.uom, it.remark === undefined ? RFQ.REMARK : it.remark, qty(it.qty), needs(it, ', ')].join(' | '); }))
     .concat(['', 'Thank you']).join('\n');
   return { html: html, text: text };
@@ -1476,13 +1572,13 @@ function remapRfqQuote_(oldRows, oldQuoteItems, newRows) {
   var lines = quoteLines_(q), out = [];
   var partsOf = function (r) { return r && r.parts && r.parts.length > 1 ? r.parts.length : 0; };
   idx.forEach(function (i, k) {   // 새 품목 k ← 예전 품목 i 의 견적 줄(나눈 줄 포함)
-    var mine = i >= 0 ? lines.filter(function (l) { return l.at === i; }) : [];
+    var mine = i >= 0 ? lines.filter(function (l) { return l.at === i && !(l.x.sk > 0); }) : [];   // 업체별 수량 나눔은 첫 줄만 (수정하면 다시 나눔)
     var split = mine.some(function (l) { return l.part !== undefined; });
     if (split && partsOf(oldRows[i]) && partsOf(oldRows[i]) === partsOf(newRows[k])) {
-      mine.forEach(function (l) { var o = {}; Object.keys(l.x).forEach(function (f) { o[f] = l.x[f]; }); o.at = k; o.part = l.part; out.push(o); });
+      mine.forEach(function (l) { var o = {}; Object.keys(l.x).forEach(function (f) { if (f !== 'sk' && f !== 'sq') o[f] = l.x[f]; }); o.at = k; o.part = l.part; out.push(o); });
     } else {
       var base = mine[0] ? mine[0].x : { quotes: {} }, o = {};   // Need-by 건수가 바뀌면 나눈 줄은 첫 줄로 합침
-      Object.keys(base).forEach(function (f) { if (f !== 'part') o[f] = base[f]; });
+      Object.keys(base).forEach(function (f) { if (f !== 'part' && f !== 'sk' && f !== 'sq') o[f] = base[f]; });
       if (!o.quotes) o.quotes = {};
       o.at = k;
       out.push(o);
@@ -1617,8 +1713,8 @@ function expiringContracts_(contracts, today, days) {
  *   A No · B Item code · C Item name · D 요청 수량 · E Need-by | F U/P · G CUR · H Vendor Qty · I UOM · J MFG · K MOQ · L Lead Time · M Shelf Life · N Supplier Remarks
  * ------------------------------------------------------------------ */
 var QUOTE_SHEET = {
-  HEAD: ['No', 'Item code', 'Item name', '요청 수량', 'Need-by', 'U/P (단가)', 'CUR', 'Vendor Qty', 'UOM', 'MFG', 'MOQ', 'Lead Time', 'Shelf Life', 'Supplier Remarks'],
-  FIXED: 5, WIDTHS: [40, 130, 190, 90, 150, 100, 60, 90, 60, 160, 80, 90, 110, 260]
+  HEAD: ['No', 'Item code', 'Item name', '요청 수량', 'Need-by', 'U/P (단가)', 'CUR', 'Vendor Qty', 'UOM', 'MFG', 'MOQ', 'Lead Time', 'Shelf Life', 'Supplier Remarks', '대체 P/N (제안 시)'],
+  FIXED: 5, WIDTHS: [40, 130, 190, 90, 150, 100, 60, 90, 60, 160, 80, 90, 110, 260, 140]
 };
 /** 견적요청서 품목 → 시트 값 (머리글 + 품목 줄). Vendor Qty·UOM 은 요청 값으로 미리 채움 */
 function quoteSheetRows_(items) {
@@ -1629,7 +1725,7 @@ function quoteSheetRows_(items) {
   };
   return [QUOTE_SHEET.HEAD.slice()].concat(items.map(function (it, i) {
     var qty = Number(toNumber_(it.qty)) || 0;
-    return [i + 1, String(it.item || ''), String(it.name || ''), qty, need(it), '', '', qty, String(it.uom || ''), '', '', '', '', ''];
+    return [i + 1, String(it.item || ''), String(it.name || ''), qty, need(it), '', '', qty, String(it.uom || ''), '', '', '', '', '', ''];
   }));
 }
 /** 시트 탭 이름 (금지 글자 빼고, 겹치면 번호) */
@@ -1691,9 +1787,11 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
   var Q = SPOT.QUOTE, D = SPOT.DETAIL, S = SPOT.SUMMARY;
   var A = colA_, QR = "'" + Q + "'!", DR = "'" + D + "'!";
   var num = function (v) { var x = toNumber_(v); return x === null ? (v === undefined || v === null ? '' : String(v).trim()) : x; };
+  var XC = (extra && extra.costs) || {}, xlines = extraLines_(XC, vendors), noted = {};   // 업체 추가 비용 (선택)
 
-  // 견적종합에 나온 통화 (선정과 상관없이 업체 견적·계약 품목의 CUR), 순서는 USD·EUR·JPY·SGD·KRW
+  // 견적종합에 나온 통화 (선정과 상관없이 업체 견적·계약 품목의 CUR · 추가 비용 통화), 순서는 USD·EUR·JPY·SGD·KRW
   var usedSet = {};
+  xlines.forEach(function (x) { usedSet[x.cur] = 1; });
   items.forEach(function (it) {
     if (it.fixed && it.fixed.cur) usedSet[String(it.fixed.cur).toUpperCase()] = 1;
     Object.keys(it.quotes || {}).forEach(function (v) { var q = it.quotes[v] || {}; if (q.cur && !q.noReply) usedSet[String(q.cur).toUpperCase()] = 1; });
@@ -1706,7 +1804,7 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
   var m0 = rfqStart_(items, base);   // 견적요청서와 같은 월 칸 (가장 이른 Need-by 달부터 12개월)
   for (var k = 0; k < 12; k++) set(Q, 3, SPOT.Q_M0 + k, { date: fmtDate_(new Date(m0.getFullYear(), m0.getMonth() + k, 1)) });
   // 품목마다 줄: 견적 품목은 업체 수(N)만큼, 계약 품목(it.fixed)은 계약 업체 한 줄 (미리 선정)
-  var qRow = SPOT.Q_FIRST;
+  var qRow = SPOT.Q_FIRST, groupEnds = [];
   items.forEach(function (it, i) {
     var mq = rfqMonthQty_(m0, it), fx = it.fixed;
     (fx ? [fx.vendor] : vendors).forEach(function (v) {
@@ -1737,9 +1835,14 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
       set(Q, r, 30, txt_(v));
       var put = function (c, x) { if (x !== undefined && x !== null && String(x).trim() !== '') set(Q, r, c, txt_(x)); };   // 업체가 적은 값 (수식 아님)
       if (q.noReply) q = { qty: q.qty, uom: q.uom, price: 'NO BID', remark: q.remark || '회신 없음' };   // 회신 없음 = NO BID 로 회색 줄
+      var xv = fx ? null : XC[v], nobid = /^no\s*bid$/i.test(String(q.price || '').trim());
+      var vat = xv && xv.vat && !nobid && toNumber_(q.price) !== null;   // VAT 포함 견적: VAT 제외(/1.1) 단가로 비교 · 기재
+      var rmk = [q.remark || '', q.alt ? '대체품 제안: ' + q.alt : '', vat ? 'VAT 포함 견적 ' + qtyText_(toNumber_(q.price)) + ' → VAT 제외 /1.1' : '',
+        xv && !noted[v] && !q.noReply && !nobid ? extraNote_(xv) : ''].filter(function (t) { return String(t).trim(); }).join(' / ');
+      if (xv && !q.noReply && !nobid) noted[v] = 1;   // 추가 비용 · 최소주문은 그 업체가 견적 낸 첫 줄에만
       put(31, num(q.qty)); put(32, q.mfg); put(33, q.uom);
-      put(34, /^no\s*bid$/i.test(String(q.price || '').trim()) ? 'NO BID' : num(q.price));
-      put(35, q.cur ? String(q.cur).toUpperCase() : ''); put(37, q.moq); put(38, q.lt); put(SPOT.Q_SHELF, q.shelf); put(SPOT.Q_REMARK, q.remark);
+      put(34, nobid ? 'NO BID' : vat ? exVat_(q.price) : num(q.price));
+      put(35, q.cur ? String(q.cur).toUpperCase() : ''); put(37, q.moq); put(38, q.lt); put(SPOT.Q_SHELF, q.shelf); put(SPOT.Q_REMARK, rmk);
       // AM Need-by 구분 · AN 조정 Need-by: 견적이 있는 줄만 (L/T 때문에 바꾼 날짜가 있으면 조정)
       var quoted = fx || (String(q.price == null ? '' : q.price).trim() && !/^no\s*bid$/i.test(String(q.price).trim()));
       var adj = !fx && q.nbMode === 'adj' && toDate_(q.nbAdj);
@@ -1750,6 +1853,7 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
       if (vi.supplier) set(Q, r, SPOT.Q_SUP, vi.supplier);
       if (vi.site) set(Q, r, SPOT.Q_SITE, vi.site);
     });
+    groupEnds.push(qRow - 1);   // 이 품목(L/I)의 마지막 줄
   });
   var qLast = qRow - 1;
   if (qLast >= SPOT.Q_FIRST) {
@@ -1767,6 +1871,11 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
     add({ op: 'border', s: Q, r1: SPOT.Q_FIRST, c1: 24, r2: qLast, c2: SPOT.Q_REMARK });
     add({ op: 'border', s: Q, r1: SPOT.Q_FIRST, c1: 24, r2: qLast, c2: 24, edge: 'left', style: 'medium' });
     add({ op: 'border', s: Q, r1: SPOT.Q_FIRST, c1: SPOT.Q_SUP, r2: qLast, c2: SPOT.Q_SITE });
+    // 품목(1번 · 2번 …) 사이 경계를 굵게: 같은 품목의 업체 줄끼리 묶여 보이게 (A~AP, AV~AW)
+    groupEnds.forEach(function (gr) {
+      add({ op: 'bottom', s: Q, r: gr, c1: 1, c2: SPOT.Q_REMARK, style: 'medium' });
+      add({ op: 'bottom', s: Q, r: gr, c1: SPOT.Q_SUP, c2: SPOT.Q_SITE, style: 'medium' });
+    });
   }
   add({ op: 'freeze', s: Q, rows: 4, cols: 7 });
 
@@ -1837,21 +1946,37 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
       });
     });
   });
+  // 업체 추가 비용 (선택): 품목 아래 업체 · 통화마다 한 줄. 그 업체를 견적종합에서 한 품목이라도 선정했을 때만 금액
+  //   (시트에서 선정을 바꿔도 따라감) → 통화 합계 · 총 합계 · 전체구매요약에 같이 들어감
+  xlines.forEach(function (x, j) {
+    var r = SPOT.D_FIRST + n + j, vq = String(x.vendor).replace(/"/g, '""'), names = x.names.join(' · ');
+    add({ op: 'fmt', s: D, r: r, from: SPOT.P_DET_ROW, c1: 1, c2: SPOT.D_V0 + N * 4 - 1, fs: SPOT.PROTO });
+    add({ op: 'height', s: D, r: r, pt: 30 });
+    set(D, r, 2, '추가 비용'); set(D, r, 3, txt_(names)); set(D, r, 4, txt_('추가 비용 · ' + names));
+    set(D, r, 10, 1); set(D, r, 11, x.cur);
+    set(D, r, 12, '=IF(COUNTIFS(' + QR + '$A:$A, TRUE, ' + QR + '$AD:$AD, "' + vq + '")>0, ' + x.amount + ', 0)');
+    set(D, r, 13, '=IF(ISNUMBER(L' + r + '), J' + r + ' * L' + r + ', "")');
+    set(D, r, 15, '추가 비용'); set(D, r, 16, txt_(x.vendor)); set(D, r, 17, 1); set(D, r, 18, '=L' + r); set(D, r, 19, '=L' + r); set(D, r, 20, x.cur);
+    set(D, r, 22, txt_('선정하면 들어감 · ' + names));
+    [12, 13, 18, 19].forEach(function (c) { add({ op: 'nf', s: D, r: r, c: c, f: curFmt_(x.cur) }); });
+  });
+  dLast += xlines.length;
   var used = SPOT.D_V0 + N * 4;   // 고른 업체 수만큼만 남기고 오른쪽 비교 칸은 지움
   if (n) add({ op: 'border', s: D, r1: SPOT.D_FIRST, c1: 1, r2: dLast, c2: used - 1 });   // 표 전체 테두리 (업체 비교 칸 포함)
   if (used <= SPOT.D_LAST) add({ op: 'deleteCols', s: D, c: used, n: SPOT.D_LAST - used + 1 });
   add({ op: 'freeze', s: D, rows: 0, cols: 5 });
 
   /* ---------- 전체구매요약 ---------- */
-  var sLast = 4 + n;
-  items.forEach(function (it, i) {
+  var iLast = 4 + n, sLast = 4 + n + xlines.length;   // 품목 줄 · 추가 비용 줄(있으면)
+  items.concat(xlines).forEach(function (it, i) {
     var r = 5 + i, vl = function (col) { return '=INDEX(' + DR + '$B:$V, $L' + r + ', ' + col + '$2)'; };   // L열 = 구매내역서 행 (같은 자재 여러 줄도 그 줄 값), B~V 에서 2행 번호 열
+    var isX = i >= n;
     add({ op: 'fmt', s: S, r: r, from: SPOT.P_SUM_ROW, c1: 1, c2: 16, fs: SPOT.PROTO });
     add({ op: 'height', s: S, r: r, pt: 30 });
-    set(S, r, 3, i + 1);
+    set(S, r, 3, isX ? '추가' : i + 1);
     set(S, r, 4, '=N' + r);
     set(S, r, 5, vl('E'));
-    set(S, r, 6, '=COUNTIF($N$5:$N$' + sLast + ', N' + r + ')');
+    set(S, r, 6, isX ? '' : '=COUNTIF($N$5:$N$' + iLast + ', N' + r + ')');   // 품목수: 추가 비용 줄은 세지 않음
     set(S, r, 7, vl('G')); set(S, r, 8, vl('H')); set(S, r, 9, vl('I')); set(S, r, 10, vl('J'));
     set(S, r, 11, i + 1);                       // L/I: 바꾸면 순서가 바뀜
     set(S, r, 12, '=K' + r + '+' + (SPOT.D_FIRST - 1));
@@ -1877,7 +2002,7 @@ function buildSpotPlan_(items, vendors, rates, base, schedule, extra) {
   set(S, r0, 3, 'CUR 별 합계');
   add({ op: 'merge', s: S, r1: r0, c1: 3, r2: rEnd, c2: 5 });
   set(S, r0, 6, n); add({ op: 'merge', s: S, r1: r0, c1: 6, r2: rEnd, c2: 6 });
-  set(S, r0, 7, '=SUM(G5:G' + sLast + ')'); add({ op: 'merge', s: S, r1: r0, c1: 7, r2: rEnd, c2: 7 });
+  set(S, r0, 7, '=SUM(G5:G' + iLast + ')'); add({ op: 'merge', s: S, r1: r0, c1: 7, r2: rEnd, c2: 7 });
   var rT = rEnd + 1, rc = function (c) { return DR + '$' + SPOT.RATE_COL[c] + '$3'; };
   add({ op: 'fmt', s: S, r: rT, from: SPOT.P_SUM_TOTAL, c1: 1, c2: 16, fs: SPOT.PROTO });
   add({ op: 'height', s: S, r: rT, pt: 22.5 });

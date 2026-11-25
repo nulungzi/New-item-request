@@ -288,7 +288,11 @@ test('견적 저장 → Spot 견적 구매내역서, 계약+Spot 단가는 두 �
   const again = { recordId: rfq.recordId, baseDate: '2026-11-10', rates: { USD: 1350 }, vendors: ['Hexcel', '3M'], items: [{ item: 'MS20995C20', uom: 'RL', qty: 3, needBy: '2027-01-15', quotes: quote.items[0].quotes }] };
   assert.throws(() => ctx.apiCreateSpotPurchase(again), /^Error: SPOT_EXISTS\|.*\|이 견적요청서로 이미/);
   assert.throws(() => ctx.apiCreateSpotPurchase(Object.assign({ again: true, base: 'old-save' }, again)), /다른 창/);
-  assert.ok(ctx.apiCreateSpotPurchase(Object.assign({ again: true, base: sp.savedAt }, again)).url);
+  const sp3 = ctx.apiCreateSpotPurchase(Object.assign({ again: true, base: sp.savedAt }, again));
+  assert.ok(sp3.url);
+  const old = ctx.apiMyRecords().records.find(r => r.id === sp.recordId);
+  assert.deepStrictEqual([old.status, old.replacedBy], ['대체됨', sp3.recordId]);   // 예전 견적 구매내역서는 대체됨
+  assert.throws(() => ctx.apiCreateSpotPurchase(Object.assign({ again: true, base: ctx.findRecord_(rfq.recordId, true).rec.quote.savedAt, extra: { Hexcel: { costs: [{ name: 'F', amount: 1, cur: 'GBP' }] } } }, again)), /GBP\)는 쓸 수 없습니다/);
 
   // 하나로 만들기: 계약 줄(A1)을 견적요청서에 붙여 두고, 견적 구매내역서를 만들 때 같이 넣고 묶음·부모를 기록
   const rfq2 = ctx.apiCreateRfq({ baseDate: '2026-11-13', title: 'R2', due: '2026-11-20', group: 'G1',
@@ -687,6 +691,7 @@ test('견적요청서 수정: 새 파일(예전 파일은 이름만 바꿈), 견
   assert.throws(() => ctx.apiReviseRfq({ recordId: r.recordId, items: [{ item: 'K9', qty: 1 }] }), /Item name/);
   const v = ctx.apiReviseRfq({ recordId: r.recordId, baseDate: '2026-11-16', items: [{ item: 'K1', name: 'A', uom: 'EA', qty: 5, needBy: '2027-01-10' }, { item: 'K3', name: 'C', uom: 'KT', qty: 4, needBy: '2027-03-01' }] });
   assert.deepStrictEqual(JSON.parse(JSON.stringify([v.rev.no, v.rev.added, v.rev.removed])), [1, ['K3'], ['K2']]);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(v.rev.changes.map(c => c.kind).sort())), ['added', 'changed', 'removed']);   // [Revised] 메일 표 (K1 수량 · K2 삭제 · K3 추가)
   assert.deepStrictEqual(renamed, [['F1', title + ' (수정 전 261116-1100)']]);
   assert.strictEqual(files.F2.copiedInto, 'FOLDER');                      // 같은 폴더에 새 파일
   let rec = ctx.apiMyRecords().records.find(x => x.id === r.recordId);

@@ -192,7 +192,7 @@ main { max-width: 1600px; margin: 0 auto; display: grid; gap: 18px }
 .drawer-wrap.open .drawer-backdrop { opacity: 1 }
 @media (prefers-reduced-motion: reduce) { .drawer, .drawer-backdrop, .vd-progress i, .vd-step { transition: none } }
 @media (max-width: 560px) { .drawer-wrap { padding: 8px } .drawer { border-radius: 10px } }
-.drawer > header, .drawer > nav, .drawer > .drawer-tools, .drawer > .vd-rates, .drawer > .vd-files, .drawer > footer { flex: none }
+.drawer > header, .drawer > nav, .drawer > .drawer-tools, .drawer > .vd-rates, .drawer > .vd-files, .drawer > .vd-extra, .drawer > footer { flex: none }
 .vd-progress { position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; background: var(--line) }
 .vd-progress i { display: block; height: 100%; background: var(--accent); transition: width .3s cubic-bezier(.2, .8, .2, 1) }
 .vd-steps { display: flex; gap: 6px; overflow-x: auto; padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--line); scrollbar-width: thin }
@@ -233,6 +233,7 @@ main { max-width: 1600px; margin: 0 auto; display: grid; gap: 18px }
 .vq-table td.sticky, .vq-table th.sticky { position: sticky; left: 0; z-index: 1 }
 .vq-table th.sticky { z-index: 3 }
 .vq-table input, .vq-table select, .vq-table textarea { width: 100%; min-width: 0; padding: 5px 6px; font: .84rem var(--font-data); text-align: left; border-radius: 4px }
+.vq-table td.in-cur { min-width: 76px } .vq-table td.in-alt { min-width: 120px }   /* 통화 글자가 잘리지 않게 */
 .vq-table textarea { font-family: var(--font-body); min-height: 30px; resize: vertical; line-height: 1.3 }
 .vq-table tr.vq.filled td.no { box-shadow: inset 3px 0 0 var(--ok) }
 .vq-table tr.vq.nobid td { opacity: .55 }
@@ -306,6 +307,10 @@ a.btn-ghost { display: inline-block; text-decoration: none; border-radius: 6px }
 .po-chip { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--ok-soft); color: var(--ok); font-weight: 600 }
 .po-form { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; padding-top: 10px; border-top: 1px dashed var(--line) }
 .po-form .row { grid-column: 1 / -1 }
+.po-vendors { grid-column: 1 / -1; display: grid; gap: 6px; font-size: .86rem }
+.po-vrow { display: grid; grid-template-columns: minmax(120px, 220px) minmax(120px, 220px) 160px; gap: 8px; align-items: center }
+@media (max-width: 640px) { .po-vrow { grid-template-columns: minmax(0, 1fr) } }
+.po-chip.replaced { background: var(--surface-2); color: var(--muted); text-decoration: none }
 .po-form .field input, .po-form .field select { width: 100%; text-align: left; font-family: var(--font-body) }
 .chip-done { background: var(--surface-2); color: var(--muted) }
 .rec.done-rec { opacity: .92 }
@@ -775,6 +780,18 @@ table.list td.nw { white-space: nowrap }
 :root[data-theme="dark"] .vtag.soon { background: #3d2f12; color: #ffcf7a }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .vtag.soon { background: #3d2f12; color: #ffcf7a } }
 .vclip { font-size: .8rem; text-decoration: none; margin-left: 4px }
+.vd-extra { padding: 6px 20px; border-bottom: 1px solid var(--line); background: var(--surface); font-size: .86rem; flex: none }
+.vd-extra > summary { cursor: pointer; padding: 2px 0 }
+.vd-extra .vx-sum { margin-left: 8px; font: .78rem var(--font-data); color: var(--muted) }
+.vd-extra .vx-body { display: grid; gap: 8px; padding: 6px 0 4px }
+.vd-extra .vx-body p { margin: 0; font-size: .78rem }
+.vx-rows { display: grid; gap: 6px }
+.vx-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center }
+.vx-row input[data-x="name"] { width: 160px } .vx-row input[data-x="amount"] { width: 120px; text-align: right; font-family: var(--font-data) }
+.vx-row input.missing { border-color: var(--warn) }
+.vx-tools { gap: 8px 16px; align-items: center; flex-wrap: wrap }
+#vxMov { width: 110px; text-align: right; font-family: var(--font-data); margin-left: 6px }
+#qVendorTot h3 { margin: 10px 0 6px }
 .vd-files { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 8px 20px; border-bottom: 1px solid var(--line); background: var(--surface); font-size: .86rem; transition: background .15s, box-shadow .15s }
 .vd-files.drop { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent) }
 .vd-files .qf { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 4px 2px 10px; background: var(--surface-2); max-width: 340px }
@@ -1347,6 +1364,7 @@ td .empty { border: 0; padding: 18px 8px }
       </div>
       <div class="sub">
         <div id="qBest"></div>
+        <div id="qVendorTot"></div>
         <div id="qFixed"></div>
         <h3>품목별 종합</h3>
         <div id="qItems" class="q-items"></div>
@@ -1387,6 +1405,7 @@ td .empty { border: 0; padding: 18px 8px }
       <label class="inline" for="vdValid" title="업체 견적서에 적힌 유효기간 (Valid until). 지나면 견적 종합·구매내역서 만들 때 알려 줍니다">견적 유효기간<input type="date" id="vdValid"></label><span class="vtag" id="vdValidTag"></span>
     </div>
     <div class="vd-files" id="vdFiles"></div>
+    <details class="vd-extra" id="vdExtra"></details>
     <input type="file" id="vdFile" multiple hidden accept=".pdf,.xlsx,.xls,.csv,.doc,.docx,.png,.jpg,.jpeg,.msg,.eml,.zip">
     <div class="vd-rates" id="vdRates" hidden></div>
     <div class="drawer-body" id="vdBody"></div>
@@ -2297,7 +2316,7 @@ function openDraft(recordId, title, remind, mode) {
     var d = res[0], keep = [];
     draft.hints = res[1] || [];
     if (remind && rec) {   // 아직 견적을 입력하지 않은 업체(회신 없음 제외)의 담당자 전부
-      var c = quoteFor(rec), wait = (rec.vendors || []).filter(function (v) { return vendorStatus(c, v).cls === ''; });
+      var c = quoteFor(rec), wait = (rec.vendors || []).filter(function (v) { var k = vendorStatus(c, v).cls; return k === '' || k === 'part'; });   // 미입력 + 일부만 입력
       d.vendors.forEach(function (v) { if (wait.indexOf(v.name) >= 0) keep = keep.concat(v.emails); });
     } else if (draft.direct && rec) {   // 업체 고르기: 이미 고른 업체
       d.vendors.forEach(function (v) { if ((rec.vendors || []).indexOf(v.name) >= 0) keep = keep.concat(v.emails); });
@@ -2458,7 +2477,7 @@ $('dmOk').onclick = function () {
  * → 견적 종합: 품목별 비교(원화·순위), 선택해서 선정·검토 문구 → Spot 견적 구매내역서 */
 var Q_CURS = ['USD', 'EUR', 'JPY', 'SGD', 'KRW'];
 // 견적 입력 칸 (견적 입력용 시트의 F열부터 같은 순서)
-var Q_COLS = [['price', 'U/P (단가)'], ['cur', 'CUR'], ['qty', 'Vendor Qty'], ['uom', 'UOM'], ['mfg', 'MFG'], ['moq', 'MOQ'], ['lt', 'Lead Time'], ['shelf', 'Shelf Life'], ['remark', 'Supplier Remarks']];
+var Q_COLS = [['price', 'U/P (단가)'], ['cur', 'CUR'], ['qty', 'Vendor Qty'], ['uom', 'UOM'], ['mfg', 'MFG'], ['moq', 'MOQ'], ['lt', 'Lead Time'], ['shelf', 'Shelf Life'], ['remark', 'Supplier Remarks'], ['alt', '대체 P/N (제안 시)']];
 var Q_FIXED = 5;   // 시트 앞 고정 열: No · Item code · Item name · 요청 수량 · Need-by
 /** 엑셀·구글 시트에서 복사한 글(탭·줄바꿈, 따옴표 안 줄바꿈 포함) → 2차원 배열 */
 function parseTsv(t) {
@@ -2522,6 +2541,7 @@ function quoteFor(rec) {
     vendors: (rec.vendors || []).slice(),            // 메일 초안에서 고른 업체만
     noReply: Object.assign({}, saved.noReply || {}),
     valid: Object.assign({}, saved.valid || {}),     // 업체별 견적 유효기간 'yyyy-mm-dd'
+    extra: JSON.parse(JSON.stringify(saved.extra || {})),   // 업체별 추가 비용 · VAT 포함 · 최소주문 (선택)
     rates: Object.assign({}, state.rates, saved.rates || {}),
     savedAt: saved.savedAt || '',
     name: saved.name || rec.title.replace(/^\[KE\] RFQ \/\/ /, '') + ' 견적 구매내역서',
@@ -2537,24 +2557,59 @@ function partSrc(it, k) {   // 품목의 Need-by 한 건만 가진 품목 (나�
   o.qty = p.qty; o.needBy = p.needBy || ''; o.parts = [p]; o.program = p.program || it.program || '';
   return o;
 }
-function lineOf(rec, sv, at, part) {
+function lineOf(rec, sv, at, part, sk, sq) {
   var it = rec.items[at], src = part !== undefined ? partSrc(it, part) : it;
-  return { src: src, at: at, part: part, program: sv.program !== undefined ? sv.program : (src.program || ''), prev: sv.prev || { year: '', qty: '', cur: '', price: '' }, quotes: sv.quotes || {} };
+  if (sk !== undefined) src = qtySrc(src, sq);
+  return { src: src, at: at, part: part, sk: sk, sq: sk !== undefined ? sq : undefined, program: sv.program !== undefined ? sv.program : (src.program || ''), prev: sv.prev || { year: '', qty: '', cur: '', price: '' }, quotes: sv.quotes || {} };
+}
+/* 업체별 수량 나누기 (한 품목을 두 업체 이상에 나눠 발주): Need-by 가 한 건인 줄만, sk = 나눈 순서, sq = 그 줄 수량 */
+function qtySrc(src, q) {
+  var o = {};
+  Object.keys(src).forEach(function (k) { o[k] = src[k]; });
+  var nb = (src.parts && src.parts.length ? src.parts[0].needBy : src.needBy) || '';
+  o.qty = q; o.parts = [{ qty: q, needBy: nb, program: src.program || '' }];
+  return o;
+}
+function baseSrc(c, x) { var it = c.rec.items[x.at]; return x.part !== undefined ? partSrc(it, x.part) : it; }
+function canQtySplit(x) { return !canSplit(x) && x.sk === undefined && Number(qNum(x.src.qty)) > 1; }
+function splitQty(c, i, first) {
+  var x = c.items[i], total = Number(qNum(baseSrc(c, x).qty)) || 0;
+  first = Math.round(Number(qNum(first)) * 10000) / 10000;
+  if (!(first > 0 && first < total)) return false;
+  var mk = function (k, q) {
+    var quotes = {};
+    Object.keys(x.quotes).forEach(function (v) { quotes[v] = Object.assign({}, x.quotes[v], { qty: String(q), sel: false }); });
+    return { src: qtySrc(baseSrc(c, x), q), at: x.at, part: x.part, sk: k, sq: q, program: x.program, prev: Object.assign({}, x.prev), quotes: quotes };
+  };
+  c.items.splice(i, 1, mk(0, first), mk(1, Math.round((total - first) * 10000) / 10000));
+  return true;
+}
+function mergeQty(c, at, part) {   // 나눈 수량을 다시 한 줄로 (첫 줄 견적, 수량은 원래 수량)
+  var first = -1, keep = null;
+  c.items = c.items.filter(function (x, i) { if (!(x.at === at && x.part === part && x.sk !== undefined)) return true; if (first < 0) { first = i; keep = x; } return false; });
+  if (!keep) return;
+  var src = baseSrc(c, keep), quotes = {};
+  Object.keys(keep.quotes).forEach(function (v) { quotes[v] = Object.assign({}, keep.quotes[v], { qty: String(src.qty) }); });
+  c.items.splice(first, 0, { src: src, at: at, part: part, program: keep.program, prev: keep.prev, quotes: quotes });
 }
 function quoteLinesOf(rec, saved) {
   var items = rec.items || [], out = [], seen = {};
   var tagged = saved.some(function (sv) { return sv && sv.at !== undefined && sv.at !== null; });
   if (tagged) {
+    var keys = {};
     saved.forEach(function (sv) {
       var at = +sv.at, it = items[at];
       if (!it) return;
       var part = sv.part !== undefined && sv.part !== null && it.parts && it.parts[+sv.part] ? +sv.part : undefined;
-      if (seen[at] === 'whole' || (part === undefined && seen[at])) return;
-      seen[at] = part === undefined ? 'whole' : 'split';
-      out.push(lineOf(rec, sv, at, part));
+      var sk = sv.sk !== undefined && sv.sk !== null && Number(sv.sq) > 0 ? +sv.sk : undefined;
+      var mode = part === undefined ? 'whole' : 'split', key = at + ':' + (part === undefined ? '' : part);
+      if (seen[at] && seen[at] !== mode) return;               // 한 품목은 한 가지 나눔만
+      if (keys[key] && (keys[key] === 'one' || sk === undefined)) return;   // 같은 줄이 두 번 (업체별 수량 나눔만 여러 줄)
+      seen[at] = mode; keys[key] = sk === undefined ? 'one' : 'qty';
+      out.push(lineOf(rec, sv, at, part, sk, sk !== undefined ? Number(sv.sq) : undefined));
     });
     items.forEach(function (it, at) { if (!seen[at]) out.push(lineOf(rec, {}, at)); });
-    out.sort(function (a, b) { return a.at - b.at || (a.part || 0) - (b.part || 0); });
+    out.sort(function (a, b) { return a.at - b.at || (a.part || 0) - (b.part || 0) || (a.sk || 0) - (b.sk || 0); });
     return out;
   }
   return items.map(function (it, i) { return lineOf(rec, saved[i] || {}, i); });
@@ -2579,8 +2634,20 @@ function mergeLine(c, at) {
   Object.keys(keep.quotes).forEach(function (v) { quotes[v] = Object.assign({}, keep.quotes[v], { qty: String(it.qty) }); });
   c.items.splice(first, 0, { src: it, at: at, part: undefined, program: it.program || keep.program, prev: keep.prev, quotes: quotes });
 }
-function lineTag(c, x) { var it = c.rec.items[x.at]; return x.part === undefined ? '' : 'Need-by ' + (x.part + 1) + '/' + ((it && it.parts) || []).length; }
-function qNum(v) { var n = parseFloat(String(v == null ? '' : v).replace(/,/g, '')); return isNaN(n) ? null : n; }
+function lineTag(c, x) {
+  var it = c.rec.items[x.at], t = x.part === undefined ? '' : 'Need-by ' + (x.part + 1) + '/' + ((it && it.parts) || []).length;
+  if (x.sk !== undefined) {
+    var n = c.items.filter(function (y) { return y.at === x.at && y.part === x.part && y.sk !== undefined; }).length;
+    t += (t ? ' · ' : '') + '수량 나눔 ' + (x.sk + 1) + '/' + n + ' (' + fmt(x.sq) + ')';
+  }
+  return t;
+}
+function qNum(v) {   // 서버 toNumber_ 과 같게: 천 단위 쉼표 · 띄어쓰기 · 앞뒤 통화 표시는 빼고 읽음
+  if (typeof v === 'number') return v;
+  var t = String(v == null ? '' : v).replace(/[,\s\u00a0]/g, '').replace(/^(?:US\$|S\$|[A-Za-z]{3}(?=[\d.+-]))|^[$€¥₩£￦]/, '').replace(/(?:[A-Za-z]{3}|원)$/, '');
+  var n = parseFloat(t);
+  return isNaN(n) ? null : n;
+}
 function qFilled(q) { return !!(q && String(q.price || '').trim()); }
 function qOf(x, v) {   // 품목 x 의 업체 v 견적 (없으면 요청 수량·UOM 으로 시작)
   if (!x.quotes[v]) x.quotes[v] = { qty: String(x.src.qty), uom: x.src.uom || '' };
@@ -2592,6 +2659,15 @@ function validState(c, v) {
   if (!d || c.noReply[v]) return { cls: '', text: '' };
   var left = Math.round((toD(d) - toD(state.today || d)) / 864e5), md = d.slice(5).replace('-', '/');
   return left < 0 ? { cls: 'old', text: '유효기간 지남 (' + md + ')' } : left <= 7 ? { cls: 'soon', text: '유효 ' + md + '까지 · ' + left + '일 남음' } : { cls: 'ok', text: '유효 ~' + md };
+}
+/* 견적 종합 업체 칸: 대체품 제안 · MFG 가 QPL 과 다름 (주황) */
+function altTags(it, q, none) {
+  if (none || !q) return '';
+  var out = '';
+  if (String(q.alt || '').trim()) out += '<span class="vtag soon" title="업체가 대체 P/N 을 제안함 — QPL · 사업부 승인 확인">대체품 ' + esc(q.alt) + '</span>';
+  var mfg = String(q.mfg || '').trim().toUpperCase(), qpl = String((it && it.qpl) || '').trim().toUpperCase();
+  if (mfg && qpl && qpl.indexOf(mfg) < 0 && mfg.indexOf(qpl) < 0) out += '<span class="vtag soon" title="QPL(Mfg): ' + esc(it.qpl) + '">MFG 확인 · ' + esc(q.mfg) + '</span>';
+  return out;
 }
 function validTag(c, v) { var st = validState(c, v); return st.text ? '<span class="vtag ' + st.cls + '">' + esc(st.text) + '</span>' : ''; }
 function qfilesOf(rec, v) { return ((rec && rec.qfiles) || {})[v] || []; }
@@ -2611,7 +2687,7 @@ function vendorStatus(c, v) {
 }
 function quotePayload(c) {
   return {
-    vendors: c.vendors.slice(), noReply: c.noReply, valid: c.valid || {}, rates: c.rates, name: c.name, confirmer: c.confirmer,
+    vendors: c.vendors.slice(), noReply: c.noReply, valid: c.valid || {}, extra: c.extra || {}, rates: c.rates, name: c.name, confirmer: c.confirmer,
     items: c.items.map(function (x) {
       var quotes = {};
       c.vendors.forEach(function (v) {
@@ -2620,6 +2696,7 @@ function quotePayload(c) {
       });
       var o = { program: x.program, prev: x.prev, quotes: quotes, at: x.at };
       if (x.part !== undefined) o.part = x.part;
+      if (x.sk !== undefined) { o.sk = x.sk; o.sq = x.sq; }
       return o;
     })
   };
@@ -2733,7 +2810,7 @@ function renderDrawer() {
   $('vdMeta').textContent = '자재 ' + nItems + '개' + (c.items.length !== nItems ? ' (견적 ' + c.items.length + '줄)' : '') + ' · ' + (idx + 1) + '/' + c.vendors.length + '번째 업체';
   $('vdNoReply').checked = none;
   $('vdValid').value = (c.valid || {})[v] || ''; $('vdValid').disabled = none;
-  renderValidTag(); renderVdFiles();
+  renderValidTag(); renderVdFiles(); renderVdExtra();
   $('vdCur').innerHTML = '<option value="">선택</option>' + Q_CURS.map(function (x) { return '<option>' + x + '</option>'; }).join('');
   $('vdCur').disabled = none; $('vdNoBid').disabled = none;
   $('vdPrev').disabled = idx <= 0; $('vdNext').disabled = idx >= c.vendors.length - 1;
@@ -2758,7 +2835,10 @@ function renderDrawer() {
         '<td class="fx no sticky">' + (i + 1) + '</td><td class="fx">' + esc(it.item) + '</td><td class="fx nm">' + esc(it.name || '') + '</td>' +
         '<td class="fx">' + fmt(it.qty) + ' ' + esc(it.uom || '') + '</td><td class="fx">' + esc(needText(it)).replace(/, /g, '<br>') +
           (canSplit(x) ? '<button type="button" class="link-btn vq-split" data-split="' + i + '" title="Need-by 마다 단가 · 수량이 다르면 줄을 나눠 따로 입력 (모든 업체 같이)">Need-by별로 나누기</button>' : '') +
-          (x.part !== undefined ? '<span class="vq-part">' + esc(lineTag(c, x)) + '</span>' + (x.part === 0 ? '<button type="button" class="link-btn vq-split" data-merge="' + x.at + '" title="나눈 줄을 다시 한 줄로 (첫 줄 견적을 씀)">다시 합치기</button>' : '') : '') + '</td>' +
+          (x.part !== undefined || x.sk !== undefined ? '<span class="vq-part">' + esc(lineTag(c, x)) + '</span>' : '') +
+          (x.part === 0 && x.sk === undefined ? '<button type="button" class="link-btn vq-split" data-merge="' + x.at + '" title="나눈 줄을 다시 한 줄로 (첫 줄 견적을 씀)">다시 합치기</button>' : '') +
+          (canQtySplit(x) ? '<button type="button" class="link-btn vq-split" data-qsplit="' + i + '" title="한 품목을 두 업체에 나눠 발주할 때: 수량을 나눠 줄마다 다른 업체를 선정 (모든 업체 같이)">업체별 수량 나누기</button>' : '') +
+          (x.sk === 0 ? '<button type="button" class="link-btn vq-split" data-qmerge="' + i + '" title="나눈 수량을 다시 한 줄로 (첫 줄 견적을 씀)">수량 다시 합치기</button>' : '') + '</td>' +
         Q_COLS.map(function (k, ci) {
           var dis = none ? ' disabled' : '', key = k[0];
           var el = key === 'cur' ? '<select data-f="cur" data-c="' + ci + '"' + dis + '><option value=""></option>' + Q_CURS.map(function (x2) { return '<option' + (q.cur === x2 ? ' selected' : '') + '>' + x2 + '</option>'; }).join('') + '</select>'
@@ -2769,6 +2849,16 @@ function renderDrawer() {
     }).join('') + '</tbody></table></div>';
   $('vdBody').querySelectorAll('[data-split]').forEach(function (b) { b.onclick = function () { splitLine(c, +b.dataset.split); renderDrawer(); }; });
   $('vdBody').querySelectorAll('[data-merge]').forEach(function (b) { b.onclick = function () { mergeLine(c, +b.dataset.merge); renderDrawer(); }; });
+  $('vdBody').querySelectorAll('[data-qsplit]').forEach(function (b) {
+    b.onclick = function () {
+      var x = c.items[+b.dataset.qsplit], total = Number(qNum(x.src.qty)) || 0;
+      var a = window.prompt('첫 번째 줄 수량 (전체 ' + fmt(total) + ' ' + (x.src.uom || '') + ', 나머지는 두 번째 줄)', String(Math.ceil(total / 2)));
+      if (a === null) return;
+      if (!splitQty(c, +b.dataset.qsplit, a)) { $('vdSaved').textContent = '0 보다 크고 ' + fmt(total) + ' 보다 작은 수량을 적어 주세요.'; return; }
+      renderDrawer();
+    };
+  });
+  $('vdBody').querySelectorAll('[data-qmerge]').forEach(function (b) { b.onclick = function () { var x = c.items[+b.dataset.qmerge]; mergeQty(c, x.at, x.part); renderDrawer(); }; });
   $('vdBody').querySelectorAll('.vq').forEach(function (box) {
     var x = c.items[+box.dataset.i], q = qOf(x, v);
     box.querySelectorAll('[data-f]').forEach(function (el) {
@@ -2781,6 +2871,96 @@ function renderDrawer() {
     });
   });
   renderVdRates();
+}
+/* 업체 추가 비용 · 조건 (선택): Freight · Hazmat 등 금액, 단가가 VAT 포함인지, 최소주문금액. 없으면 비워 두면 됨 */
+var EXTRA_NAMES = ['Freight', 'Hazmat', 'Handling', 'Packing', '통관 · 검사', '기타'];
+function extraOf(c, v) { return (c.extra || (c.extra = {}))[v] || null; }
+function extraSummary(x) {
+  if (!x) return '없음';
+  var cs = (x.costs || []).filter(function (k) { return qNum(k.amount) > 0; }).map(function (k) { return (k.name || '기타') + ' ' + (k.cur || 'KRW') + ' ' + fmt(qNum(k.amount)); });
+  var t = cs.concat(x.vat ? ['VAT 포함 단가'] : [], x.mov && qNum(x.mov.amount) > 0 ? ['최소주문 ' + (x.mov.cur || 'KRW') + ' ' + fmt(qNum(x.mov.amount))] : []);
+  return t.length ? t.join(' · ') : '없음';
+}
+function renderVdExtra() {
+  var c = quoteFor(dr.rec), v = dr.v, x = extraOf(c, v) || { costs: [] }, none = !!c.noReply[v];
+  var box = $('vdExtra'), open = box.open;
+  var curSel = function (val, attr) { return '<select ' + attr + '>' + Q_CURS.map(function (k) { return '<option' + (k === (val || 'USD') ? ' selected' : '') + '>' + k + '</option>'; }).join('') + '</select>'; };
+  box.innerHTML = '<summary><b>추가 비용 · 조건</b> <span class="muted">(선택)</span> <span class="vx-sum" id="vxSum">' + esc(extraSummary(extraOf(c, v))) + '</span></summary>' +
+    '<div class="vx-body"><p class="muted">업체 견적서에 운임 · 위험물 · 포장 같은 별도 비용, VAT 포함 단가, 최소주문금액이 있을 때만 적습니다. 없으면 비워 두세요. ' +
+      '추가 비용은 이 업체를 한 품목이라도 선정했을 때 구매내역서 합계에 들어갑니다.</p>' +
+    '<div class="vx-rows">' + (x.costs || []).map(function (k, i) {
+      return '<div class="vx-row"><input list="vxNames" data-x="name" data-i="' + i + '" value="' + esc(k.name || '') + '" placeholder="Freight" aria-label="비용 이름"' + (none ? ' disabled' : '') + '>' +
+        '<input data-x="amount" data-i="' + i + '" value="' + esc(k.amount == null ? '' : k.amount) + '" inputmode="decimal" placeholder="금액" aria-label="금액"' + (none ? ' disabled' : '') + '>' +
+        curSel(k.cur, 'data-x="cur" data-i="' + i + '" aria-label="통화"' + (none ? ' disabled' : '')) +
+        '<button type="button" class="qf-x" data-xdel="' + i + '" aria-label="이 비용 빼기"' + (none ? ' disabled' : '') + '>✕</button></div>';
+    }).join('') + '</div>' +
+    '<datalist id="vxNames">' + EXTRA_NAMES.map(function (n) { return '<option value="' + esc(n) + '">'; }).join('') + '</datalist>' +
+    '<div class="row vx-tools"><button type="button" class="btn-ghost" id="vxAdd"' + (none ? ' disabled' : '') + '>+ 비용 추가</button>' +
+      '<label class="toggle" for="vxVat"><input type="checkbox" id="vxVat"' + (x.vat ? ' checked' : '') + (none ? ' disabled' : '') + '><span>단가가 VAT 포함 (비교 · 구매내역서는 /1.1)</span></label>' +
+      '<label class="inline" for="vxMov">최소주문금액<input id="vxMov" inputmode="decimal" value="' + esc(x.mov && x.mov.amount != null ? x.mov.amount : '') + '" placeholder="없으면 비움"' + (none ? ' disabled' : '') + '>' +
+        curSel(x.mov && x.mov.cur, 'id="vxMovCur" aria-label="최소주문금액 통화"' + (none ? ' disabled' : '')) + '</label></div></div>';
+  box.open = open || !!(x.costs || []).length;
+  var save = function () {
+    var cur = extraOf(c, v) || { costs: [] };
+    var costs = [].slice.call(box.querySelectorAll('.vx-row')).map(function (row) {
+      return { name: row.querySelector('[data-x="name"]').value.trim(), amount: row.querySelector('[data-x="amount"]').value.trim(), cur: row.querySelector('[data-x="cur"]').value };
+    });
+    var movA = $('vxMov').value.trim();
+    var nx = { costs: costs, vat: $('vxVat').checked, mov: movA ? { amount: movA, cur: $('vxMovCur').value } : null };
+    if (!costs.length && !nx.vat && !nx.mov) delete c.extra[v]; else c.extra[v] = nx;
+    $('vxSum').textContent = extraSummary(extraOf(c, v));
+    box.querySelectorAll('[data-x="amount"]').forEach(function (el) { el.classList.toggle('missing', !!el.value.trim() && qNum(el.value) === null); });
+    void cur;
+  };
+  box.querySelectorAll('input, select').forEach(function (el) { el.oninput = save; el.onchange = save; });
+  box.querySelectorAll('[data-xdel]').forEach(function (b) { b.onclick = function () { save(); var x2 = extraOf(c, v); if (x2) x2.costs.splice(+b.dataset.xdel, 1); renderVdExtra(); }; });
+  $('vxAdd').onclick = function () {
+    save();
+    var x2 = extraOf(c, v) || (c.extra[v] = { costs: [], vat: false, mov: null });
+    var lastCur = (qOf(c.items[0] || { quotes: {}, src: {} }, v) || {}).cur;
+    x2.costs.push({ name: '', amount: '', cur: lastCur || 'USD' });
+    box.open = true; renderVdExtra();
+    var rows = box.querySelectorAll('.vx-row [data-x="name"]'); if (rows.length) rows[rows.length - 1].focus();
+  };
+}
+/* 견적 종합: 업체별 합계 (선정한 품목 + 추가 비용, VAT 제외) · 최소주문 미달 */
+function vendorKrw(c, v, x, q) {
+  var n = qNum(q.qty), p = qNum(q.price), cur = q.cur, rate = cur === 'KRW' ? 1 : qNum(c.rates[cur]);
+  if (n === null || p === null || !rate) return null;
+  var e = extraOf(c, v);
+  return n * (e && e.vat ? p / 1.1 : p) * rate;
+}
+function renderVendorTotals() {
+  var c = qs, has = c.vendors.some(function (v) { return extraOf(c, v); });
+  var rows = c.vendors.filter(function (v) { return !c.noReply[v]; }).map(function (v) {
+    var sel = 0, nSel = 0, all = 0, nAll = 0, selCur = {}, miss = false;
+    c.items.forEach(function (x) {
+      var q = x.quotes[v];
+      if (!q || /^no\s*bid$/i.test(String(q.price || '').trim()) || qNum(q.price) === null) return;
+      var k = vendorKrw(c, v, x, q);
+      if (k === null) { miss = true; return; }
+      all += k; nAll++;
+      if (q.sel) { sel += k; nSel++; selCur[q.cur] = (selCur[q.cur] || 0) + qNum(q.qty) * qNum(q.price) / ((extraOf(c, v) || {}).vat ? 1.1 : 1); }
+    });
+    var e = extraOf(c, v), ex = 0, exMiss = false;
+    ((e && e.costs) || []).forEach(function (k) { var a = qNum(k.amount), r = k.cur === 'KRW' ? 1 : qNum(c.rates[k.cur]); if (a > 0) { if (r) ex += a * r; else exMiss = true; } });
+    var mov = e && e.mov && qNum(e.mov.amount) > 0 ? e.mov : null, movWarn = '';
+    if (mov && nSel) {
+      var amt = selCur[mov.cur] !== undefined ? selCur[mov.cur] : null;
+      if (amt === null) { var r2 = mov.cur === 'KRW' ? 1 : qNum(c.rates[mov.cur]); amt = r2 ? sel / r2 : null; }
+      if (amt !== null && amt < qNum(mov.amount)) movWarn = '최소주문 ' + mov.cur + ' ' + fmt(qNum(mov.amount)) + ' 미달 (' + fmt(Math.round(amt * 100) / 100) + ')';
+    }
+    return { v: v, sel: sel, nSel: nSel, all: all, nAll: nAll, ex: ex, exMiss: exMiss || miss, movWarn: movWarn, e: e };
+  });
+  if (!has && !rows.some(function (r) { return r.movWarn; })) { $('qVendorTot').innerHTML = ''; return; }
+  var won = function (n) { return '₩' + Math.round(n).toLocaleString('ko-KR'); };
+  $('qVendorTot').innerHTML = '<h3>업체별 합계 <span class="muted">(원화 · VAT 제외 · 추가 비용은 선정한 업체만 구매내역서에 들어감)</span></h3><div class="scroll"><table class="list qb-tbl"><tr><th>업체</th><th class="n">선정한 품목</th><th class="n">추가 비용</th><th class="n">선정 합계</th><th class="n">견적 낸 품목 모두 이 업체로</th><th>조건</th></tr>' +
+    rows.map(function (r) {
+      return '<tr><td class="nw">' + esc(r.v) + '</td><td class="n data">' + (r.nSel ? won(r.sel) + ' <span class="muted">(' + r.nSel + ')</span>' : '<span class="muted">—</span>') + '</td>' +
+        '<td class="n data">' + (r.ex ? won(r.ex) : '<span class="muted">—</span>') + (r.exMiss ? ' <span class="warn-txt">환율 확인</span>' : '') + '</td>' +
+        '<td class="n data"><b>' + (r.nSel ? won(r.sel + r.ex) : '—') + '</b></td><td class="n data">' + (r.nAll ? won(r.all + r.ex) + ' <span class="muted">(' + r.nAll + '품목)</span>' : '—') + '</td>' +
+        '<td>' + esc(extraSummary(r.e) === '없음' ? '' : extraSummary(r.e)) + (r.movWarn ? ' <span class="warn-txt">' + esc(r.movWarn) + '</span>' : '') + '</td></tr>';
+    }).join('') + '</table></div>';
 }
 function renderValidTag() { var st = validState(quoteFor(dr.rec), dr.v); $('vdValidTag').className = 'vtag ' + st.cls; $('vdValidTag').textContent = st.text; }
 $('vdValid').onchange = function () {
@@ -2983,7 +3163,7 @@ function renderQSum() {
     var it = x.src;
     return '<div class="q-item" data-i="' + i + '">' +
       '<div class="q-head"><span class="q-best" data-best></span><span class="chip chip-spot">' + (i + 1) + '</span><span class="data">' + esc(it.item) + '</span><span>' + esc(it.name || '') + '</span>' +
-        (x.part !== undefined ? '<span class="vq-part">' + esc(lineTag(qs, x)) + '</span>' : '') +
+        (x.part !== undefined || x.sk !== undefined ? '<span class="vq-part">' + esc(lineTag(qs, x)) + '</span>' : '') +
         '<span class="muted">' + esc(it.desc || '') + '</span><span class="muted data">수량 ' + fmt(it.qty) + ' ' + esc(it.uom || '') + ' · Need-by ' + esc(needText(it)) + '</span></div>' +
       dupHtml(qs, it.item) +
       '<div class="q-meta">' +
@@ -2997,7 +3177,7 @@ function renderQSum() {
         qs.vendors.map(function (v) {
           var none = !!qs.noReply[v], q = x.quotes[v] || {};
           var price = none ? 'NO BID' : (q.price || '—');
-          return '<tr data-v="' + esc(v) + '"' + (none ? ' class="nobid"' : '') + '><td><input type="radio" name="sel-' + i + '"' + (q.sel ? ' checked' : '') + (none ? ' disabled' : '') + ' aria-label="' + esc(v) + ' 선정"></td><td class="nw">' + esc(v) + validTag(qs, v) + (qfilesOf(qs.rec, v).length ? ' <a class="vclip" href="' + esc(qfilesOf(qs.rec, v)[0].url) + '" target="_blank" rel="noopener" title="붙인 견적서 열기">📎</a>' : '') + '</td>' +
+          return '<tr data-v="' + esc(v) + '"' + (none ? ' class="nobid"' : '') + '><td><input type="radio" name="sel-' + i + '"' + (q.sel ? ' checked' : '') + (none ? ' disabled' : '') + ' aria-label="' + esc(v) + ' 선정"></td><td class="nw">' + esc(v) + validTag(qs, v) + altTags(it, q, none) + (qfilesOf(qs.rec, v).length ? ' <a class="vclip" href="' + esc(qfilesOf(qs.rec, v)[0].url) + '" target="_blank" rel="noopener" title="붙인 견적서 열기">📎</a>' : '') + '</td>' +
             '<td class="n data">' + esc(price) + '<span class="jump-slot"></span></td><td class="data">' + esc(none ? '' : q.cur || '') + '</td><td class="n data">' + esc(q.qty || '') + '</td>' +
             '<td class="krw"></td><td class="rank"></td><td class="data">' + esc(none ? '' : q.moq || '') + '</td><td class="data">' + esc(none ? '' : q.lt || '') + (none ? '' : ltDeadline(it, q.lt)) + '</td>' +
             '<td class="nb-cell">' + (none ? '' : '<select data-f="nbMode" aria-label="' + esc(v) + ' Need-by"><option value="">소요제기와 동일</option><option value="adj"' + (q.nbMode === 'adj' ? ' selected' : '') + '>L/T 고려하여 조정</option></select>' +
@@ -3075,9 +3255,8 @@ function updateRanks() {
     var x = qs.items[+box.dataset.i], rows = [].slice.call(box.querySelectorAll('tr[data-v]'));
     var krw = rows.map(function (tr) {
       if (qs.noReply[tr.dataset.v]) return null;
-      var q = x.quotes[tr.dataset.v] || {}, n = qNum(q.qty), p = qNum(q.price), c = q.cur;
-      var rate = c === 'KRW' ? 1 : qNum(qs.rates[c]);
-      return n !== null && p !== null && rate ? n * p * rate : null;
+      var q = x.quotes[tr.dataset.v] || {};
+      return vendorKrw(qs, tr.dataset.v, x, q);   // VAT 포함 견적은 /1.1
     });
     var sorted = krw.filter(function (v) { return v !== null; }).sort(function (a, b) { return a - b; });
     var max = sorted.length ? sorted[sorted.length - 1] : 0;
@@ -3096,6 +3275,7 @@ function updateRanks() {
     box.querySelector('[data-best]').innerHTML = x.best ? '최저가 <b>' + esc(x.best.v) + '</b> ₩' + Math.round(x.best.krw).toLocaleString('ko-KR') : '';
   });
   renderQBest();
+  renderVendorTotals();
 }
 /** 자재별 최저가 한눈에 (원화 기준) · 선정한 업체가 최저가가 아니면 표시 */
 function renderQBest() {
@@ -3141,7 +3321,7 @@ $('qCreate').onclick = function () {
   var items = qs.items.map(function (x, i) {
     var it = x.src;
     return { item: it.item, name: it.name, desc: it.desc, material: it.material || '', qpl: it.qpl, uom: it.uom, remark: it.remark, qty: it.qty, needBy: it.needBy, parts: it.parts, taxCode: it.taxCode || '',
-      program: x.program, prev: x.prev, quotes: p.items[i].quotes, at: x.at, part: x.part };
+      program: x.program, prev: x.prev, quotes: p.items[i].quotes, at: x.at, part: x.part, sk: x.sk, sq: x.sq };
   });
   var again = !!b.dataset.again; delete b.dataset.again;
   pickFolder('Spot 견적 구매내역서').then(function (folder) {
@@ -3150,7 +3330,7 @@ $('qCreate').onclick = function () {
     // 저장 중인 견적이 있으면 끝난 뒤에 (그 저장 시각을 base 로 보내 다른 창 저장과 섞이지 않게)
     return (qs.saving || Promise.resolve()).catch(function () {}).then(function () {
       return call('apiCreateSpotPurchase', { recordId: qs.rec.id, baseDate: $('base').value, rates: qs.rates, folder: folder.id, name: p.name, confirmer: p.confirmer,
-        schedule: schedPayload(), vendors: p.vendors, items: items, base: qs.savedAt || '', again: again });
+        schedule: schedPayload(), vendors: p.vendors, items: items, base: qs.savedAt || '', again: again, extra: p.extra });
     }).then(function (d) {
       qs.rec.quote = p; qs.savedAt = d.savedAt || qs.savedAt;
       $('qMsg').innerHTML = '<span class="ok-msg">Spot 견적 구매내역서를 ' + esc(folder.name) + '에 만들었습니다 · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.name) + ' 열기 ↗</a></span>';
@@ -3400,7 +3580,8 @@ function recCard(r, child) {
   var head = '<div>' + (child ? '<span class="rec-arrow" aria-hidden="true">↳</span>' : '') + '<span class="chip ' + chipCls + '">' + esc(r.direct ? '견적 직접 입력' : r.kind) + '</span> <span class="rec-title">' + esc(r.title) + '</span></div>' +
     '<div class="rec-meta"><span>' + esc(r.created) + '</span><span>상태: <b>' + esc(r.status) + '</b></span><span>품목 ' + (r.items || []).length + '개</span>' +
       (rfq && (r.fixed || []).length ? '<span>+ 계약 ' + r.fixed.length + '개 같이</span>' : '') +
-      (rfq && (r.vendors || []).length ? progWrap(r) : '') + poMeta(r) + fxMeta(r) + alertChips(r) + cfMeta(r) + revMeta(r) + '</div>' +
+      (rfq && (r.vendors || []).length ? progWrap(r) : '') + poMeta(r) + fxMeta(r) +
+      (r.replacedBy ? '<span class="po-chip replaced" title="같은 견적요청서로 다시 만든 파일로 대체됨 · 발주 마감 알림 · 구매 이력에서 빠짐">대체됨' + (r.replacedUrl ? ' · <a href="' + esc(r.replacedUrl) + '" target="_blank" rel="noopener">새 파일 ↗</a>' : '') + '</span>' : '') + alertChips(r) + cfMeta(r) + revMeta(r) + '</div>' +
     (rfq ? mailLine(r) : '');
   return '<div class="rec' + (rfq ? ' rfq' : '') + (open ? ' open' : '') + (child ? ' child' : '') + '" data-id="' + esc(r.id) + '">' +
     (rfq ? '<button type="button" class="rec-toggle" data-toggle="' + esc(r.id) + '" aria-expanded="' + !!open + '">' + head + '</button>' : '<div>' + head + '</div>') +
@@ -3608,7 +3789,22 @@ function collapseCards(ids) {
 function poMeta(r) {
   var p = r.po;
   if (!p) return '';
-  return '<span class="po-chip">' + esc(p.stage) + (p.approval ? ' · 품의 ' + esc(p.approval) : '') + (p.pr ? ' · PR ' + esc(p.pr) : '') + (p.po ? ' · PO ' + esc(p.po) : '') + (p.poDate ? ' (' + esc(p.poDate) + ')' : '') + '</span>';
+  var bv = p.byVendor || [], nv = poVendors(r).length;
+  return '<span class="po-chip"' + (bv.length ? ' title="' + esc(bv.map(function (x) { return x.vendor + ' PO ' + (x.po || '-') + (x.poDate ? ' (' + x.poDate + ')' : ''); }).join('\n')) + '"' : '') + '>' + esc(p.stage) + (p.approval ? ' · 품의 ' + esc(p.approval) : '') + (p.pr ? ' · PR ' + esc(p.pr) : '') + (p.po ? ' · PO ' + esc(p.po) : '') + (p.poDate ? ' (' + esc(p.poDate) + ')' : '') +
+    (bv.length ? ' · 업체별 PO ' + bv.filter(function (x) { return x.po; }).length + '/' + Math.max(nv, bv.length) : '') + '</span>';
+}
+/* 업체가 여럿인 구매내역서: 업체별 PO 번호 · 일자 (선택) */
+function poVendors(r) { return uniq((r.items || []).map(function (it) { return String((it && it.supplier) || '').trim(); }).filter(function (v) { return v && v !== '미정'; })); }
+function uniq(a) { var o = []; a.forEach(function (x) { if (o.indexOf(x) < 0) o.push(x); }); return o; }
+function poVendorRows(r, p) {
+  var vs = poVendors(r);
+  if (vs.length < 2) return '';
+  var by = {}; (p.byVendor || []).forEach(function (x) { by[x.vendor] = x; });
+  return '<div class="po-vendors"><b>업체별 PO</b> <span class="muted">(업체마다 PO 가 따로 나갈 때 · 선택)</span>' + vs.map(function (v) {
+    var x = by[v] || {};
+    return '<div class="po-vrow" data-pv="' + esc(v) + '"><span class="nw">' + esc(v) + '</span><input data-pvf="po" type="text" maxlength="80" placeholder="PO 번호" value="' + esc(x.po || '') + '" aria-label="' + esc(v) + ' PO 번호">' +
+      '<input data-pvf="poDate" type="date" value="' + esc(x.poDate || '') + '" aria-label="' + esc(v) + ' PO 일자"></div>';
+  }).join('') + '</div>';
 }
 /* PO 이후 상태: 단계 · 품의 · PR · PO 번호 · PO 일자 · 메모 */
 var PO_STAGES = ['작성', '품의 중', '품의 완료', 'PR 발행', 'PO 발행', '입고'];
@@ -3621,12 +3817,13 @@ function togglePoForm(id) {
   box.innerHTML = '<label class="field">단계<select data-pk="stage">' + PO_STAGES.map(function (x) { return '<option' + (x === p.stage ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></label>' +
     [['approval', '품의 번호'], ['pr', 'PR 번호'], ['po', 'PO 번호'], ['poDate', 'PO 일자'], ['memo', '메모']].map(function (f) {
       return '<label class="field">' + f[1] + '<input data-pk="' + f[0] + '"' + (f[0] === 'poDate' ? ' type="date"' : ' type="text" maxlength="200"') + ' value="' + esc(p[f[0]] || '') + '"></label>';
-    }).join('') + '<div class="row"><button class="btn" type="button" data-posave>저장</button><button class="btn-ghost" type="button" data-pocancel>닫기</button><span class="po-msg"></span></div>';
+    }).join('') + poVendorRows(r, p) + '<div class="row"><button class="btn" type="button" data-posave>저장</button><button class="btn-ghost" type="button" data-pocancel>닫기</button><span class="po-msg"></span></div>';
   card.appendChild(box);
   box.querySelector('[data-pocancel]').onclick = function () { box.remove(); };
   box.querySelector('[data-posave]').onclick = function () {
     var o = {}, b = this;
     box.querySelectorAll('[data-pk]').forEach(function (el) { o[el.dataset.pk] = el.value; });
+    o.byVendor = [].slice.call(box.querySelectorAll('[data-pv]')).map(function (row) { return { vendor: row.dataset.pv, po: row.querySelector('[data-pvf="po"]').value, poDate: row.querySelector('[data-pvf="poDate"]').value }; });
     b.disabled = true;
     call('apiSetPoStatus', id, o).then(function (d) { r.po = d.po; r.status = d.po.stage; renderRecords(); $('recMsg').innerHTML = '<span class="ok-msg">상태를 저장했습니다: ' + esc(r.title) + ' · ' + esc(d.po.stage) + '</span>'; })
       .catch(function (e) { box.querySelector('.po-msg').innerHTML = '<span class="err">' + esc(e.message || e) + '</span>'; b.disabled = false; });
@@ -4101,6 +4298,9 @@ var GUIDES = [
       { id: 'q7', img: 'qnb', t: 'L/T 때문에 Need-by 조정', d: '업체 줄의 Need-by 에서 L/T 고려하여 조정을 고르면 날짜 칸이 나오고, 오늘 + L/T + 21일과 소요제기 Need-by 중 늦은 날을 먼저 넣어 줍니다. 구매내역서 W Need-by 에는 조정한 날짜가, X 수량 칸은 업체 수량이 소요제기와 다르면 빨강 · MOQ 보다 적으면 주황으로 표시됩니다.' },
       { id: 'q10', img: 'vlist', t: '견적 입력 진행률', d: '카드의 막대와 견적 n/전체 입력 · 회신 없음 n 으로 펼치지 않아도 어디까지 들어왔는지 보입니다. 📎 는 붙인 견적서 수입니다.' },
       { id: 'q11', img: 'qdup', t: '진행 중 같은 자재 알림', d: '견적 종합에서 같은 자재가 진행 중인 다른 견적요청서 · 구매내역서(모든 담당자)에도 있으면 그 자재 아래에 제목과 담당자가 나옵니다. 두 번 사지 않게 확인하세요.' },
+      { id: 'q12', img: 'qtable', t: '추가 비용 · VAT · 최소주문 (선택)', d: '업체 견적서에 Freight · Hazmat · Handling 같은 별도 비용, VAT 포함 단가, 최소주문금액이 있을 때만 추가 비용 · 조건을 펼쳐 적습니다 (없으면 비워 둠). 추가 비용은 그 업체를 한 품목이라도 선정하면 구매내역서 합계에 들어가고(시트에서 선정을 바꿔도 따라감), VAT 포함 단가는 /1.1 로 비교 · 기재됩니다.' },
+      { id: 'q13', img: 'qtable', t: '업체별 수량 나누기', d: '한 품목을 두 업체에 나눠 발주할 때 Need-by 칸의 업체별 수량 나누기를 누르고 첫 줄 수량을 적습니다 (나머지는 둘째 줄). 줄마다 다른 업체를 선정하면 구매내역서에도 줄이 나뉘어 들어갑니다. 수량 다시 합치기로 되돌립니다.' },
+      { id: 'q14', img: 'qbest', t: '업체별 합계 · 대체품 · MFG', d: '추가 비용이나 최소주문을 적은 업체가 있으면 업체별 합계(선정한 품목 + 추가 비용, 견적 낸 품목 모두 이 업체로 했을 때)가 나오고 최소주문 미달이면 빨갛게 알립니다. 업체가 대체 P/N 을 제안했거나 MFG 가 QPL 과 다르면 업체 이름 옆에 주황 표시가 붙습니다.' },
       { id: 'q5', img: 'qbest', t: '자재별 최저가 · 단가 경고', d: '맨 위 표에 자재마다 최저가 업체와 2위와의 차이가 나오고, 최저가가 아닌 업체를 선정하면 빨간 글씨로 알려 줍니다. 직전 구매(같은 통화)보다 30% 넘게 다른 단가 옆에는 +n% 가 붙고, L/T 아래에는 그 업체로 맞출 수 있는 발주 마감일이 나옵니다.' }] },
   { id: 'records', view: 'records', title: '진행 중', desc: '내가 만든 구매내역서 · 견적요청서를 소요제기 단위로 묶어 보여 줍니다.',
     points: ['소요제기 묶음 · 진행 단계를 눌러 고치기', '메일을 보낸 뒤에도 견적요청서 수정', '완료 · 완료 취소 · 완료 기록 삭제'],
@@ -4113,6 +4313,7 @@ var GUIDES = [
       { id: 'c6', img: 'archive', t: '완료 기록 삭제', d: '테스트로 만든 기록은 체크하고 선택 삭제 (한 번 더 눌러 확인). 기록만 지우고 드라이브 파일은 그대로 남습니다. 구매 이력에 올린 줄도 같이 뺄 수 있습니다. 지운 기록은 아래 지운 기록 보기에서 되돌릴 수 있습니다 (구매 이력 줄도 다시 올라감).' },
       { id: 'c8', img: 'trash', t: '지운 기록 되돌리기', d: '완료 기록 보기 맨 아래 지운 기록 보기를 누르면 지운 기록이 나옵니다. 되돌리기를 누르면 완료 기록으로 돌아오고, 같이 뺀 구매 이력 줄도 다시 올라갑니다. 지운 기록은 보관 파일의 삭제기록 탭에 남아 있습니다.' },
       { id: 'c7', img: 'records', t: '확정 환율', d: '구매내역서를 만들 때 쓴 환율이 카드에 남습니다 (값 · 시각). 마우스를 올리면 출처가 나옵니다: 자동(환율 탭 수식) · 환율 탭 · 직접 입력(그때 환율 탭 값도 같이). 나중에 금액을 설명할 때 씁니다.' },
+      { id: 'c10', img: 'records', t: '업체별 PO · 대체된 파일', d: '업체가 여럿인 구매내역서는 상태 창에서 업체마다 PO 번호 · 일자를 따로 적을 수 있습니다. Spot 견적 구매내역서를 하나 더 만들면 예전 기록은 대체됨으로 바뀌어 발주 마감 알림 · 구매 이력에서 빠지고, 예전 파일 이름 앞에 (대체됨 날짜) 가 붙습니다.' },
       { id: 'c9', img: 'check', t: '사이트 점검', d: '오른쪽 위 점검을 누르면 지금 계정 권한으로 설정 · 템플릿 · 보관 파일 권한 · 잠금 · 캐시 · 견적데이터 · 변경기록 · 환율 · 업체정보 · Gmail 을 확인합니다. 배포 직후나 이상할 때 누르고, ❌ 가 있으면 안내대로 고치거나 결과 복사로 관리자에게 보내세요.' }] },
   { id: 'alerts', view: 'records', title: '기한 알림 · 아침 요약', desc: '발주 마감일과 견적 회신 기한을 계산해서 놓치지 않게 알려 줍니다.',
     points: ['발주 마감 = Need-by − L/T − 운송·통관', '회신 기한 · 미회신 업체 배지', '평일 아침 요약 메일 (각자 켜기)'],
@@ -4383,8 +4584,11 @@ $('expDays').onchange = function () { state.expDays = +this.value; loadExpiring(
 /* ---------- 진행 중 알림 배지 (서버 recordAlert_ 결과) ---------- */
 function alertChips(r) {
   var a = r.alert || {}, out = '';
-  if (a.due) out += '<span class="al-chip ' + a.due.level + '" title="견적이 하나도 안 들어온 업체: ' + esc(a.due.pending.join(', ')) + '">회신 기한 ' + esc(a.due.date.slice(5).replace('-', '/')) +
-    ' · ' + ddayText(a.due.days) + ' · 미회신 ' + a.due.pending.length + '곳</span>';
+  if (a.due) {
+    var part = a.due.partial || [];
+    out += '<span class="al-chip ' + a.due.level + '" title="' + esc((a.due.pending.length ? '견적이 하나도 안 들어온 업체: ' + a.due.pending.join(', ') : '') + (part.length ? (a.due.pending.length ? '\n' : '') + '일부 품목만 견적: ' + part.join(', ') : '')) + '">회신 기한 ' + esc(a.due.date.slice(5).replace('-', '/')) +
+      ' · ' + ddayText(a.due.days) + (a.due.pending.length ? ' · 미회신 ' + a.due.pending.length + '곳' : '') + (part.length ? ' · 일부 회신 ' + part.length + '곳' : '') + '</span>';
+  }
   if (a.po) out += '<span class="al-chip ' + a.po.level + '" title="Need-by − L/T − 운송·통관 · PO 발행 전까지 보임">발주 마감 ' + esc(a.po.date) + ' · ' + ddayText(a.po.days) +
     (a.po.count > 1 ? ' · ' + a.po.count + '품목' : '') + '</span>';
   return out;
