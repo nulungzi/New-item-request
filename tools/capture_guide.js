@@ -149,7 +149,7 @@ const vendorsResp = () => { const info = L.vendorInfo_(VSHEET); return { vendors
   await shot('ptabs', '#purchaseCard .panel', { p1: '.doc-tab[data-doc="spot"]', p7: '#rates .rate-src' }, { bottom: '#remarks' });
   await pg.evaluate(() => { const f = document.getElementById('flowBar'); if (f) f.style.visibility = ''; });
   await pg.click('#btnSchedExample'); await pg.click('#moUp'); await pg.click('#moUp'); await pg.click('#moUp');
-  await shot('gantt', '#schedSub', { p2: '#gbar-1', p3: '#moUp', p6: '#schedUnit' });
+  await shot('gantt', '#schedSub', { p2: '#gbar-1', p3: '#moUp', p6: '#schedUnit', p8: '#gbar-1 [data-gx]' });
   await pg.fill('#confirmer', '홍길동 과장');
   await shot('pfoot', '#purchaseCard .panel', { p4: '#btnCreate' }, { top: '#fileName' });
   // 만드는 중 창 (14초째, 3단계)

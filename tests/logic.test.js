@@ -147,6 +147,10 @@ test('구매일정 막대: 예시·사용자 값·빈 줄·범위 보정', () =>
   assert.strictEqual(ops.filter(o => o.op === 'bg' && o.s === '구매일정' && o.r === 7 && o.color !== '#ffffff').length, 0);
   const lt = ops.filter(o => o.op === 'set' && o.s === '구매일정' && o.c === 4).map(o => o.v);
   assert.deepStrictEqual(lt, ['1.5M', '', '', '', '']);
+  // 현 재고+Open PO 없음 (신규 자재): 막대 없이 L/T 칸에 -
+  const ops2 = L.buildPurchasePlan_(lines, ['USD'], { USD: 1 }, L.toDate_('2026-11-10'), { months: 12, bars: [{ start: 0, len: 0, none: true }, { start: 0, len: 4 }] });
+  assert.deepStrictEqual(ops2.filter(o => o.op === 'set' && o.s === '구매일정' && o.c === 4).map(o => o.v), ['-', '2.0M', '', '', '']);
+  assert.strictEqual(ops2.filter(o => o.op === 'bg' && o.s === '구매일정' && o.r === 6 && o.color !== '#ffffff').length, 0);
 });
 
 test('SPOT 등록 행은 계약으로 보지 않는다', () => {

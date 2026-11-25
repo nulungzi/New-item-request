@@ -776,7 +776,7 @@ function normSchedule_(sched, slots) {
   return SCHEDULE_TASKS.map(function (t, i) {
     var x = sched[i] || {};
     var start = Math.round(Number(x.start)), len = Math.round(Number(x.len));
-    if (!(len > 0) || isNaN(start)) return { start: 0, len: 0 };
+    if (!(len > 0) || isNaN(start)) return x.none ? { start: 0, len: 0, none: true } : { start: 0, len: 0 };   // none: 기간 없음 (예: 신규 자재라 재고 · Open PO 없음 → L/T 칸에 -)
     start = Math.max(0, Math.min(slots - 1, start));
     return { start: start, len: Math.max(1, Math.min(slots - start, len)) };
   });
@@ -1292,7 +1292,7 @@ function scheduleConfirmOps_(base, schedule, extra) {
   // 막대: 6~10행, E(5)열부터 표시 칸 수만큼. L/T(D열)는 막대 길이로 계산
   normSchedule_(schedule, slots).forEach(function (b, i) {
     var row = 6 + i;
-    set(G, row, 4, b.len ? schedLen_(b.len, P) : '');
+    set(G, row, 4, b.len ? schedLen_(b.len, P) : b.none ? '-' : '');
     for (var k = 0; k < slots; k++) {
       add({ op: 'bg', s: G, r: row, c: 5 + k, color: k >= b.start && k < b.start + b.len ? SCHEDULE_COLORS[i] : '#ffffff' });
     }

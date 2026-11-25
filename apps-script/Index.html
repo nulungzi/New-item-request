@@ -847,6 +847,12 @@ table.list td.nw { white-space: nowrap }
 .g-h { position: absolute; top: -2px; bottom: -2px; width: 14px; cursor: ew-resize }
 .g-h::after { content: ""; position: absolute; top: 28%; bottom: 28%; left: 6px; width: 2px; border-radius: 2px; background: currentColor; opacity: .5 }
 .g-h.l { left: -6px } .g-h.r { right: -6px }
+.g-x { position: absolute; top: -8px; right: -8px; width: 17px; height: 17px; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+  font: 700 .72rem/15px var(--font-body); text-align: center; cursor: pointer; box-shadow: 0 1px 3px rgba(0, 0, 0, .15); z-index: 2; opacity: .85 }
+.g-x:hover { color: #fff; background: var(--warn); border-color: var(--warn); opacity: 1 }
+.g-label .g-none { display: inline-flex; align-items: center; gap: 4px; font-size: .72rem; color: var(--muted); cursor: pointer; justify-self: start }
+.g-label .g-none input { margin: 0 }
+.g-label span.none { font-family: var(--font-body); color: var(--ink) }
 @media (max-width: 640px) { .gantt { --label: 128px; min-width: calc(128px + 24 * 22px) } .g-label span { white-space: normal } }
 
 /* 미리보기 */
@@ -4210,20 +4216,23 @@ function renderGantt() {
   for (k = 0; k < M; k++) html += '<div class="g-month" style="grid-column:span ' + PER + '">' + ((m + k) % 12 + 1) + '</div>';
   state.tasks.forEach(function (t, i) {
     html += '<div class="g-label"><b>' + esc(t) + '</b><span id="glt-' + i + '"></span>' +
-      '<button type="button" class="g-clear" id="gclr-' + i + '">지우기</button></div>' +
+      '<button type="button" class="g-clear" id="gclr-' + i + '">지우기</button>' +
+      (i === 0 ? '<label class="g-none" title="신규 자재 · 지금 재고와 Open PO 가 없을 때: 막대 없이 시트의 L/T 칸에 - 로 들어감"><input type="checkbox" id="gnone-0"' + (state.sched[0] && state.sched[0].none ? ' checked' : '') + '> 재고 없음 (-)</label>' : '') + '</div>' +
       '<div class="g-track" id="gtrack-' + i + '"><div class="g-ghost" id="gghost-' + i + '" hidden></div>' +
       '<div class="g-bar' + (i === 0 ? ' stock' : '') + '" id="gbar-' + i + '" tabindex="0" role="slider" ' +
       'aria-label="' + esc(t) + ' 기간 (←→ 이동, Shift+←→ 길이)" aria-valuemin="0" aria-valuemax="' + (SLOTS - 1) + '">' +
-      '<span class="g-h l" data-h="l"></span><span id="gtxt-' + i + '"></span><span class="g-h r" data-h="r"></span></div></div>';
+      '<span class="g-h l" data-h="l"></span><span id="gtxt-' + i + '"></span><span class="g-h r" data-h="r"></span>' +
+      '<button type="button" class="g-x" data-gx tabindex="-1" aria-label="' + esc(t) + ' 기간 지우기" title="이 기간 지우기">×</button></div></div>';
   });
   $('gantt').innerHTML = html;
   state.tasks.forEach(function (t, i) { placeBar(i); bindBar(i); });
 }
 function placeBar(i) {
-  var s = state.sched[i], bar = $('gbar-' + i), lt = $('glt-' + i);
+  var s = state.sched[i], bar = $('gbar-' + i), lt = $('glt-' + i), none = $('gnone-' + i);
   bar.hidden = !s.len;
   $('gclr-' + i).hidden = !s.len;
-  if (!s.len) { lt.textContent = '끌어서 기간 선택'; lt.className = 'empty'; return; }
+  if (none) none.checked = !s.len && !!s.none;
+  if (!s.len) { lt.textContent = s.none ? '- · 재고 없음 (신규 자재 등)' : '끌어서 기간 선택'; lt.className = s.none ? 'none' : 'empty'; return; }
   bar.style.left = (s.start / SLOTS * 100) + '%';
   bar.style.width = (s.len / SLOTS * 100) + '%';
   $('gtxt-' + i).textContent = s.len >= PER ? lenText(s.len) : '';
@@ -4236,28 +4245,40 @@ function bindBar(i) {
   var bar = $('gbar-' + i), track = $('gtrack-' + i), ghost = $('gghost-' + i), drag = null, draw = null;
   var slotW = function () { return track.getBoundingClientRect().width / SLOTS; };
   var slotAt = function (x) { return Math.max(0, Math.min(SLOTS - 1, Math.floor((x - track.getBoundingClientRect().left) / slotW()))); };
-
-  // 막대 옮기기·늘이기
-  bar.addEventListener('pointerdown', function (e) {
-    e.preventDefault(); e.stopPropagation();
-    var h = e.target.getAttribute('data-h');
-    drag = { mode: h || 'm', x: e.clientX, s0: state.sched[i].start, l0: state.sched[i].len, w: slotW() };
+  // 끄는 동안은 창 전체에서 움직임을 받음: 포인터 잡기(setPointerCapture)가 안 되는 브라우저 · 터치패드에서도 끊기지 않게
+  var cap = function (el, id) { try { el.setPointerCapture(id); } catch (e) { /* 창 전체로 받으므로 괜찮음 */ } };
+  var follow = function (move, up) {
+    var mv = function (e) { move(e); }, end = function (e) { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', end); window.removeEventListener('pointercancel', cancel); up(e, false); };
+    var cancel = function (e) { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', end); window.removeEventListener('pointercancel', cancel); up(e, true); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', end); window.addEventListener('pointercancel', cancel);
+  };
+  var clear = function () { state.sched[i] = { start: 0, len: 0 }; placeBar(i); };
+  var startDrag = function (e, mode) {
+    drag = { mode: mode, x: e.clientX, s0: state.sched[i].start, l0: state.sched[i].len, w: slotW() };
     bar.classList.add('dragging');
-    bar.setPointerCapture(e.pointerId);
-  });
-  bar.addEventListener('pointermove', function (e) {
-    if (!drag) return;
-    var d = Math.round((e.clientX - drag.x) / drag.w), s = state.sched[i];
-    if (drag.mode === 'm') s.start = Math.max(0, Math.min(SLOTS - drag.l0, drag.s0 + d));
-    if (drag.mode === 'r') s.len = Math.max(1, Math.min(SLOTS - drag.s0, drag.l0 + d));
-    if (drag.mode === 'l') { var ns = Math.max(0, Math.min(drag.s0 + drag.l0 - 1, drag.s0 + d)); s.len = drag.l0 + drag.s0 - ns; s.start = ns; }
-    placeBar(i);
-  });
-  var endDrag = function () { drag = null; bar.classList.remove('dragging'); };
-  bar.addEventListener('pointerup', endDrag);
-  bar.addEventListener('pointercancel', endDrag);
+    cap(bar, e.pointerId);
+    follow(function (ev) {
+      if (!drag) return;
+      var d = Math.round((ev.clientX - drag.x) / drag.w), s = state.sched[i];
+      if (drag.mode === 'm') s.start = Math.max(0, Math.min(SLOTS - drag.l0, drag.s0 + d));
+      if (drag.mode === 'r') s.len = Math.max(1, Math.min(SLOTS - drag.s0, drag.l0 + d));
+      if (drag.mode === 'l') { var ns = Math.max(0, Math.min(drag.s0 + drag.l0 - 1, drag.s0 + d)); s.len = drag.l0 + drag.s0 - ns; s.start = ns; }
+      placeBar(i);
+    }, function () { drag = null; bar.classList.remove('dragging'); });
+  };
 
-  // 빈 곳에서 끌어 새 기간 그리기 (기존 막대는 새 기간으로 바뀜)
+  // 막대 옮기기 · 늘이기 (오른쪽 위 × 는 지우기)
+  bar.addEventListener('pointerdown', function (e) {
+    if (e.target.closest('[data-gx]')) return;
+    if (e.button !== undefined && e.button > 0) return;   // 왼쪽 버튼만
+    e.preventDefault(); e.stopPropagation();
+    startDrag(e, e.target.getAttribute('data-h') || 'm');
+  });
+  var gx = bar.querySelector('[data-gx]');
+  gx.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+  gx.onclick = function (e) { e.stopPropagation(); clear(); };
+
+  // 빈 곳에서 끌어 새 기간 그리기. 막대 끝 가까이(8px)를 누르면 새로 그리지 않고 그 끝을 늘이거나 줄임
   var showGhost = function () {
     var a = Math.min(draw.a, draw.b), n = Math.abs(draw.b - draw.a) + 1;
     ghost.hidden = false;
@@ -4268,29 +4289,31 @@ function bindBar(i) {
   };
   track.addEventListener('pointerdown', function (e) {
     if (e.target !== track) return;
+    if (e.button !== undefined && e.button > 0) return;
     e.preventDefault();
+    var s = state.sched[i];
+    if (s.len) {
+      var r = bar.getBoundingClientRect();
+      if (Math.abs(e.clientX - r.left) <= 8) { startDrag(e, 'l'); return; }
+      if (Math.abs(e.clientX - r.right) <= 8) { startDrag(e, 'r'); return; }
+    }
     var k = slotAt(e.clientX);
     draw = { a: k, b: k };
-    track.setPointerCapture(e.pointerId);
+    cap(track, e.pointerId);
     showGhost();
+    follow(function (ev) { if (!draw) return; draw.b = slotAt(ev.clientX); showGhost(); }, function (ev, cancel) {
+      if (!draw) return;
+      if (!cancel) state.sched[i] = { start: Math.min(draw.a, draw.b), len: Math.abs(draw.b - draw.a) + 1 };
+      draw = null; ghost.hidden = true; placeBar(i);
+    });
   });
-  track.addEventListener('pointermove', function (e) {
-    if (!draw) return;
-    draw.b = slotAt(e.clientX);
-    showGhost();
-  });
-  var endDraw = function (cancel) {
-    if (!draw) return;
-    if (!cancel) state.sched[i] = { start: Math.min(draw.a, draw.b), len: Math.abs(draw.b - draw.a) + 1 };
-    draw = null; ghost.hidden = true; placeBar(i);
-  };
-  track.addEventListener('pointerup', function () { endDraw(false); });
-  track.addEventListener('pointercancel', function () { endDraw(true); });
 
-  $('gclr-' + i).onclick = function () { state.sched[i] = { start: 0, len: 0 }; placeBar(i); };
+  $('gclr-' + i).onclick = clear;
+  var none = $('gnone-' + i);
+  if (none) none.onchange = function () { state.sched[i] = this.checked ? { start: 0, len: 0, none: true } : { start: 0, len: 0 }; placeBar(i); };
   bar.addEventListener('keydown', function (e) {           // ←→ 이동, Shift+←→ 길이, Delete 지우기
     var s = state.sched[i];
-    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); state.sched[i] = { start: 0, len: 0 }; placeBar(i); return; }
+    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); clear(); return; }
     var d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
     if (!d) return;
     e.preventDefault();
@@ -4400,6 +4423,7 @@ var GUIDES = [
       { id: 'p1', img: 'ptabs', t: '계약 · Spot 단가 탭', d: 'LTA · 3PP 계약과 DB 단가가 있는 Spot 품목이 같이 있으면 탭 두 개로 나뉩니다. 탭마다 구매일정 · 제목 · 사업부 담당자 · 비고를 따로 정합니다. 환율은 공통입니다.' },
       { id: 'p2', img: 'gantt', t: '구매일정 그리기', d: '줄마다 시작 칸에서 끝 칸까지 끌어서 기간을 그립니다. 막대 가운데를 끌면 옮기고, 양 끝을 끌면 늘어납니다. 한 칸은 반 달(오른쪽 <b>한 칸</b>에서 0.25개월로 바꿀 수 있음)이고 L/T는 자동 계산됩니다.' },
       { id: 'p3', img: 'gantt', t: '표시 개월 늘리기', d: '리드타임이 40~50주인 Metal · HW는 표시 개월을 + 로 늘립니다 (12~36개월). 시트의 구매일정도 같은 개월로 만들어집니다.' },
+      { id: 'p8', img: 'gantt', t: '막대 지우기 · 재고 없음 (-)', d: '막대 오른쪽 위 작은 × 를 누르면 그 기간이 지워집니다 (막대를 누른 뒤 Delete 도 됨). 막대 끝 가까이를 눌러 끌면 새로 그리지 않고 그 끝만 늘이거나 줄입니다. 신규 자재라 현 재고 · Open PO 가 없으면 첫 줄의 재고 없음 (-) 을 체크하세요. 시트의 L/T 칸에 - 로 들어갑니다.' },
       { id: 'p6', img: 'gantt', t: '한 칸 0.5 · 0.25개월', d: '한 칸을 0.25개월로 바꾸면 한 달이 4칸이 되어 품의 · 운송처럼 짧은 기간을 더 잘게 그립니다. 그려 둔 막대는 같은 기간으로 맞춰지고, 시트의 구매일정도 달마다 4칸(0.25개월 경계는 점선)으로 만들어집니다.' },
       { id: 'p7', img: 'ptabs', t: '환율 · 환율 탭 수식', d: '환율 칸 아래에 환율 탭의 출처가 나옵니다. GOOGLEFINANCE 같은 수식 환율은 자동으로 표시되고, 여기서 바꿔 적어도 이 구매내역서에만 쓰이며 환율 탭의 수식은 그대로 둡니다. 손으로 적은 환율이 일주일 넘게 지났으면 주황색으로 알려 줍니다.' },
       { id: 'p4', img: 'pfoot', t: '제목 · 담당자 · 만들기', d: '구매내역서 제목과 사업부 담당자(이름 직급)를 적고 만들기를 누르면 저장할 드라이브 폴더를 고릅니다. 만든 뒤 미리보기와 파일 링크가 나옵니다.' },
