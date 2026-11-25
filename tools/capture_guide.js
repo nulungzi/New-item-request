@@ -36,8 +36,8 @@ let records = [
   { id: 'R1', kind: '견적요청서', title: '[KE] RFQ // 261113 Boeing Process Material Spot (due 11/20)', created: '2026-11-13', status: '메일 초안', url: '#', fileId: 'F1', draft: 'D', due: '2026-11-14',
     qfiles: { OMI: [{ id: 'qf1', name: 'OMI_견적서_261114_Quotation Q-2611.pdf', url: '#', at: '2026-11-14 10:20' }] }, vendors: quote.vendors.concat(['GV엔지니어링']), quote, items: rfqItems,
     mails: [{ no: 1, kind: '견적 요청', at: '2026-11-13 09:10', vendors: quote.vendors, count: 6 }], group: 'G1', fixed: [{ item: 'KERC00064', supplier: 'AKZO', qty: 1100, uom: 'KT', price: 78.49, cur: 'USD', priceMode: 'LTA', needBy: '2027-05-14', needs: [{ needBy: '2027-05-14', qty: 500 }, { needBy: '2027-06-20', qty: 600 }], desc: 'GREEN PRIMER' }] },
-  { id: 'R2', kind: '견적 구매내역서', title: '261113 Boeing Process Material Spot (due 11/20) 견적 구매내역서', created: '2026-11-13', status: '작성', url: '#', items: [{}, {}, {}, {}], parent: 'R1', group: 'G1' },
-  { id: 'R3', kind: '계약 구매내역서', title: '261112 구매내역서_AKZO_Syensqo', created: '2026-11-12', status: '사업부 확인 요청', url: 'https://docs.google.com/spreadsheets/d/example', items: [{ deadline: '2026-11-24' }, { deadline: '2027-01-08' }], group: 'G0',
+  { id: 'R2', fx: { at: '2026-11-13 10:12', rates: { USD: { v: 1350, src: 'auto', tabAt: '2026-11-13' } } }, kind: '견적 구매내역서', title: '261113 Boeing Process Material Spot (due 11/20) 견적 구매내역서', created: '2026-11-13', status: '작성', url: '#', items: [{}, {}, {}, {}], parent: 'R1', group: 'G1' },
+  { id: 'R3', fx: { at: '2026-11-13 10:12', rates: { USD: { v: 1342.5, src: 'typed', tab: 1350, tabAt: '2026-11-13' } } }, kind: '계약 구매내역서', title: '261112 구매내역서_AKZO_Syensqo', created: '2026-11-12', status: '사업부 확인 요청', url: 'https://docs.google.com/spreadsheets/d/example', items: [{ deadline: '2026-11-24' }, { deadline: '2027-01-08' }], group: 'G0',
     confirmMail: { mode: 'send', at: '2026-11-12 16:40', to: ['biz@ke.com'] } },
   { id: 'R4', kind: 'Spot 구매내역서', title: '261112 Spot 구매내역서_Airtech', created: '2026-11-12', status: '품의 중', url: '#', items: [{ deadline: '2027-03-30' }], group: 'G0', po: { stage: '품의 중', approval: 'AP-2026-1188' } }];
 records.forEach(r => { r.alert = JSON.parse(JSON.stringify(L.recordAlert_(r, TODAY))); });
@@ -83,6 +83,19 @@ const vendorsResp = () => { const info = L.vendorInfo_(VSHEET); return { vendors
       case 'apiVendorStats': return STATS;
       case 'apiMasterList': return MASTER;
       case 'apiArchivedRecords': return { records: ARCHIVED, ready: true };
+      case 'apiDeletedRecords': return { records: [{ id: 'T1', kind: '견적요청서', title: '[KE] RFQ // 261020 테스트 견적요청서', created: '2026-10-20', done: '2026-10-28', deleted: '2026-11-10', url: '#', history: 0 },
+        { id: 'T2', kind: '계약 구매내역서', title: '261021 구매내역서_PPG (테스트)', created: '2026-10-21', done: '2026-10-30', deleted: '2026-11-10', url: '#', history: 2 }] };
+      case 'apiSystemCheck': return { at: '2026-11-13 09:05', ms: 9200, list: [
+        { group: '배포 · 로그인', level: 'ok', msg: '웹앱이 "웹 앱에 액세스하는 사용자" 권한으로 실행됩니다' },
+        { group: '자재정보 (DB)', level: 'ok', msg: '자재정보 스프레드시트: 소요제기 DB · 편집 권한' },
+        { group: '자재정보 (DB)', level: 'ok', msg: '자재정보 탭: 머리글 2행, 품목 1,284줄 · 버전 1763000000000' },
+        { group: '템플릿', level: 'ok', msg: '구매내역서 템플릿: 구매내역서_템플릿' },
+        { group: '템플릿', level: 'ok', msg: 'Spot 견적 구매내역서 템플릿: Spot_구매내역서_템플릿' },
+        { group: '완료 보관 파일', level: 'bad', msg: '보관 파일에 편집 권한이 없습니다 (VIEW) — 완료 · 되돌리기 · 삭제가 실패합니다' },
+        { group: '잠금 · 캐시', level: 'ok', msg: '잠금: 41ms 에 받음 (여러 명 동시 저장 보호)' },
+        { group: '진행기록 · 견적데이터', level: 'ok', msg: '견적데이터 탭: 큰 견적 2건 모두 읽힘' },
+        { group: '환율', level: 'ok', msg: 'USD 1350 (수식 · 자동)' },
+        { group: '환율', level: 'warn', msg: 'EUR 1473.47 — 12일 전 값 (손으로 적은 환율)' }] };
       case 'apiConfirmDefaults': return { to: 'biz.team@ke.com', cc: '', name: '홍길동', body: '', signature: '<div style="font-family:Arial,sans-serif;font-size:10pt;color:#444">홍길동 사원<br>자재구매팀</div>' };
       default: return null;
     }
@@ -150,7 +163,7 @@ const vendorsResp = () => { const info = L.vendorInfo_(VSHEET); return { vendors
   await pg.click('#rpCancel');
   // 5. 진행 중
   await pg.evaluate(() => showView('records')); await pg.waitForTimeout(300);
-  await shot('records', '#recPanel', { c1: '.rec-ghead', c2: '[data-gdone]', c3: '.rec[data-id="R1"] [data-step="revise"]' }, { top: '.rec-group' });
+  await shot('records', '#recPanel', { c1: '.rec-ghead', c2: '[data-gdone]', c3: '.rec[data-id="R1"] [data-step="revise"]', c7: '.rec[data-id="R2"] .fx-meta' }, { top: '.rec-group' });
   await pg.evaluate(() => openRevise(recById('R1'))); await pg.waitForTimeout(200);
   await pg.fill('#rvTbl tr[data-i="0"] [data-f="qty"]', '5');
   await pg.click('#rvAdd'); await pg.fill('#rvTbl tr:last-child [data-f="item"]', 'KERN02200-001'); await pg.fill('#rvTbl tr:last-child [data-f="name"]', 'A88TB0100'); await pg.fill('#rvTbl tr:last-child [data-f="qty"]', '20');
@@ -159,8 +172,15 @@ const vendorsResp = () => { const info = L.vendorInfo_(VSHEET); return { vendors
   await pg.click('#recArchive'); await pg.waitForTimeout(400);
   await pg.check('[data-arc="A3"]');
   await shot('archive', '#recPanel', { c5: '[data-arcback="A1"]', c6: '#arcDel' }, { top: '#recPanel .rec-tools', maxH: 560 });
+  await pg.click('#trashOpen'); await pg.waitForTimeout(400);
+  await shot('trash', '.trash-box', { c8: '[data-untrash="T2"]' });
+  await pg.click('#trashOpen'); await pg.waitForTimeout(200);
   await pg.click('#recArchive'); await pg.waitForTimeout(300);
   await shot('alerts', '#recPanel', { a2: '.al-chip', a3: '#dgToggle', m1: '[data-cf="R3"]' }, { top: '#recPanel .rec-tools', maxH: 760 });
+  // 사이트 점검
+  await pg.click('#btnCheck'); await pg.waitForTimeout(400);
+  await shot('check', '#ckModal .modal-box', { c9: '#ckSum' });
+  await pg.click('#ckClose');
   // 사업부 확인 메일
   await pg.click('[data-cf="R3"]'); await pg.waitForTimeout(400);
   await shot('confirm', '#cfModal .modal-box', { m2: '#cfPrev', m3: '#cfSend' });

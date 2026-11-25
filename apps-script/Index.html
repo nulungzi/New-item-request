@@ -102,6 +102,15 @@ main { max-width: 1600px; margin: 0 auto; display: grid; gap: 18px }
 @media (prefers-reduced-motion: reduce) { .doc-panel { animation: none } }
 .rfq-done { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center }
 /* 메일 초안 */
+.modal-box.ck-box { width: min(760px, 100%); grid-template-rows: auto auto auto minmax(0, 1fr) auto }
+.ck-sum { display: flex; flex-wrap: wrap; gap: 8px }
+.ck-sum span { font: 600 .8rem var(--font-data); padding: 3px 10px; border-radius: 999px; background: var(--surface-2) }
+.ck-sum .bad { background: var(--warn-soft); color: var(--warn) } .ck-sum .ok { background: var(--ok-soft, #e3f4ea); color: var(--ok) } .ck-sum .warn { background: #fff1d6; color: #8a5a00 }
+.ck-list { overflow: auto; display: grid; gap: 10px; padding-right: 4px }
+.ck-group h3 { margin: 0 0 4px; font-size: .86rem }
+.ck-row { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 6px; padding: 3px 0; font-size: .86rem; overflow-wrap: anywhere }
+.ck-row.ck-bad { color: var(--warn); font-weight: 600 } .ck-row.ck-info { color: var(--muted) } .ck-row.ck-warn { color: #8a5a00 }
+:root[data-theme="dark"] .ck-row.ck-warn, :root[data-theme="dark"] .ck-sum .warn { color: #ffcf7a } :root[data-theme="dark"] .ck-sum .warn { background: #3d2f12 }
 .modal-box.draft-box { grid-template-rows: auto auto auto minmax(0, 1fr) auto auto auto auto; width: min(1180px, 100%) }
 .dm-remind { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 10px 12px; border-radius: 8px; background: var(--spot-soft); font-size: .86rem }
 .dm-remind input { padding: 5px 8px }
@@ -776,6 +785,7 @@ table.list td.nw { white-space: nowrap }
 .qf-hint { font-size: .74rem }
 .qprog { display: inline-flex; align-items: center; gap: 6px }
 .qprog-wrap { display: contents }
+.fx-meta { font-family: var(--font-data) } .fx-meta b { color: var(--warn); font-weight: 600 }
 .qprog i { width: 46px; height: 6px; border-radius: 3px; background: linear-gradient(to right, var(--accent) var(--p), var(--surface-2) var(--p)); border: 1px solid var(--line) }
 .qprog.full i { background: var(--ok) }
 .rate-src { display: block; margin-top: 3px; font: .7rem var(--font-body); color: var(--muted); font-weight: 400 }
@@ -986,7 +996,7 @@ td .empty { border: 0; padding: 18px 8px }
   </div>
   <div class="masthead-side">
     <div class="legend"><span class="chip chip-ok">LTA</span><span class="chip chip-ok">3PP</span> 계약 구매내역서 · <span class="chip chip-priced">SPOT 단가</span> Spot 구매내역서 · <span class="chip chip-spot">SPOT 견적</span> 견적요청서</div>
-    <div class="row user-row"><span class="muted" id="userWho"></span><button class="btn-ghost theme-btn" id="btnTheme" type="button" title="화면 밝기: 자동(PC 설정) → 밝게 → 어둡게">◐ 자동</button><button class="btn-ghost" id="btnLogout" type="button">로그아웃</button></div>
+    <div class="row user-row"><span class="muted" id="userWho"></span><button class="btn-ghost" id="btnCheck" type="button" title="설정 · 권한 · 시트 상태를 지금 계정으로 점검 (배포 직후 · 이상할 때)">점검</button><button class="btn-ghost theme-btn" id="btnTheme" type="button" title="화면 밝기: 자동(PC 설정) → 밝게 → 어둡게">◐ 자동</button><button class="btn-ghost" id="btnLogout" type="button">로그아웃</button></div>
     <div class="row db-row"><span class="muted" id="dbStamp"></span><button class="btn-ghost" id="btnDbRefresh" type="button" title="자재정보 시트에서 고친 최신 값을 다시 불러옵니다">DB 새로고침</button></div>
   </div>
 </header>
@@ -1517,6 +1527,16 @@ td .empty { border: 0; padding: 18px 8px }
     <div class="row spread"><button class="btn-ghost" id="rvAdd" type="button">+ 품목 추가</button><span class="rv-diff" id="rvDiff"></span></div>
     <p class="muted" style="margin:0">저장하면 견적요청서 파일을 같은 폴더에 새로 만들고, 예전 파일은 이름 끝에 "(수정 전 …)" 을 붙여 그대로 둡니다. 입력한 견적은 같은 Item 끼리 이어집니다. 그다음 <b>수정 메일 초안</b>(제목 앞 [Revised])을 만들어 다시 보냅니다.</p>
     <div class="pk-foot"><span class="err" id="rvMsg"></span><div class="row"><button class="btn-ghost" id="rvCancel" type="button">취소</button><button class="btn" id="rvSave" type="button">저장하고 견적요청서 다시 만들기</button></div></div>
+  </div>
+</div>
+
+<div class="modal" id="ckModal" hidden role="dialog" aria-modal="true" aria-labelledby="ckTitle">
+  <div class="modal-box ck-box">
+    <div class="panel-head"><h2 id="ckTitle">사이트 점검</h2><span class="muted" id="ckStamp"></span></div>
+    <p class="muted">지금 로그인한 계정의 권한으로 설정 · 템플릿 · 시트 상태를 확인합니다. 시트에 쓰는 것은 변경기록 한 줄('점검')뿐입니다. ❌ 가 있으면 그 줄의 안내대로 고치거나 관리자에게 알려 주세요.</p>
+    <div class="ck-sum" id="ckSum"></div>
+    <div class="ck-list" id="ckList"></div>
+    <div class="row" style="justify-content:flex-end"><button class="btn-ghost" id="ckCopy" type="button">결과 복사</button><button class="btn-ghost" id="ckAgain" type="button">다시 점검</button><button class="btn" id="ckClose" type="button">닫기</button></div>
   </div>
 </div>
 
@@ -3355,6 +3375,15 @@ function mailLine(r) {
     return '<span class="mail-chip' + (m.kind === '재요청' ? ' re' : '') + '">✉ <b>메일 ' + m.no + '</b> ' + esc(m.kind) + ' · ' + esc(md(m.at)) + (n ? ' · ' + n + '곳' : '') + '</span>';
   }).join('<span class="mail-arrow">→</span>') + '</div>';
 }
+/* 확정 환율: 파일을 만들 때 쓴 값 · 출처 · 시각 */
+var FX_SRC = { auto: '자동', tab: '환율 탭', typed: '직접 입력' };
+function fxMeta(r) {
+  var fx = r.fx, cs = Object.keys((fx && fx.rates) || {});
+  if (!cs.length) return '';
+  var full = cs.map(function (c) { var x = fx.rates[c]; return c + ' ' + fmt(x.v) + ' (' + FX_SRC[x.src] + (x.src === 'typed' && x.tab ? ', 환율 탭 ' + fmt(x.tab) : '') + ')'; }).join(' · ');
+  return '<span class="fx-meta" title="파일을 만들 때 쓴 환율 · ' + esc(fx.at) + '\n' + esc(full) + '">환율 ' + esc(cs.map(function (c) { return c + ' ' + fmt(fx.rates[c].v); }).join(' · ')) +
+    (cs.some(function (c) { return fx.rates[c].src === 'typed'; }) ? ' <b>직접 입력</b>' : '') + ' · ' + esc(String(fx.at).slice(5)) + '</span>';
+}
 function progMeta(r) {
   var p = quoteProgress(r), nf = Object.keys(r.qfiles || {}).reduce(function (n, v) { return n + (r.qfiles[v] || []).length; }, 0);
   if (!p) return '';
@@ -3371,7 +3400,7 @@ function recCard(r, child) {
   var head = '<div>' + (child ? '<span class="rec-arrow" aria-hidden="true">↳</span>' : '') + '<span class="chip ' + chipCls + '">' + esc(r.direct ? '견적 직접 입력' : r.kind) + '</span> <span class="rec-title">' + esc(r.title) + '</span></div>' +
     '<div class="rec-meta"><span>' + esc(r.created) + '</span><span>상태: <b>' + esc(r.status) + '</b></span><span>품목 ' + (r.items || []).length + '개</span>' +
       (rfq && (r.fixed || []).length ? '<span>+ 계약 ' + r.fixed.length + '개 같이</span>' : '') +
-      (rfq && (r.vendors || []).length ? progWrap(r) : '') + poMeta(r) + alertChips(r) + cfMeta(r) + revMeta(r) + '</div>' +
+      (rfq && (r.vendors || []).length ? progWrap(r) : '') + poMeta(r) + fxMeta(r) + alertChips(r) + cfMeta(r) + revMeta(r) + '</div>' +
     (rfq ? mailLine(r) : '');
   return '<div class="rec' + (rfq ? ' rfq' : '') + (open ? ' open' : '') + (child ? ' child' : '') + '" data-id="' + esc(r.id) + '">' +
     (rfq ? '<button type="button" class="rec-toggle" data-toggle="' + esc(r.id) + '" aria-expanded="' + !!open + '">' + head + '</button>' : '<div>' + head + '</div>') +
@@ -3483,7 +3512,7 @@ function renderArchive() {
     list.map(function (r) {
     return '<div class="rec done-rec' + (state.arcSel[r.id] ? ' picked' : '') + '" data-id="' + esc(r.id) + '"><div><div><label class="arc-chk"><input type="checkbox" data-arc="' + esc(r.id) + '"' + (state.arcSel[r.id] ? ' checked' : '') + ' aria-label="' + esc(r.title) + ' 선택"></label>' +
       '<span class="chip chip-done">' + esc(r.kind) + '</span> <span class="rec-title">' + esc(r.title) + '</span></div>' +
-      '<div class="rec-meta"><span>' + esc(r.created) + ' 작성</span><span>완료 <b>' + esc(r.done || '') + '</b></span><span>품목 ' + (r.items || []).length + '개</span>' + poMeta(r) + '</div></div>' +
+      '<div class="rec-meta"><span>' + esc(r.created) + ' 작성</span><span>완료 <b>' + esc(r.done || '') + '</b></span><span>품목 ' + (r.items || []).length + '개</span>' + poMeta(r) + fxMeta(r) + '</div></div>' +
       '<div class="rec-actions"><a class="btn-ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener">파일 열기 ↗</a><button class="btn-ghost" type="button" data-arcback="' + esc(r.id) + '" title="완료 취소: 진행 중으로 되돌림">되돌리기</button><button class="btn-ghost danger" type="button" data-arcdel="' + esc(r.id) + '">삭제</button></div></div>';
   }).join('') : (state.archived.length ? emptyHtml('search', '찾는 기록이 없습니다.') : emptyHtml('archive', '완료한 기록이 없습니다.'));
   $('recList').insertAdjacentHTML('beforeend', '<div class="trash-box"><button class="btn-ghost" type="button" id="trashOpen" aria-expanded="' + !!state.trashOpen + '">' +
@@ -4081,7 +4110,10 @@ var GUIDES = [
       { id: 'c4', img: 'revise', t: '견적요청서 수정 · [Revised] 메일', d: '메일을 보낸 뒤에도 품목을 더하거나 빼고 수량 · Need-by 를 고칩니다 (초록 = 새 품목, 노랑 = 바뀐 줄). 저장하면 같은 폴더에 새 견적요청서를 만들고 예전 파일은 (수정 전 …) 으로 남깁니다. 입력한 견적은 같은 Item 끼리 이어지고, 다음 메일은 제목 앞에 [Revised] 가 붙습니다.' },
       { id: 'c2', img: 'records', t: '완료 · 구매 이력', d: '소요제기가 끝나면 모두 완료를 누릅니다. 구매 줄 목록이 나오고, 구매 이력(DB)에 올릴지 고릅니다. 긴급 고가 구매처럼 튀는 줄은 체크를 풀고 올립니다. 기록은 보관 파일로 옮겨집니다.' },
       { id: 'c5', img: 'archive', t: '완료 취소 (되돌리기)', d: '완료 기록 보기에서 되돌리기를 누르면 진행 중으로 돌아옵니다. 그 기록으로 올린 구매 이력 줄은 지워지고, 다시 완료할 때 다시 올립니다.' },
-      { id: 'c6', img: 'archive', t: '완료 기록 삭제', d: '테스트로 만든 기록은 체크하고 선택 삭제 (한 번 더 눌러 확인). 기록만 지우고 드라이브 파일은 그대로 남습니다. 구매 이력에 올린 줄도 같이 뺄 수 있습니다. 지운 기록은 아래 지운 기록 보기에서 되돌릴 수 있습니다 (구매 이력 줄도 다시 올라감).' }] },
+      { id: 'c6', img: 'archive', t: '완료 기록 삭제', d: '테스트로 만든 기록은 체크하고 선택 삭제 (한 번 더 눌러 확인). 기록만 지우고 드라이브 파일은 그대로 남습니다. 구매 이력에 올린 줄도 같이 뺄 수 있습니다. 지운 기록은 아래 지운 기록 보기에서 되돌릴 수 있습니다 (구매 이력 줄도 다시 올라감).' },
+      { id: 'c8', img: 'trash', t: '지운 기록 되돌리기', d: '완료 기록 보기 맨 아래 지운 기록 보기를 누르면 지운 기록이 나옵니다. 되돌리기를 누르면 완료 기록으로 돌아오고, 같이 뺀 구매 이력 줄도 다시 올라갑니다. 지운 기록은 보관 파일의 삭제기록 탭에 남아 있습니다.' },
+      { id: 'c7', img: 'records', t: '확정 환율', d: '구매내역서를 만들 때 쓴 환율이 카드에 남습니다 (값 · 시각). 마우스를 올리면 출처가 나옵니다: 자동(환율 탭 수식) · 환율 탭 · 직접 입력(그때 환율 탭 값도 같이). 나중에 금액을 설명할 때 씁니다.' },
+      { id: 'c9', img: 'check', t: '사이트 점검', d: '오른쪽 위 점검을 누르면 지금 계정 권한으로 설정 · 템플릿 · 보관 파일 권한 · 잠금 · 캐시 · 견적데이터 · 변경기록 · 환율 · 업체정보 · Gmail 을 확인합니다. 배포 직후나 이상할 때 누르고, ❌ 가 있으면 안내대로 고치거나 결과 복사로 관리자에게 보내세요.' }] },
   { id: 'alerts', view: 'records', title: '기한 알림 · 아침 요약', desc: '발주 마감일과 견적 회신 기한을 계산해서 놓치지 않게 알려 줍니다.',
     points: ['발주 마감 = Need-by − L/T − 운송·통관', '회신 기한 · 미회신 업체 배지', '평일 아침 요약 메일 (각자 켜기)'],
     steps: [
@@ -4786,6 +4818,38 @@ function makingFail(m, e) {
 }
 $('mkHide').onclick = function () { $('mk').classList.add('mini'); document.body.classList.add('mk-mini'); };
 $('mkPill').onclick = function () { $('mk').classList.remove('mini'); document.body.classList.remove('mk-mini'); };
+
+/* 사이트 점검: 설정 · 권한 · 시트 상태 */
+var CK_MARK = { ok: '✅', bad: '❌', warn: '⚠️', info: 'ℹ️' };
+function runCheck() {
+  $('ckModal').hidden = false;
+  $('ckSum').innerHTML = ''; $('ckStamp').textContent = '';
+  $('ckList').innerHTML = '<div class="muted">점검하는 중… (10~30초)</div>';
+  $('ckAgain').disabled = true;
+  call('apiSystemCheck').then(function (d) {
+    state.check = d;
+    var n = { ok: 0, bad: 0, warn: 0, info: 0 }, groups = [], by = {};
+    d.list.forEach(function (x) { n[x.level]++; if (!by[x.group]) { by[x.group] = []; groups.push(x.group); } by[x.group].push(x); });
+    $('ckStamp').textContent = d.at + ' · ' + (d.ms / 1000).toFixed(1) + '초';
+    $('ckSum').innerHTML = (n.bad ? '<span class="bad">❌ 고칠 것 ' + n.bad + '</span>' : '<span class="ok">✅ 고칠 것 없음</span>') + (n.warn ? '<span class="warn">⚠️ 확인 ' + n.warn + '</span>' : '') + '<span>✅ ' + n.ok + '</span>';
+    $('ckList').innerHTML = groups.map(function (g) {
+      return '<section class="ck-group"><h3>' + esc(g) + '</h3>' + by[g].map(function (x) {
+        return '<div class="ck-row ck-' + x.level + '"><span>' + CK_MARK[x.level] + '</span><span>' + esc(x.msg) + '</span></div>';
+      }).join('') + '</section>';
+    }).join('');
+  }).catch(function (e) { $('ckList').innerHTML = '<div class="err">점검하지 못했습니다: ' + esc(e.message || e) + '</div>'; })
+    .finally(function () { $('ckAgain').disabled = false; });
+}
+$('btnCheck').onclick = runCheck;
+$('ckAgain').onclick = runCheck;
+$('ckClose').onclick = function () { $('ckModal').hidden = true; };
+$('ckCopy').onclick = function () {
+  var d = state.check;
+  if (!d) return;
+  var g = '', txt = ['사이트 점검 ' + d.at].concat(d.list.map(function (x) { var h = x.group !== g ? '\n[' + (g = x.group) + ']\n' : ''; return h + CK_MARK[x.level] + ' ' + x.msg; })).join('\n');
+  copyText(txt, this);
+};
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('ckModal').hidden) $('ckModal').hidden = true; });
 
 /* 한 번 더 눌러 확인하는 버튼(data-ok): 더블클릭의 두 번째 누름으로 바로 실행되지 않게 0.5초 안의 누름은 무시 */
 document.addEventListener('click', function (e) {

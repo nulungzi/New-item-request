@@ -554,6 +554,9 @@ function apiCreatePurchase_(payload) {
     return l;
   });
   var rates = checkedRates_(payload.rates, uniq_(lines.map(function (l) { return l.cur; })).filter(function (c) { return c !== 'KRW'; }));
+  var rtab = { rates: {}, info: {} };
+  try { rtab = rateTable_(); } catch (e) { console.warn('환율 탭 읽기 실패: ' + e); }   // 저장하기 전 값으로 출처를 정함
+  var stampAt = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
   saveRates_(rates);
   var base = toDate_(payload.baseDate) || toDate_(new Date());
   // Spot 단가(DB) 품목은 따로 (계약과 같은 양식, 업체선정사유 Sole source)
@@ -584,7 +587,8 @@ function apiCreatePurchase_(payload) {
   });
   var files = built.map(function (b) {
     var g = b.g, ss = b.ss, name = b.name, rec = { id: '' };
-    var warn = afterEffect_(name + ' 파일은 만들었지만', function () { rec = addRecord_({ kind: g.spot ? 'Spot 구매내역서' : '계약 구매내역서', title: name, url: ss.getUrl(), fileId: ss.getId(), status: '작성', group: payload.group || '',
+    var fx = rateSnapshot_(uniq_(g.lines.map(function (l) { return l.cur; })).filter(function (c) { return c !== 'KRW'; }), rates, rtab, stampAt);
+    var warn = afterEffect_(name + ' 파일은 만들었지만', function () { rec = addRecord_({ fx: fx, kind: g.spot ? 'Spot 구매내역서' : '계약 구매내역서', title: name, url: ss.getUrl(), fileId: ss.getId(), status: '작성', group: payload.group || '',
       reqDates: payload.reqDates || [],
       items: g.lines.map(function (l) { return { item: l.item, qty: l.qty, needBy: fmtDate_(toDate_(l.needBy)), supplier: l.supplier, price: l.price, cur: l.cur,
         desc: l.desc || '', uom: l.uom || '', mfg: l.product || l.qpl || '', priceMode: l.priceMode || '', leadtime: l.leadtime || '', program: l.program || '', reqDate: l.reqDate || '',
@@ -945,52 +949,155 @@ function simpleHtml_(sh) {
 }
 
 /* ================================================================
- * 설정 점검 — 편집기에서 checkSetup 을 선택하고 ▶ 실행, 아래 "실행 로그"에서 결과 확인
+ * 사이트 점검 (화면의 '점검' 버튼 · 편집기의 checkSetup 같은 내용)
+ *   설정(스크립트 속성 · 템플릿)과 실제 시트 상태(권한 · 잠금 · 캐시 · 새 탭 · 환율 · 업체정보 · 큰 견적)를
+ *   지금 로그인한 사람의 권한으로 확인. 쓰는 것은 변경기록 한 줄('점검')뿐
  * ================================================================ */
-function checkSetup() {
-  var lines = [], ok = function (m) { lines.push('✅ ' + m); }, bad = function (m) { lines.push('❌ ' + m); };
-  try {
-    var values = masterValues_(), head = masterHeader_(values), contracts = parseContracts_(values);
-    ok('자재정보: 머리글 ' + head.row + '행, 품목 ' + contracts.length + '줄');
+function systemChecks_() {
+  var out = [], cur = '';
+  var put = function (level, msg) { out.push({ group: cur, level: level, msg: msg }); };
+  var ok = function (m) { put('ok', m); }, bad = function (m) { put('bad', m); }, warn = function (m) { put('warn', m); }, info = function (m) { put('info', m); };
+  var step = function (group, fn) { cur = group; try { fn(); } catch (e) { bad(String(e.message || e)); } };
+  var who = me_();
+  var access = function (id) {   // 이 담당자의 파일 권한: OWNER · EDIT · COMMENT · VIEW · NONE
+    try { return String(DriveApp.getFileById(id).getAccess(who)); } catch (e) { return 'NONE'; }
+  };
+  var canEdit = function (a) { return /OWNER|EDIT|ORGANIZER/.test(a); };
+
+  step('배포 · 로그인', function () {
+    var st = authState_();
+    if (st.deployOk) ok('웹앱이 "웹 앱에 액세스하는 사용자" 권한으로 실행됩니다 (' + who + ')'); else bad(DEPLOY_MSG);
+  });
+  step('자재정보 (DB)', function () {
+    var db = db_(), a = 'NONE';
+    try { a = access(db.getId()); } catch (e) { /* 권한 확인 못 함 */ }
+    if (canEdit(a)) ok('자재정보 스프레드시트: ' + db.getName() + ' · 편집 권한'); else bad('자재정보 스프레드시트에 편집 권한이 없습니다 (' + a + ') — 기록 · 견적을 저장할 수 없습니다');
+    var values = masterValues_(true), head = masterHeader_(values), contracts = parseContracts_(values);
+    ok('자재정보 탭: 머리글 ' + head.row + '행, 품목 ' + contracts.length + '줄 · 버전 ' + masterVer_());
     var keys = masterFields_(values).map(function (f) { return f.key; });
     ['item', 'priceMode', 'supplier', 'price', 'cur', 'start', 'end'].forEach(function (k) {
       if (keys.indexOf(k) < 0) bad('자재정보에 필수 열이 없습니다: ' + MASTER_COLUMNS[k][0]);
     });
-  } catch (e) { bad('자재정보: ' + e.message); }
+    var noPrice = contracts.filter(function (c) { return !isSpotMode_(c.priceMode) && (c.price === null || c.price === ''); }).length;
+    if (noPrice) warn('단가가 빈 LTA · 3PP 줄이 ' + noPrice + '개 있습니다 (판정 때 경고, 구매내역서는 만들지 않음)');
+  });
+  step('템플릿', function () {
+    var chk = function (key, label, test) {
+      var id = prop_(key);
+      if (!id) { bad('스크립트 속성 ' + key + ' 가 없습니다 (' + label + ')'); return; }
+      try { var ss = SpreadsheetApp.openById(id), m = test(ss); if (m) bad(label + ': ' + m); else ok(label + ': ' + ss.getName()); }
+      catch (e) { bad(label + '을(를) 열 수 없습니다 (ID · 권한 확인): ' + e.message); }
+    };
+    chk('TEMPLATE_ID', '구매내역서 템플릿', function (ss) {
+      var miss = [TPL.SUMMARY, TPL.DETAIL, TPL.SCHEDULE, TPL.CONFIRM, TPL.PROTO].filter(function (n) { return !ss.getSheetByName(n); });
+      return miss.length ? '없는 탭 ' + miss.join(', ') : !contractTemplateCurrent_(ss) ? '예전 버전 (구매세부내역 수량 열 없음) — 새 템플릿을 올려 주세요' : '';
+    });
+    chk('SPOT_TEMPLATE_ID', 'Spot 견적 구매내역서 템플릿', function (ss) {
+      var miss = [SPOT.SUMMARY, SPOT.DETAIL, SPOT.QUOTE, SPOT.PROTO].filter(function (n) { return !ss.getSheetByName(n); });
+      return miss.length ? '없는 탭 ' + miss.join(', ') : !spotTemplateCurrent_(ss) ? '예전 버전 (Need-by 구분 · 수량 열 없음) — 새 템플릿을 올려 주세요' : '';
+    });
+    chk('RFQ_TEMPLATE_ID', '견적요청서 템플릿', function (ss) { return ss.getSheetByName(RFQ.SHEET) ? '' : '"' + RFQ.SHEET + '" 탭 없음'; });
+    chk('RFQ2_TEMPLATE_ID', '견적요청서 템플릿 2 (목록형)', function (ss) { return ss.getSheetByName(RFQ2.SHEET) ? '' : '"' + RFQ2.SHEET + '" 탭 없음'; });
+  });
+  step('완료 보관 파일', function () {
+    var aid = prop_('ARCHIVE_SHEET_ID');
+    if (!aid) { bad('스크립트 속성 ARCHIVE_SHEET_ID 가 없습니다 — 완료 · 삭제를 할 수 없습니다'); return; }
+    var arc = SpreadsheetApp.openById(aid), a = access(aid);
+    if (canEdit(a)) ok('보관 파일: ' + arc.getName() + ' · 편집 권한'); else bad('보관 파일에 편집 권한이 없습니다 (' + a + ') — 완료 · 되돌리기 · 삭제가 실패합니다');
+    var done = arc.getSheetByName('완료기록'), trash = arc.getSheetByName(TRASH_SHEET);
+    info('완료기록 ' + (done ? Math.max(0, done.getLastRow() - 1) + '건' : '탭 없음 (첫 완료 때 생김)') + ' · 삭제기록 ' + (trash ? Math.max(0, trash.getLastRow() - 1) + '건' : '탭 없음 (첫 삭제 때 생김)'));
+    if (done && done.getLastRow() > 3000) warn('완료기록이 ' + (done.getLastRow() - 1) + '건입니다. 업체 성적표 · 완료 기록 보기가 느려질 수 있습니다');
+  });
+  step('저장 폴더', function () {
+    var fid = prop_('OUTPUT_FOLDER_ID');
+    if (!fid) { info('OUTPUT_FOLDER_ID 없음 — 파일을 만들 때 고른 폴더(또는 템플릿 위치)에 저장합니다'); return; }
+    var f = DriveApp.getFolderById(fid), a = String(f.getAccess(who));
+    if (canEdit(a)) ok('기본 저장 폴더: ' + f.getName()); else bad('기본 저장 폴더에 편집 권한이 없습니다 (' + a + ')');
+  });
+  step('잠금 · 캐시', function () {
+    var t = Date.now(), lock = lock_();
+    lock.releaseLock();
+    ok('잠금: ' + (Date.now() - t) + 'ms 에 받음 (여러 명 동시 저장 보호)');
+    var k = 'chk_' + Date.now(), sc = scriptCache_(), uc = userCache_();
+    if (sc) { sc.put(k, '1', 60); if (sc.get(k) === '1') ok('공용 캐시 (자재정보 6시간)'); else warn('공용 캐시가 값을 돌려주지 않습니다 — 매번 시트에서 읽어 느려질 수 있습니다'); sc.remove(k); }
+    else warn('공용 캐시를 쓸 수 없습니다');
+    if (uc) { uc.put(k, '1', 60); if (uc.get(k) === '1') ok('사용자 캐시 (같은 요청 두 번 막기)'); else warn('사용자 캐시가 값을 돌려주지 않습니다 — 같은 요청 두 번 막기가 동작하지 않습니다'); uc.remove(k); }
+    else warn('사용자 캐시를 쓸 수 없습니다 — 같은 요청 두 번 막기가 동작하지 않습니다');
+  });
+  step('진행기록 · 견적데이터', function () {
+    var rows = recordSheet_().getDataRange().getValues().slice(1).filter(function (r) { return r[0]; });
+    var mine = rows.filter(function (r) { return String(r[2]).toLowerCase() === who; }).length;
+    var refs = [], near = 0, broken = [];
+    rows.forEach(function (r) {
+      var j = String(r[10] || '');
+      if (j.length > RECORD_JSON_MAX) near++;
+      if (/"quoteRef":1/.test(j)) refs.push(String(r[0]));
+    });
+    ok('진행기록 ' + rows.length + '건 (내 기록 ' + mine + '건)');
+    if (near) warn('한 칸이 ' + RECORD_JSON_MAX + '자를 넘은 기록이 ' + near + '건 (다음 저장 때 견적이 견적데이터 탭으로 옮겨짐)');
+    var qd = qdataSheet_(false);
+    if (!qd) { info('견적데이터 탭 없음 — 큰 견적을 처음 저장할 때 생깁니다'); return; }
+    qstoreMemo_ = null;
+    refs.forEach(function (id) { if (!loadQuoteOf_(id)) broken.push(id); });
+    if (broken.length) bad('견적데이터를 읽지 못하는 기록: ' + broken.join(', ') + ' — 견적데이터 탭을 고치지 말고 관리자에게 알려 주세요');
+    else ok('견적데이터 탭: 큰 견적 ' + refs.length + '건 모두 읽힘');
+    var fmt = String(qd.getRange(2, 3).getNumberFormat() || '');
+    if (fmt !== '@') info('견적데이터 C열이 글자 형식이 아닙니다 (조각 앞 ~ 표시로 보호되어 문제없음)');
+  });
+  step('변경기록', function () {
+    logChange_('점검', '', '사이트 점검', '', '점검 실행');
+    var sh = db_().getSheetByName(SHEET_LOG);
+    if (!sh) { bad('변경기록 탭을 만들지 못했습니다'); return; }
+    var last = sh.getRange(sh.getLastRow(), 1, 1, 3).getValues()[0];
+    if (last[2] === '점검') ok('변경기록 탭: 쓰기 확인 (' + Math.max(0, sh.getLastRow() - 1) + '줄)'); else bad('변경기록에 쓰지 못했습니다');
+    var prot = sh.getProtections(SpreadsheetApp.ProtectionType.SHEET);
+    if (!prot.length) info('변경기록 탭에 경고 보호가 없습니다 (시트에서 실수로 고칠 수 있음)');
+  });
+  step('환율', function () {
+    var t = rateTable_(), curs = Object.keys(t.rates);
+    if (!curs.length) { info('환율 탭이 비어 있습니다 — 구매내역서를 만들 때 적은 환율이 저장됩니다'); return; }
+    var today = toDate_(new Date());
+    curs.forEach(function (c) {
+      var x = t.info[c] || {}, n = Number(t.rates[c]);
+      if (!(n > 0)) bad(c + ' 환율 값이 숫자가 아닙니다 (' + t.rates[c] + ')' + (x.auto ? ' — GOOGLEFINANCE 수식 확인' : ''));
+      else if (x.auto) ok(c + ' ' + n + ' (수식 · 자동)');
+      else {
+        var old = x.at && toDate_(x.at) ? Math.round((today - toDate_(x.at)) / 864e5) : null;
+        if (old !== null && old > 7) warn(c + ' ' + n + ' — ' + old + '일 전 값 (손으로 적은 환율)'); else ok(c + ' ' + n + (x.at ? ' (' + x.at + ')' : ''));
+      }
+    });
+  });
+  step('업체정보', function () {
+    var sh = vendorSheet_();
+    if (!sh) { bad('"업체정보" 탭이 없습니다 (업체명 · 이메일 열)'); return; }
+    var values = sh.getDataRange().getValues(), k = vendorCols_(values);
+    if (k.hr < 0) warn('업체정보 머리글(업체명 · 이메일)을 찾지 못해 A · B 열로 읽습니다');
+    var vs = parseVendors_(values), noMail = values.slice(k.hr + 1).filter(function (r) { return String(r[k.cn] || '').trim() && !/@/.test(String(r[k.ce] || '')); }).length;
+    ok('업체 ' + vs.length + '곳 · 연락처 ' + vs.reduce(function (n, v) { return n + v.emails.length; }, 0) + '개' + (k.cs < 0 ? ' (SUPPLIER 열 없음)' : '') + (k.ct < 0 ? ' (SITE 열 없음)' : ''));
+    if (noMail) warn('이메일이 없거나 형식이 틀린 업체 줄 ' + noMail + '개 (메일 초안에 나오지 않음)');
+  });
+  step('Gmail · 아침 요약', function () {
+    GmailApp.getAliases();
+    ok('Gmail 임시보관함 권한' + (typeof Gmail !== 'undefined' ? ' · Gmail API 서비스 사용 중 (서명 자동)' : ' · Gmail API 서비스 없음 (사이트에 저장한 서명 사용)'));
+    var n = digestTriggers_().length;
+    info(n ? '아침 요약 메일: 켜짐' : '아침 요약 메일: 꺼짐 (진행 중 화면에서 켤 수 있음)');
+  });
+  return out;
+}
+function apiSystemCheck() {
+  auth_();
+  var t = Date.now(), list = systemChecks_();
+  return { list: list, ms: Date.now() - t, at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'),
+    bad: list.filter(function (x) { return x.level === 'bad'; }).length, warn: list.filter(function (x) { return x.level === 'warn'; }).length };
+}
 
-  var tid = prop_('TEMPLATE_ID');
-  if (!tid) bad('스크립트 속성 TEMPLATE_ID 가 없습니다');
-  else {
-    try {
-      var tpl = SpreadsheetApp.openById(tid);
-      var missing = [TPL.SUMMARY, TPL.DETAIL, TPL.SCHEDULE, TPL.CONFIRM, TPL.PROTO].filter(function (n) { return !tpl.getSheetByName(n); });
-      if (missing.length) bad('템플릿에 없는 탭: ' + missing.join(', ') + ' — templates/구매내역서_템플릿.xlsx 를 다시 올려 주세요');
-      else if (!contractTemplateCurrent_(tpl)) bad('구매내역서 템플릿이 예전 버전입니다 (구매세부내역 Need-by 옆 수량 열 없음) — 새 템플릿을 올려 주세요');
-      else ok('템플릿: ' + tpl.getName());
-    } catch (e) { bad('템플릿을 열 수 없습니다 (ID·권한 확인): ' + e.message); }
-  }
-  var rid = prop_('RFQ_TEMPLATE_ID');
-  if (!rid) bad('스크립트 속성 RFQ_TEMPLATE_ID 가 없습니다 (견적요청서 템플릿)');
-  else { try { var rt = SpreadsheetApp.openById(rid); if (rt.getSheetByName(RFQ.SHEET)) ok('견적요청서 템플릿: ' + rt.getName()); else bad('견적요청서 템플릿에 "' + RFQ.SHEET + '" 탭이 없습니다'); } catch (e) { bad('견적요청서 템플릿을 열 수 없습니다: ' + e.message); } }
-  var rid2 = prop_('RFQ2_TEMPLATE_ID');
-  if (!rid2) bad('스크립트 속성 RFQ2_TEMPLATE_ID 가 없습니다 (견적요청서 템플릿 2 · 목록형)');
-  else { try { var rt2 = SpreadsheetApp.openById(rid2); if (rt2.getSheetByName(RFQ2.SHEET)) ok('견적요청서 템플릿 2: ' + rt2.getName()); else bad('견적요청서 템플릿 2에 "' + RFQ2.SHEET + '" 탭이 없습니다'); } catch (e) { bad('견적요청서 템플릿 2를 열 수 없습니다: ' + e.message); } }
-  var sid = prop_('SPOT_TEMPLATE_ID');
-  if (!sid) bad('스크립트 속성 SPOT_TEMPLATE_ID 가 없습니다 (Spot 견적 구매내역서 템플릿)');
-  else { try { var st = SpreadsheetApp.openById(sid), miss = [SPOT.SUMMARY, SPOT.DETAIL, SPOT.QUOTE, SPOT.PROTO].filter(function (n) { return !st.getSheetByName(n); });
-    if (miss.length) bad('Spot 템플릿에 없는 탭: ' + miss.join(', '));
-    else if (!spotTemplateCurrent_(st)) bad('Spot 템플릿이 예전 버전입니다 (선정 결과 Need-by 옆 수량 열 없음) — 새 템플릿을 올려 주세요');
-    else ok('Spot 견적 구매내역서 템플릿: ' + st.getName()); } catch (e) { bad('Spot 템플릿을 열 수 없습니다: ' + e.message); } }
-  var aid = prop_('ARCHIVE_SHEET_ID');
-  if (!aid) bad('스크립트 속성 ARCHIVE_SHEET_ID 가 없습니다 (완료 보관 파일)');
-  else { try { ok('완료 보관 파일: ' + SpreadsheetApp.openById(aid).getName()); } catch (e) { bad('완료 보관 파일을 열 수 없습니다: ' + e.message); } }
-  var vs = vendorSheet_();
-  if (vs) ok(vs.getName() + ': ' + apiVendors().vendors.length + '개 업체'); else bad('자재정보 스프레드시트에 "업체정보" 탭이 없습니다 (업체명 · 이메일 열)');
-  lines.push(typeof Gmail !== 'undefined' ? '✅ Gmail API 서비스: 사용 중 (Gmail 서명 자동 사용)' : 'ℹ️ Gmail API 서비스 없음 — 사이트에서 저장한 서명을 씁니다');
-  var fid = prop_('OUTPUT_FOLDER_ID');
-  if (fid) { try { ok('저장 폴더: ' + DriveApp.getFolderById(fid).getName()); } catch (e) { bad('OUTPUT_FOLDER_ID 폴더를 열 수 없습니다: ' + e.message); } }
-  else lines.push('ℹ️ OUTPUT_FOLDER_ID 없음 — 구매내역서가 템플릿과 같은 위치에 저장됩니다');
-
+/* ================================================================
+ * 설정 점검 — 편집기에서 checkSetup 을 고르고 ▶ 실행 → 아래 실행 로그에 ✅ ❌ (화면의 '점검' 버튼과 같은 내용)
+ * ================================================================ */
+function checkSetup() {
+  var mark = { ok: '✅', bad: '❌', warn: '⚠️', info: 'ℹ️' }, group = '';
+  var lines = [];
+  systemChecks_().forEach(function (x) { if (x.group !== group) { group = x.group; lines.push('— ' + group); } lines.push(mark[x.level] + ' ' + x.msg); });
   console.log(lines.join('\n'));
   return lines.join('\n');
 }
@@ -1328,7 +1435,7 @@ function rowToRecord_(r) {
     items: extra ? extra.items : items, due: extra ? extra.due : '', vendors: extra && extra.vendors || [], quote: extra && (extra.quote || (extra.quoteRef ? loadQuoteOf_(r[0]) : null)) || null,
     group: extra && extra.group || '', parent: extra && extra.parent || '', fixed: extra && extra.fixed || [], quoteSheet: extra && extra.quoteSheet || '',
     spotFile: extra && extra.spotFile || '', reqDates: extra && extra.reqDates || [], po: extra && extra.po || null, mails: extra && extra.mails || [],
-    confirmMail: extra && extra.confirmMail || null, rev: extra && extra.rev || null, template: extra && extra.template || '', direct: !!(extra && extra.direct),
+    confirmMail: extra && extra.confirmMail || null, fx: extra && extra.fx || null, rev: extra && extra.rev || null, template: extra && extra.template || '', direct: !!(extra && extra.direct),
     qfiles: extra && extra.qfiles || {}, qfolder: extra && extra.qfolder || '',
     updated: r[11] instanceof Date ? r[11].toISOString() : String(r[11] || '')
   };
@@ -1341,11 +1448,11 @@ function addRecord_(o) {
     var id = Utilities.formatDate(now, 'Asia/Seoul', 'yyMMdd-HHmmss') + '-' + (Math.random().toString(36) + '000000').slice(2, 8);   // 같은 초에 여러 개 만들어도 겹치지 않게
     var data = { items: o.items || [], due: o.due || '' };
     // group: 같은 소요제기에서 만든 파일 묶음, parent: 이 파일을 만든 견적요청서, fixed: 하나로 만들기 때 같이 들어갈 계약 줄
-    ['group', 'parent', 'fixed', 'reqDates', 'template', 'direct'].forEach(function (k) { if (o[k] && (!Array.isArray(o[k]) || o[k].length)) data[k] = o[k]; });
+    ['group', 'parent', 'fixed', 'reqDates', 'template', 'direct', 'fx'].forEach(function (k) { if (o[k] && (!Array.isArray(o[k]) || o[k].length)) data[k] = o[k]; });
     var json = JSON.stringify(data);
     if (json.length > RECORD_CELL_MAX) throw new Error(RECORD_TOO_BIG);
     sh.appendRow([id, o.kind, me_(), now, txt_(o.title), o.url, o.fileId, o.status, '', '', json, now]);
-    logChange_('만들기', id, o.kind, o.title, o.url ? '파일 ' + o.url : '');
+    logChange_('만들기', id, o.kind, o.title, (o.url ? ['파일 ' + o.url] : []).concat(o.fx && Object.keys(o.fx.rates || {}).length ? ['적용 환율 ' + fxText_(o.fx)] : []));
     return { id: id };
   } finally { lock.releaseLock(); }
 }
@@ -1999,6 +2106,9 @@ function apiCreateSpotPurchase_(payload) {
   Object.keys(payload.rates || {}).forEach(function (k) { var n = Number(payload.rates[k]); if (n > 0) rates[k] = n; });
   var noRate = spotCurrencies_(items, vendors).filter(function (c) { return !(rates[c] > 0); });   // 환율이 없으면 원화가 0 이 되어 최저가로 보임
   if (noRate.length) throw new Error(noRate.join(' · ') + ' 환율을 입력해 주세요 (견적에 쓴 통화).');
+  var rtab = { rates: {}, info: {} };
+  try { rtab = rateTable_(); } catch (e) { console.warn('환율 탭 읽기 실패: ' + e); }
+  var fx = rateSnapshot_(spotCurrencies_(items, vendors), rates, rtab, Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'));
   if (Object.keys(rates).length) saveRates_(rates);
   var base = toDate_(payload.baseDate) || toDate_(new Date());
   var name = String(payload.name || '').trim() || found.rec.title.replace(/^\[KE\] RFQ \/\/ /, '') + ' 견적 구매내역서';
@@ -2033,7 +2143,7 @@ function apiCreateSpotPurchase_(payload) {
   });
   warn += (warn ? '\n' : '') + afterEffect_('Spot 견적 구매내역서 파일은 만들었지만', function () {
     if (rec.id) return;
-    rec = addRecord_({ kind: '견적 구매내역서', title: name, url: ss.getUrl(), fileId: ss.getId(), status: '작성', parent: found.rec.id, group: found.rec.group || found.rec.id,
+    rec = addRecord_({ fx: fx, kind: '견적 구매내역서', title: name, url: ss.getUrl(), fileId: ss.getId(), status: '작성', parent: found.rec.id, group: found.rec.group || found.rec.id,
       items: items.map(function (it) { return { item: it.item, qty: it.qty, needBy: fmtDate_(it.needBy), supplier: it.fixed ? it.fixed.vendor : selectedVendor_(it), deadline: (spotDeadline_(it) || {}).date || '' }; }) });
   });
   return { url: ss.getUrl(), name: name, id: ss.getId(), recordId: rec.id, savedAt: savedAt, warn: warn.replace(/^\n+|\n+$/g, '') };

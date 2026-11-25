@@ -59,12 +59,14 @@ test('checkSetup: 자재정보·템플릿 점검', () => {
     console: { log: () => {}, warn: () => {} },
     SpreadsheetApp: { getActive: () => ({ getSheetByName: () => sheet }), openById: () => ({ getName: () => 'T', getSheetByName: n => (tabs.includes(n) ? {} : null) }) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => (k === 'TEMPLATE_ID' ? 'tpl' : null) }) },
+    Session: { getActiveUser: () => ({ getEmail: () => 'me@ke.com' }), getEffectiveUser: () => ({ getEmail: () => 'me@ke.com' }) },
   });
   const report = ctx.checkSetup();
-  assert.match(report, /✅ 자재정보: 머리글 1행, 품목 1줄/);
-  assert.match(report, /❌ 템플릿에 없는 탭: _proto/);
+  assert.match(report, /✅ 자재정보 탭: 머리글 1행, 품목 1줄/);
+  assert.match(report, /❌ 구매내역서 템플릿: 없는 탭 _proto/);
   assert.match(report, /RFQ_TEMPLATE_ID 가 없습니다/);
   assert.match(report, /ARCHIVE_SHEET_ID 가 없습니다/);
+  assert.match(report, /— 잠금 · 캐시/);   // 묶음 제목
 });
 
 test('apiRegisterItem: 자재정보 맨 아래에 머리글 순서대로 추가, 번호 열 +1', () => {
@@ -275,6 +277,10 @@ test('견적 저장 → Spot 견적 구매내역서, 계약+Spot 단가는 두 �
   const sp = ctx.apiCreateSpotPurchase({ recordId: rfq.recordId, baseDate: '2026-11-10', rates: { USD: 1350 }, vendors: ['Hexcel', '3M'],
     items: [{ item: 'MS20995C20', desc: 'Safety Wire', uom: 'RL', qty: 3, needBy: '2027-01-15', program: '', quotes: quote.items[0].quotes }] });
   assert.strictEqual(sp.name, '261110 Boeing Chemical Material Spot (due 11/20) 견적 구매내역서');
+  const spRec = ctx.apiMyRecords().records.find(r => r.id === sp.recordId);
+  assert.deepStrictEqual([spRec.fx.rates.USD.v, typeof spRec.fx.at], [1350, 'string']);   // 확정 환율
+  const cRec = ctx.apiMyRecords().records.find(r => r.id === res.files[0].recordId);
+  assert.strictEqual(cRec.fx.rates.USD.v, 1350);
   assert.ok(ops.includes('insertCheckboxes') && ops.includes('deleteColumns'));
   mine = ctx.apiMyRecords().records;
   assert.deepStrictEqual(mine.map(r => [r.kind, r.status]).sort(), [['Spot 구매내역서', '작성'], ['견적 구매내역서', '작성'], ['견적요청서', '견적 구매내역서 작성'], ['계약 구매내역서', '작성']].sort());

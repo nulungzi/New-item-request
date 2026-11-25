@@ -893,3 +893,11 @@ test('계약 단가가 비면 경고 · 없는 날짜는 null · 이모지 경�
   assert.deepStrictEqual(L.spotCurrencies_([{ quotes: { A: { price: '1', cur: 'jpy' }, B: { price: 'NO BID', cur: 'EUR' }, C: { price: '2', cur: 'KRW' }, D: { price: '3', cur: 'SGD', noReply: true } } },
     { fixed: { cur: 'USD' } }], ['A', 'B', 'C', 'D']), ['JPY', 'USD']);
 });
+
+test('확정 환율 기록: 출처(자동 · 환율 탭 · 직접 입력)와 시각', () => {
+  const table = { rates: { USD: 1473.47, JPY: 9.4, EUR: 1600 }, info: { USD: { at: '2026-11-25', auto: true }, JPY: { at: '2026-11-20', auto: false }, EUR: { at: '2026-11-01', auto: false } } };
+  const fx = L.rateSnapshot_(['USD', 'JPY', 'EUR', 'SGD'], { USD: 1473.47, JPY: 9.4, EUR: 1590, SGD: 0 }, table, '2026-11-25 10:12');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(fx)), { at: '2026-11-25 10:12', rates: {
+    USD: { v: 1473.47, src: 'auto', tabAt: '2026-11-25' }, JPY: { v: 9.4, src: 'tab', tabAt: '2026-11-20' }, EUR: { v: 1590, src: 'typed', tab: 1600, tabAt: '2026-11-01' } } });
+  assert.strictEqual(L.fxText_(fx), 'USD 1,473.47 (자동 · 환율 탭 수식) · JPY 9.40 (환율 탭 2026-11-20) · EUR 1,590.00 (직접 입력, 환율 탭 1,600.00)');
+});

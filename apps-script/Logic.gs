@@ -92,6 +92,33 @@ function quoteDiff_(a, b, items, limit) {
   return out.length > limit ? out.slice(0, limit).concat(['외 ' + (out.length - limit) + '건']) : out;
 }
 
+/**
+ * 확정 환율 기록: 파일을 만들 때 쓴 환율 값 · 출처 · 시각을 기록에 고정 (나중에 금액을 설명할 수 있게)
+ *   curs: 쓴 외화, rates: 화면에서 적은 값, table: 환율 탭 {rates, info:{cur:{at, auto}}} (저장하기 전), at: 'yyyy-MM-dd HH:mm'
+ *   src: 'auto' 환율 탭 수식(GOOGLEFINANCE 등)과 같음 · 'tab' 환율 탭(손으로 적은 값)과 같음 · 'typed' 화면에서 다르게 적음
+ */
+function rateSnapshot_(curs, rates, table, at) {
+  var out = { at: at || '', rates: {} };
+  table = table || { rates: {}, info: {} };
+  (curs || []).forEach(function (c) {
+    var v = Number((rates || {})[c]);
+    if (!(v > 0)) return;
+    var tv = Number((table.rates || {})[c]), inf = (table.info || {})[c] || {}, same = tv > 0 && Math.abs(tv - v) < 0.005;
+    out.rates[c] = { v: v, src: same ? (inf.auto ? 'auto' : 'tab') : 'typed' };
+    if (tv > 0 && !same) out.rates[c].tab = tv;
+    if (inf.at) out.rates[c].tabAt = inf.at;
+  });
+  return out;
+}
+/** 'USD 1,400.00 (자동) · JPY 9.50 (직접 입력, 환율 탭 9.40)' */
+function fxText_(fx) {
+  var SRC = { auto: '자동 · 환율 탭 수식', tab: '환율 탭', typed: '직접 입력' };
+  return Object.keys((fx && fx.rates) || {}).map(function (c) {
+    var x = fx.rates[c], n = function (v) { return Number(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
+    return c + ' ' + n(x.v) + ' (' + SRC[x.src] + (x.src === 'typed' && x.tab ? ', 환율 탭 ' + n(x.tab) : '') + (x.src === 'tab' && x.tabAt ? ' ' + x.tabAt : '') + ')';
+  }).join(' · ');
+}
+
 /** Spot 견적 구매내역서에 들어갈 외화 (KRW 제외): 계약 줄 통화 + 회신 없음 · NO BID 가 아닌 견적의 통화 */
 function spotCurrencies_(items, vendors) {
   var out = [];
