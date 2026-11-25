@@ -70,6 +70,10 @@ const vendorsResp = () => { const info = L.vendorInfo_(VSHEET); return { vendors
     switch (fn) {
       case 'apiAuthState': return { account: 'buyer@ke.com', deployOk: true, loggedIn: true, expiresAt: Date.now() + 1e7, now: Date.now(), hours: 4, url: 'u' };
       case 'apiQuoteDups': return { dups: { 'KERN02113-001': [{ title: '261110 구매내역서_OMI', owner: 'lee@ke.example.com', mine: false, created: '2026-11-10' }] } };
+      case 'apiDriveFiles': return { mode: 'recent', path: [], folders: [], files: [
+        { id: 'd1', name: 'OMI Quotation Q-2611-05.pdf', mime: 'application/pdf', url: '#', updated: '2026-11-14 10:20' },
+        { id: 'd2', name: 'CBOL_quote_KERN02113.xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', url: '#', updated: '2026-11-13 17:05' },
+        { id: 'd3', name: 'Aerovac RE_ RFQ 261113.eml', mime: 'message/rfc822', url: '#', updated: '2026-11-13 09:40' }] };
       case 'apiInit': return { today: '2026-11-13', rates: { USD: 1350 }, rateInfo: { USD: { at: '2026-11-13', auto: true } }, items: [['KERC00064', 'BMS10-11,TY-1,CL-A GREEN PRIMER', 'Ocean', 'LTA, 3PP', '12MM'], ['KERN00278-014', 'FEP FILM 2MIL A5000V', 'Air', 'SPOT', ''], ['KERN00736-001', '88TB0110 TAPE, MASKING', '', 'SPOT', ''], ['KERN02113-001', 'A88TB0092-6 SPACER', '', 'SPOT', '']], fields, schedule: { tasks: L.SCHEDULE_TASKS, example: L.SCHEDULE_EXAMPLE, slots: 24 } };
       case 'apiMyRecords': return { me: '', records, archiveReady: true };
       case 'apiClassify': return { results: JSON.parse(JSON.stringify(RESULTS)), skipped: [], rates: { USD: 1350 } };
@@ -194,6 +198,10 @@ const vendorsResp = () => { const info = L.vendorInfo_(VSHEET); return { vendors
   await pg.click('#dmCancel');
   // 견적 입력 표
   await pg.click('[data-vendor="OMI"]'); await pg.waitForTimeout(400);
+  await pg.click('#vdDrive'); await pg.waitForTimeout(400);
+  await pg.check('[data-fid="d1"]');
+  await shot('drive', '#fpModal .modal-box', { q15: '#fpOk' });
+  await pg.click('#fpCancel'); await pg.waitForTimeout(100);
   await pg.click('#vdExtra summary').catch(() => {}); await pg.waitForTimeout(150);
   await shot('qtable', '#vDrawer .drawer', { q3: '#vdBody tr[data-i="0"] [data-f="price"]', q8: '#vdAttach', q9: '#vdValid', q12: '#vdExtra summary', q13: '#vdBody [data-qsplit]' });
   await pg.click('#vdDone'); await pg.waitForTimeout(300);

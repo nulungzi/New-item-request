@@ -798,7 +798,7 @@ test('업체 추가: 같은 업체 줄 아래에 끼워 넣고 위 줄 서식을
   const rec = { id: 'Q1', kind: '견적요청서', fileId: 'F1', qfiles: {} }, data = {}, trashed = [];
   Object.assign(ctx, {
     Utilities: { base64Decode: s => Buffer.from(s, 'base64'), formatDate: () => '261123', newBlob: (b, m, n) => ({ n }) },
-    DriveApp: { getFileById: id => ({ getParents: () => ({ next: () => ({ createFile: b => ({ getId: () => 'NEW', getUrl: () => 'URL', name: b.n }) }) }), setTrashed: t => trashed.push(id) }) }
+    DriveApp: { getFileById: id => ({ getParents: () => ({ hasNext: () => true, next: () => ({ createFile: b => ({ getId: () => 'NEW', getUrl: () => 'URL', name: b.n }) }) }), setTrashed: t => trashed.push(id) }) }
   });
   ctx.findRecord_ = () => ({ rec });
   ctx.updateRecord_ = (f, patch) => { if (patch.edit) patch.edit(data); };
@@ -936,4 +936,28 @@ test('견적데이터 기록: 잠금 안에서는 시트를 새로 읽음 · 못
   assert.throws(() => ctx.apiSetQuoteVendors('Q1', ['Vendor0', 'Vendor1']), /견적데이터 탭\)을 읽지 못해/);
   assert.strictEqual(db.tabs['견적데이터'].rows.length, n);
   assert.strictEqual(JSON.parse(db.tabs['진행기록'].rows[1][10]).quoteRef, 1);
+});
+
+test('드라이브에서 견적서 가져오기: 복사(기본) · 링크만 · 이미 붙인 파일 건너뜀 · 링크만은 빼도 원본 그대로', () => {
+  const rec = { id: 'Q1', kind: '견적요청서', fileId: 'F1', qfiles: {} }, data = {}, trashed = [], copies = [];
+  const file = id => ({ getId: () => id, getName: () => 'src ' + id + '.pdf', getUrl: () => 'URL-' + id, setTrashed: () => trashed.push(id),
+    makeCopy: (name, folder) => { const c = { getId: () => 'C-' + id, getUrl: () => 'CURL-' + id, setTrashed: () => trashed.push('C-' + id) }; copies.push([name, folder.name]); return c; },
+    getParents: () => ({ hasNext: () => true, next: () => ({ name: 'RFQ폴더' }) }) });
+  const ctx = inContext({ Utilities: { formatDate: () => '261125' }, DriveApp: { getFileById: file, getRootFolder: () => ({ name: 'ROOT' }), getFolderById: id => ({ name: 'F:' + id }) } });
+  ctx.findRecord_ = () => ({ rec });
+  ctx.updateRecord_ = (f, patch) => { patch.edit(data); rec.qfiles = data.qfiles; };
+  const r1 = ctx.apiLinkQuoteFiles({ recordId: 'Q1', vendor: 'OMI', fileIds: ['A1', 'A2'] });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(copies)), [['OMI_견적서_261125_src A1.pdf', 'RFQ폴더'], ['OMI_견적서_261125_src A2.pdf', 'RFQ폴더']]);
+  assert.deepStrictEqual([r1.added, data.qfiles.OMI.map(f => f.from).join(',')], [2, 'A1,A2']);
+  const r2 = ctx.apiLinkQuoteFiles({ recordId: 'Q1', vendor: 'OMI', fileIds: ['A1', 'B9'], mode: 'link' });
+  assert.deepStrictEqual([r2.added, r2.skipped], [1, 1]);                        // A1 은 이미 붙임
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(data.qfiles.OMI[2])), { id: 'B9', name: 'src B9.pdf', url: 'URL-B9', at: '261125', linked: true });
+  const rm = ctx.apiRemoveQuoteFile('Q1', 'OMI', 'B9');
+  assert.strictEqual(rm.linked, true);
+  assert.deepStrictEqual(trashed, []);                                           // 원본은 휴지통으로 보내지 않음
+  ctx.apiRemoveQuoteFile('Q1', 'OMI', 'C-A1');
+  assert.deepStrictEqual(trashed, ['C-A1']);                                     // 사이트가 만든 복사본만
+  assert.strictEqual(ctx.parseFileId_('https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWx/view?usp=sharing'), '1AbCdEfGhIjKlMnOpQrStUvWx');
+  assert.strictEqual(ctx.parseFileId_('https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWx/edit'), '1AbCdEfGhIjKlMnOpQrStUvWx');
+  assert.strictEqual(ctx.quoteFolder_('root', {}).name, 'ROOT');                  // 내 드라이브 맨 위
 });

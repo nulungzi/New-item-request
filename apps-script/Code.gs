@@ -2067,6 +2067,14 @@ function apiSaveQuotes(recordId, quote) {
  * 기록 data.qfiles = {업체: [{id, name, url, at}]} 에 링크를 남김 (견적 저장과 따로 → 서로 덮어쓰지 않음)
  */
 var QFILE_MAX = 20 * 1024 * 1024;
+/** 견적서를 둘 폴더: 고른 폴더('root' = 내 드라이브 맨 위) → 예전에 고른 폴더 → 견적요청서 파일이 있는 폴더 */
+function quoteFolder_(pick, rec) {
+  var byId = function (id) { return id === 'root' ? DriveApp.getRootFolder() : DriveApp.getFolderById(id); };
+  if (pick) return byId(pick);
+  if (rec.qfolder) return byId(rec.qfolder);
+  if (rec.fileId) { var ps = DriveApp.getFileById(rec.fileId).getParents(); return ps.hasNext() ? ps.next() : DriveApp.getRootFolder(); }
+  return null;
+}
 function apiAttachQuoteFile(p) {
   auth_();
   p = p || {};
@@ -2076,7 +2084,7 @@ function apiAttachQuoteFile(p) {
   var bytes = Utilities.base64Decode(String(p.data || ''));
   if (!bytes.length) throw new Error('빈 파일입니다.');
   if (bytes.length > QFILE_MAX) throw new Error('파일이 20MB 보다 큽니다. 드라이브에 직접 올려 주세요.');
-  var folder = p.folder ? DriveApp.getFolderById(p.folder) : rec.qfolder ? DriveApp.getFolderById(rec.qfolder) : rec.fileId ? DriveApp.getFileById(rec.fileId).getParents().next() : null;
+  var folder = quoteFolder_(p.folder, rec);
   if (!folder) throw new Error('견적서를 저장할 폴더를 골라 주세요.');
   var orig = String(p.name || '견적서').replace(/[\\/:*?"<>|]/g, '_');
   var name = vendor + '_견적서_' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyMMdd') + '_' + orig;
@@ -2098,16 +2106,107 @@ function apiAttachQuoteFile(p) {
 /** 붙인 견적서 빼기: 링크를 지우고 파일은 드라이브 휴지통으로 (30일 안에 되살릴 수 있음) */
 function apiRemoveQuoteFile(recordId, vendor, fileId) {
   auth_();
-  var found = findRecord_(recordId, true), out = {}, hit = false;
+  var found = findRecord_(recordId, true), out = {}, hit = false, linked = false;
   updateRecord_(found, { log: '견적서 파일 뺌', logDetail: [vendor + ': ' + fileId], edit: function (cur) {
     var list = (cur.qfiles || {})[vendor] || [];
     cur.qfiles = cur.qfiles || {};
-    cur.qfiles[vendor] = list.filter(function (f) { if (f.id === fileId) { hit = true; return false; } return true; });
+    cur.qfiles[vendor] = list.filter(function (f) { if (f.id === fileId) { hit = true; linked = !!f.linked; return false; } return true; });
     if (!cur.qfiles[vendor].length) delete cur.qfiles[vendor];
     out = cur.qfiles;
   } });
-  if (hit) { try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) { console.warn('견적서 휴지통 이동 실패: ' + e); } }
-  return { qfiles: out };
+  // 사이트가 올리거나 복사한 파일만 휴지통으로. 드라이브에서 링크만 붙인 원본은 그대로 둠
+  if (hit && !linked) { try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) { console.warn('견적서 휴지통 이동 실패: ' + e); } }
+  return { qfiles: out, linked: linked };
+}
+
+/* ---------- 드라이브에 있는 견적서 가져오기 ----------
+ * 견적 입력 창 '드라이브에서': 내 드라이브(공유받은 파일 · 공유 드라이브 포함)의 파일을 골라
+ *   copy(기본): 견적요청서 폴더에 [업체]_견적서_날짜_원래이름 으로 복사 → 원본이 옮겨지거나 지워져도 근거가 남음
+ *   link: 복사하지 않고 링크만 (빼기를 눌러도 원본은 그대로)
+ */
+var DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder';
+function driveFileRow_(f) {
+  var u = f.getLastUpdated();
+  return { id: f.getId(), name: f.getName(), mime: f.getMimeType(), size: f.getSize(), url: f.getUrl(),
+    updated: Object.prototype.toString.call(u) === '[object Date]' ? Utilities.formatDate(u, 'Asia/Seoul', 'yyyy-MM-dd HH:mm') : '' };
+}
+/** 드라이브 링크 · ID 에서 파일 ID */
+function parseFileId_(s) {
+  s = String(s || '').trim();
+  var m = s.match(/\/d\/([a-zA-Z0-9_-]{20,})/) || s.match(/[?&]id=([a-zA-Z0-9_-]{20,})/) || s.match(/^([a-zA-Z0-9_-]{20,})$/);
+  return m ? m[1] : '';
+}
+/** p = {folderId} 폴더 안 | {q} 이름으로 찾기 | {recent: true} 최근 30일 | {link} 링크 하나 */
+function apiDriveFiles(p) {
+  auth_();
+  p = p || {};
+  var files = [], folders = [], it, n = 0;
+  var esc = function (t) { return String(t).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); };
+  if (p.link) {
+    var id = parseFileId_(p.link);
+    if (!id) throw new Error('드라이브 파일 링크를 확인해 주세요 (https://drive.google.com/file/d/… 또는 문서 · 시트 주소).');
+    var f1;
+    try { f1 = DriveApp.getFileById(id); f1.getName(); } catch (e) { throw new Error('그 파일을 열 수 없습니다. 링크와 볼 권한을 확인해 주세요.'); }
+    return { mode: 'link', files: [driveFileRow_(f1)], folders: [], path: [] };
+  }
+  if (p.q || p.recent) {
+    var q = 'trashed = false and mimeType != \'' + DRIVE_FOLDER_MIME + '\'';
+    if (p.q) q += ' and title contains \'' + esc(String(p.q).trim().slice(0, 80)) + '\'';
+    else q += ' and modifiedDate > \'' + Utilities.formatDate(new Date(Date.now() - 30 * 864e5), 'UTC', "yyyy-MM-dd'T'HH:mm:ss") + '\'';
+    it = DriveApp.searchFiles(q);
+    while (it.hasNext() && n++ < 200) files.push(driveFileRow_(it.next()));
+    files.sort(function (a, b) { return String(b.updated).localeCompare(String(a.updated)); });
+    return { mode: p.q ? 'search' : 'recent', files: files.slice(0, 60), folders: [], path: [], more: n > 200 };
+  }
+  var list = apiListFolders(p.folderId || '');   // 위치 · 하위 폴더는 폴더 선택 창과 같게
+  var here = p.folderId ? DriveApp.getFolderById(p.folderId) : DriveApp.getRootFolder();
+  it = here.getFiles();
+  while (it.hasNext() && n++ < 300) { var f = it.next(); if (!f.isTrashed()) files.push(driveFileRow_(f)); }
+  files.sort(function (a, b) { return String(b.updated).localeCompare(String(a.updated)); });
+  return { mode: 'folder', id: list.id, name: list.name, path: list.path, folders: list.folders, files: files };
+}
+/** p = {recordId, vendor, fileIds:[...], mode: 'copy'|'link', folder} */
+function apiLinkQuoteFiles(p) {
+  auth_();
+  p = p || {};
+  var found = findRecord_(p.recordId, true), rec = found.rec, vendor = String(p.vendor || '').trim(), link = p.mode === 'link';
+  if (rec.kind !== '견적요청서') throw new Error('견적요청서 기록이 아닙니다.');
+  if (!vendor) throw new Error('업체를 골라 주세요.');
+  var ids = uniq_((p.fileIds || []).map(String)).slice(0, 20);
+  if (!ids.length) throw new Error('가져올 파일을 골라 주세요.');
+  var have = {};
+  ((rec.qfiles || {})[vendor] || []).forEach(function (f) { have[f.id] = 1; if (f.from) have[f.from] = 1; });
+  var folder = null;
+  if (!link) {
+    folder = quoteFolder_(p.folder, rec);
+    if (!folder) throw new Error('견적서를 복사해 둘 폴더를 골라 주세요.');
+  }
+  var stamp = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyMMdd'), at = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
+  var entries = [], made = [], skipped = [];
+  ids.forEach(function (id) {
+    if (have[id]) { skipped.push(id); return; }
+    var src;
+    try { src = DriveApp.getFileById(id); src.getName(); } catch (e) { throw new Error('파일을 열 수 없습니다 (' + id + '). 볼 권한을 확인해 주세요.'); }
+    if (link) { entries.push({ id: src.getId(), name: src.getName(), url: src.getUrl(), at: at, linked: true }); return; }
+    var name = vendor + '_견적서_' + stamp + '_' + src.getName().replace(/[\\/:*?"<>|]/g, '_');
+    var cp = src.makeCopy(name, folder);
+    made.push(cp);
+    entries.push({ id: cp.getId(), name: name, url: cp.getUrl(), at: at, from: src.getId() });
+  });
+  if (!entries.length) return { qfiles: rec.qfiles || {}, added: 0, skipped: skipped.length, qfolder: rec.qfolder || '' };
+  var out = {};
+  try {
+    updateRecord_(found, { log: link ? '견적서 링크 붙임 (드라이브)' : '견적서 가져옴 (드라이브 복사)', logDetail: entries.map(function (e) { return vendor + ': ' + e.name + ' ' + e.url; }), edit: function (cur) {
+      cur.qfiles = cur.qfiles || {};
+      cur.qfiles[vendor] = (cur.qfiles[vendor] || []).concat(entries);
+      if (p.folder) cur.qfolder = p.folder;
+      out = cur.qfiles;
+    } });
+  } catch (e) {
+    made.forEach(function (f) { try { f.setTrashed(true); } catch (e2) { /* 무시 */ } });   // 복사본만 (원본은 그대로)
+    throw new Error(String(e.message || e) + (made.length ? ' — 만든 복사본은 휴지통으로 옮겼습니다. 다시 가져와 주세요.' : ''));
+  }
+  return { qfiles: out, added: entries.length, skipped: skipped.length, qfolder: p.folder || rec.qfolder || '' };
 }
 
 /**

@@ -715,7 +715,22 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-size: .
 .ok-msg { color: var(--ok); font-size: .9rem }
 
 /* 폴더 선택 창 */
-#picker { z-index: 80 }   /* 견적 입력 창(60) 위에서도 폴더 고르기 */
+#picker { z-index: 85 } #fpModal { z-index: 80 }   /* 견적 입력 창(60) 위 · 폴더 고르기는 그 위 */
+.modal-box.fp-box { width: min(860px, 100%); grid-template-rows: auto auto auto minmax(0, 1fr) auto auto }
+.fp-tools { gap: 8px; flex-wrap: wrap } .fp-tools input[type="search"] { flex: 1 1 240px; min-width: 0 }
+.fp-list { min-height: 200px; max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2) }
+.fp-folder { display: flex; width: 100%; align-items: center; gap: 10px; border: 0; border-bottom: 1px solid var(--line); background: var(--surface); color: var(--ink); text-align: left; padding: 9px 12px; border-radius: 0 }
+.fp-folder::before { content: ""; width: 16px; height: 12px; border-radius: 2px; background: var(--bar-plan); border: 1px solid var(--bar-plan-edge); flex: none }
+.fp-folder:hover, .fp-file:hover { background: var(--accent-soft) }
+.fp-file { display: grid; grid-template-columns: auto 42px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--surface); cursor: pointer; font-size: .88rem }
+.fp-name { overflow-wrap: anywhere } .fp-up { font: .74rem var(--font-data) } .fp-open { font-size: .78rem; white-space: nowrap }
+.fp-ic { display: inline-block; font: 700 .62rem var(--font-data); padding: 2px 4px; border-radius: 4px; background: var(--surface-2); color: var(--muted); text-align: center; min-width: 30px }
+.fp-foot { display: grid; gap: 8px }
+.fp-pick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: .84rem }
+.fp-pick .qf { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 4px 2px 8px; background: var(--surface-2); max-width: 320px }
+.fp-mode { gap: 6px 16px; flex-wrap: wrap; font-size: .84rem }
+.vd-files .qf.linked { border-style: dashed }
+@media (max-width: 640px) { .fp-file { grid-template-columns: auto 36px minmax(0, 1fr); } .fp-up, .fp-open { grid-column: 3 } }   /* 견적 입력 창(60) 위에서도 폴더 고르기 */
 .modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(10, 16, 32, .45);
   padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)) }
 .modal-box { width: min(560px, 100%); max-height: 100%; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto auto; gap: 12px;
@@ -1592,6 +1607,34 @@ td .empty { border: 0; padding: 18px 8px }
       <div class="row"><button class="btn-ghost" id="hmCancel" type="button">취소</button><button class="btn-ghost" id="hmNo" type="button">이력에 올리지 않고 완료</button><button class="btn" id="hmYes" type="button">이력에 올리고 완료</button></div>
     </div>
     <div class="err" id="hmMsg"></div>
+  </div>
+</div>
+
+<div class="modal" id="fpModal" hidden role="dialog" aria-modal="true" aria-labelledby="fpTitle">
+  <div class="modal-box fp-box">
+    <div class="panel-head"><h2 id="fpTitle">드라이브에서 견적서 가져오기</h2><span class="muted" id="fpFor"></span></div>
+    <div class="row fp-tools">
+      <div class="seg" role="group" aria-label="보기">
+        <button type="button" data-fpm="recent" aria-pressed="true">최근 30일</button>
+        <button type="button" data-fpm="folder" aria-pressed="false">내 드라이브</button>
+      </div>
+      <input id="fpQ" type="search" placeholder="파일 이름으로 찾기 (공유받은 파일 포함)" autocomplete="off" aria-label="파일 이름으로 찾기">
+      <button class="btn-ghost" id="fpFind" type="button">찾기</button>
+    </div>
+    <nav class="crumbs" id="fpPath" aria-label="현재 위치" hidden></nav>
+    <div class="fp-list" id="fpList" role="list"></div>
+    <details class="pk-url">
+      <summary>파일 링크로 가져오기 (메일에서 받은 드라이브 링크 · 공유 드라이브)</summary>
+      <div class="row"><input id="fpLink" type="text" placeholder="https://drive.google.com/file/d/…" autocomplete="off" spellcheck="false"><button class="btn-ghost" id="fpLinkBtn" type="button">추가</button></div>
+    </details>
+    <div class="fp-foot">
+      <div class="fp-pick" id="fpPicked"></div>
+      <div class="row fp-mode">
+        <label class="inline"><input type="radio" name="fpMode" value="copy" checked> 견적요청서 폴더에 <b>복사</b> (권장 · 원본이 바뀌어도 근거가 남음)</label>
+        <label class="inline"><input type="radio" name="fpMode" value="link"> 링크만 붙이기 (빼도 원본은 그대로)</label>
+      </div>
+      <div class="row" style="justify-content:flex-end"><span class="muted" id="fpMsg"></span><button class="btn-ghost" id="fpCancel" type="button">취소</button><button class="btn" id="fpOk" type="button" disabled>가져오기</button></div>
+    </div>
   </div>
 </div>
 
@@ -2968,15 +3011,100 @@ $('vdValid').onchange = function () {
   if (this.value) c.valid[dr.v] = this.value; else delete c.valid[dr.v];
   renderValidTag();
 };
+/* 드라이브에서 견적서 가져오기: 최근 파일 · 폴더 · 이름 찾기 · 링크, 여러 개 골라 복사(기본) 또는 링크만 */
+var fp = { mode: 'recent', folder: '', sel: {}, rec: null, v: null };
+var FP_ICON = function (mime, name) {
+  return /pdf/.test(mime) || /\.pdf$/i.test(name) ? 'PDF' : /spreadsheet|excel|sheet/.test(mime) || /\.xlsx?$|\.csv$/i.test(name) ? 'XLS' : /document|word/.test(mime) || /\.docx?$/i.test(name) ? 'DOC'
+    : /image/.test(mime) ? 'IMG' : /message|rfc822/.test(mime) || /\.(msg|eml)$/i.test(name) ? 'MAIL' : 'FILE';
+};
+function openDrivePicker() {
+  if (quoteFor(dr.rec).noReply[dr.v]) return;
+  fp.rec = dr.rec; fp.v = dr.v; fp.sel = {};
+  $('fpFor').textContent = dr.v + ' 견적서';
+  $('fpMsg').textContent = ''; $('fpQ').value = ''; $('fpLink').value = '';
+  $('fpModal').hidden = false;
+  fpLoad({ recent: true });
+  renderFpPicked();
+}
+function fpLoad(p) {
+  fp.mode = p.q ? 'search' : p.recent ? 'recent' : 'folder';
+  document.querySelectorAll('[data-fpm]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.fpm === fp.mode)); });
+  $('fpList').innerHTML = '<div class="pk-empty">불러오는 중…</div>';
+  call('apiDriveFiles', p).then(function (d) {
+    $('fpPath').hidden = d.mode !== 'folder';
+    if (d.mode === 'folder') {
+      fp.folder = d.id;
+      $('fpPath').innerHTML = d.path.map(function (x, i) { return (i ? '<span class="sep">›</span>' : '') + '<button type="button" data-id="' + esc(x.id) + '">' + esc(x.name) + '</button>'; }).join('');
+      $('fpPath').querySelectorAll('button').forEach(function (b) { b.onclick = function () { fpLoad({ folderId: b.dataset.id }); }; });
+    }
+    var html = (d.folders || []).map(function (f) { return '<button type="button" class="fp-folder" role="listitem" data-fold="' + esc(f.id) + '">' + esc(f.name) + '</button>'; }).join('') +
+      (d.files || []).map(function (f) {
+        fp.info = fp.info || {}; fp.info[f.id] = f;
+        return '<label class="fp-file" role="listitem"><input type="checkbox" data-fid="' + esc(f.id) + '"' + (fp.sel[f.id] ? ' checked' : '') + '>' +
+          '<span class="fp-ic">' + FP_ICON(f.mime, f.name) + '</span><span class="fp-name">' + esc(f.name) + '</span><span class="muted fp-up">' + esc(f.updated || '') + '</span>' +
+          '<a href="' + esc(f.url) + '" target="_blank" rel="noopener" class="fp-open" title="새 탭에서 열어 확인">열기 ↗</a></label>';
+      }).join('');
+    $('fpList').innerHTML = html || '<div class="pk-empty">' + (d.mode === 'search' ? '이름에 그 글자가 들어간 파일이 없습니다.' : d.mode === 'recent' ? '최근 30일 동안 바뀐 파일이 없습니다. 내 드라이브나 이름 찾기를 써 보세요.' : '이 폴더에 파일이 없습니다.') + '</div>';
+    if (d.more) $('fpList').insertAdjacentHTML('beforeend', '<div class="pk-empty">결과가 많아 일부만 보입니다. 이름으로 찾아 보세요.</div>');
+    $('fpList').querySelectorAll('[data-fold]').forEach(function (b) { b.onclick = function () { fpLoad({ folderId: b.dataset.fold }); }; });
+    $('fpList').querySelectorAll('[data-fid]').forEach(function (c) { c.onchange = function () { if (c.checked) fp.sel[c.dataset.fid] = fp.info[c.dataset.fid]; else delete fp.sel[c.dataset.fid]; renderFpPicked(); }; });
+  }).catch(function (e) { $('fpList').innerHTML = '<div class="pk-empty err">' + esc(e.message || e) + '</div>'; });
+}
+function renderFpPicked() {
+  var ids = Object.keys(fp.sel);
+  $('fpPicked').innerHTML = ids.length ? '<b>고른 파일 ' + ids.length + '개</b> ' + ids.map(function (id) {
+    return '<span class="qf"><span class="fp-ic">' + FP_ICON(fp.sel[id].mime, fp.sel[id].name) + '</span>' + esc(fp.sel[id].name) + '<button type="button" class="qf-x" data-fpx="' + esc(id) + '" aria-label="' + esc(fp.sel[id].name) + ' 빼기">✕</button></span>';
+  }).join('') : '<span class="muted">파일을 체크하세요 (여러 개 가능 · 20개까지)</span>';
+  $('fpPicked').querySelectorAll('[data-fpx]').forEach(function (b) {
+    b.onclick = function () { delete fp.sel[b.dataset.fpx]; var c = $('fpList').querySelector('[data-fid="' + b.dataset.fpx + '"]'); if (c) c.checked = false; renderFpPicked(); };
+  });
+  $('fpOk').disabled = !ids.length;
+  $('fpOk').textContent = ids.length ? ids.length + '개 가져오기' : '가져오기';
+}
+document.querySelectorAll('[data-fpm]').forEach(function (b) { b.onclick = function () { fpLoad(b.dataset.fpm === 'recent' ? { recent: true } : { folderId: '' }); }; });
+$('fpFind').onclick = function () { var q = $('fpQ').value.trim(); if (q) fpLoad({ q: q }); };
+$('fpQ').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); $('fpFind').click(); } });
+$('fpLinkBtn').onclick = function () {
+  var v = $('fpLink').value.trim();
+  if (!v) return;
+  $('fpMsg').textContent = '확인하는 중…';
+  call('apiDriveFiles', { link: v }).then(function (d) {
+    var f = d.files[0];
+    fp.info = fp.info || {}; fp.info[f.id] = f; fp.sel[f.id] = f;
+    $('fpLink').value = ''; $('fpMsg').textContent = '✓ ' + f.name + ' 추가';
+    renderFpPicked();
+  }).catch(function (e) { $('fpMsg').textContent = e.message || e; });
+};
+$('fpCancel').onclick = function () { $('fpModal').hidden = true; };
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('fpModal').hidden) { $('fpModal').hidden = true; e.stopImmediatePropagation(); } });
+$('fpOk').onclick = function () {
+  var rec = fp.rec, v = fp.v, ids = Object.keys(fp.sel), b = this;
+  var mode = (document.querySelector('[name="fpMode"]:checked') || {}).value || 'copy';
+  if (!ids.length) return;
+  if (ids.length > 20) { $('fpMsg').textContent = '한 번에 20개까지 가져올 수 있습니다.'; return; }
+  var needFolder = mode === 'copy' && !rec.fileId && !rec.qfolder;
+  (needFolder ? pickFolder('업체 견적서 파일 (복사해 둘 곳)') : Promise.resolve(null)).then(function (folder) {
+    if (needFolder && !folder) return;
+    b.disabled = true; b.textContent = mode === 'copy' ? '복사하는 중…' : '붙이는 중…';
+    return call('apiLinkQuoteFiles', { recordId: rec.id, vendor: v, fileIds: ids, mode: mode, folder: folder ? (folder.id || 'root') : '' }).then(function (d) {
+      rec.qfiles = d.qfiles; rec.qfolder = d.qfolder || rec.qfolder;
+      $('fpModal').hidden = true;
+      if (dr.rec === rec && dr.v === v) { renderVdFiles(); $('vdSaved').textContent = '✓ 드라이브에서 ' + d.added + '개 ' + (mode === 'copy' ? '복사해 붙임' : '링크 붙임') + (d.skipped ? ' · 이미 붙인 ' + d.skipped + '개는 건너뜀' : ''); }
+    });
+  }).catch(function (e) { $('fpMsg').textContent = e.message || e; })
+    .finally(function () { b.disabled = !Object.keys(fp.sel).length; renderFpPicked(); });
+};
 /* 업체 견적서 파일: 견적요청서 폴더에 저장하고 링크를 남김 (끌어 놓기 가능) */
 function renderVdFiles(busy) {
   var list = qfilesOf(dr.rec, dr.v);
   $('vdFiles').innerHTML = '<b>견적서 파일</b>' + list.map(function (f) {
-    return '<span class="qf"><a href="' + esc(f.url) + '" target="_blank" rel="noopener" title="' + esc(f.at || '') + ' 붙임">📎 ' + esc(f.name) + '</a>' +
-      '<button type="button" class="qf-x" data-qfrm="' + esc(f.id) + '" aria-label="' + esc(f.name) + ' 빼기" title="링크를 지우고 파일은 드라이브 휴지통으로">✕</button></span>';
+    return '<span class="qf' + (f.linked ? ' linked' : '') + '"><a href="' + esc(f.url) + '" target="_blank" rel="noopener" title="' + esc(f.at || '') + (f.linked ? ' 링크만 붙임 (원본)' : f.from ? ' 드라이브에서 복사' : ' 붙임') + '">' + (f.linked ? '🔗 ' : '📎 ') + esc(f.name) + '</a>' +
+      '<button type="button" class="qf-x" data-qfrm="' + esc(f.id) + '" aria-label="' + esc(f.name) + ' 빼기" title="' + (f.linked ? '링크만 지움 (원본 파일은 그대로)' : '링크를 지우고 파일은 드라이브 휴지통으로') + '">✕</button></span>';
   }).join('') + (busy ? '<span class="muted">' + esc(busy) + '</span>' : '') +
-    '<button type="button" class="btn-ghost" id="vdAttach">+ 파일 붙이기</button><span class="muted qf-hint">PDF · 엑셀을 여기로 끌어 놓아도 됩니다 (20MB까지)</span>';
+    '<button type="button" class="btn-ghost" id="vdAttach">+ 내 PC 파일</button><button type="button" class="btn-ghost" id="vdDrive" title="내 드라이브 · 공유받은 파일 · 드라이브 링크에서 골라 견적요청서 폴더에 복사 (또는 링크만)">+ 드라이브에서</button>' +
+    '<span class="muted qf-hint">PDF · 엑셀을 여기로 끌어 놓아도 됩니다 (20MB까지)</span>';
   $('vdAttach').onclick = function () { $('vdFile').value = ''; $('vdFile').click(); };
+  $('vdDrive').onclick = openDrivePicker;
   $('vdFiles').querySelectorAll('[data-qfrm]').forEach(function (b) {
     b.onclick = function () {
       if (!b.dataset.ok) { b.dataset.ok = '1'; b.textContent = '빼기?'; b.classList.add('arm'); return; }
@@ -3008,7 +3136,7 @@ function attachFiles(files) {
       return p.then(function () {
         if (dr.rec === rec && dr.v === v) renderVdFiles('올리는 중… ' + (++n) + '/' + list.length);
         return readB64(f).then(function (data) {
-          return call('apiAttachQuoteFile', { recordId: rec.id, vendor: v, name: f.name, mime: f.type, data: data, folder: folder ? folder.id : '' });
+          return call('apiAttachQuoteFile', { recordId: rec.id, vendor: v, name: f.name, mime: f.type, data: data, folder: folder ? (folder.id || 'root') : '' });
         }).then(function (d) { rec.qfiles = d.qfiles; rec.qfolder = d.qfolder || rec.qfolder; folder = null; });
       });
     }, Promise.resolve()).then(function () { if (dr.rec === rec && dr.v === v) { renderVdFiles(); $('vdSaved').textContent = '✓ 견적서 ' + list.length + '개를 붙였습니다'; } });
@@ -4298,6 +4426,7 @@ var GUIDES = [
       { id: 'q7', img: 'qnb', t: 'L/T 때문에 Need-by 조정', d: '업체 줄의 Need-by 에서 L/T 고려하여 조정을 고르면 날짜 칸이 나오고, 오늘 + L/T + 21일과 소요제기 Need-by 중 늦은 날을 먼저 넣어 줍니다. 구매내역서 W Need-by 에는 조정한 날짜가, X 수량 칸은 업체 수량이 소요제기와 다르면 빨강 · MOQ 보다 적으면 주황으로 표시됩니다.' },
       { id: 'q10', img: 'vlist', t: '견적 입력 진행률', d: '카드의 막대와 견적 n/전체 입력 · 회신 없음 n 으로 펼치지 않아도 어디까지 들어왔는지 보입니다. 📎 는 붙인 견적서 수입니다.' },
       { id: 'q11', img: 'qdup', t: '진행 중 같은 자재 알림', d: '견적 종합에서 같은 자재가 진행 중인 다른 견적요청서 · 구매내역서(모든 담당자)에도 있으면 그 자재 아래에 제목과 담당자가 나옵니다. 두 번 사지 않게 확인하세요.' },
+      { id: 'q15', img: 'drive', t: '드라이브에서 견적서 가져오기', d: '+ 드라이브에서를 누르면 최근 30일 파일 · 내 드라이브 폴더 · 이름 찾기(공유받은 파일 포함) · 드라이브 링크로 파일을 골라 여러 개를 한 번에 붙입니다. 기본은 견적요청서 폴더에 [업체]_견적서_날짜_원래이름 으로 복사(원본이 옮겨지거나 지워져도 근거가 남음), 링크만 붙이기를 고르면 복사하지 않고(🔗 점선) 빼도 원본은 그대로입니다.' },
       { id: 'q12', img: 'qtable', t: '추가 비용 · VAT · 최소주문 (선택)', d: '업체 견적서에 Freight · Hazmat · Handling 같은 별도 비용, VAT 포함 단가, 최소주문금액이 있을 때만 추가 비용 · 조건을 펼쳐 적습니다 (없으면 비워 둠). 추가 비용은 그 업체를 한 품목이라도 선정하면 구매내역서 합계에 들어가고(시트에서 선정을 바꿔도 따라감), VAT 포함 단가는 /1.1 로 비교 · 기재됩니다.' },
       { id: 'q13', img: 'qtable', t: '업체별 수량 나누기', d: '한 품목을 두 업체에 나눠 발주할 때 Need-by 칸의 업체별 수량 나누기를 누르고 첫 줄 수량을 적습니다 (나머지는 둘째 줄). 줄마다 다른 업체를 선정하면 구매내역서에도 줄이 나뉘어 들어갑니다. 수량 다시 합치기로 되돌립니다.' },
       { id: 'q14', img: 'qbest', t: '업체별 합계 · 대체품 · MFG', d: '추가 비용이나 최소주문을 적은 업체가 있으면 업체별 합계(선정한 품목 + 추가 비용, 견적 낸 품목 모두 이 업체로 했을 때)가 나오고 최소주문 미달이면 빨갛게 알립니다. 업체가 대체 P/N 을 제안했거나 MFG 가 QPL 과 다르면 업체 이름 옆에 주황 표시가 붙습니다.' },
