@@ -208,7 +208,7 @@ const vendorsResp = () => { const info = L.vendorInfo_(VSHEET); return { vendors
   // 견적 종합
   await pg.click('[data-sum="R1"]'); await pg.waitForTimeout(300);
   await pg.selectOption('#qItems .q-item[data-i="0"] tr[data-v="CBOL"] [data-f="nbMode"]', 'adj'); await pg.waitForTimeout(100);
-  await shot('qnb', '#qItems .q-item[data-i="0"]', { q4: '#qItems .q-item[data-i="0"] tr[data-v="CBOL"] input[type="radio"]', q7: '#qItems .q-item[data-i="0"] tr[data-v="CBOL"] [data-f="nbMode"]' });
+  await shot('qnb', '#qItems .q-item[data-i="0"]', { q4: '#qItems .q-item[data-i="0"] tr[data-v="CBOL"] input[type="radio"]', q7: '#qItems .q-item[data-i="0"] tr[data-v="CBOL"] [data-f="nbMode"]', q16: '#qItems .q-item[data-i="0"] .q-head' });
   await shot('qdup', '#qItems .q-item[data-i="1"]', { q11: '#qItems .q-item[data-i="1"] .dup' });
   await shot('qbest', '#qItems', { q5: '#qBest .warn-txt', q14: '#qVendorTot h3' }, { top: '#qBest', maxH: 900 });
   await pg.click('#qBack'); await pg.waitForTimeout(200);

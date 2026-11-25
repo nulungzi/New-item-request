@@ -78,7 +78,8 @@ function hashKey_(s) {
  * stamp: 기록을 고치는 요청이면 그 기록의 지금 상태(수정일). 앞의 결과 뒤에 기록이 또 바뀌었으면
  *   (다른 내용으로 고친 뒤 처음 내용으로 다시 고치는 경우 등) 같은 내용이어도 새로 처리
  */
-function once_(name, payload, fn, stamp) {
+var ONCE_FILE_SEC = 60;   // 파일 만들기: 1분 안 두 번 누름만 막음 (그 뒤 다시 만들기는 의도한 것)
+function once_(name, payload, fn, stamp, sec) {
   var c = userCache_();
   if (!c) return fn();
   var key = 'once_' + name + '_' + hashKey_(JSON.stringify(payload === undefined ? null : payload)), hit = null;
@@ -92,7 +93,7 @@ function once_(name, payload, fn, stamp) {
   try { result = fn(); } catch (e) { try { c.remove(key); } catch (e2) { /* 무시 */ } throw e; }
   try {
     var s = JSON.stringify({ state: 'done', result: result, after: stamp ? safeStamp_(stamp) : undefined });
-    if (s.length < 90000) c.put(key, s, ONCE_SEC); else c.remove(key);
+    if (s.length < 90000) c.put(key, s, sec || ONCE_SEC); else c.remove(key);
   } catch (e) { /* 무시 */ }
   return result;
 }
@@ -543,7 +544,7 @@ function apiCreateItemSheet(folderInput) {
  */
 function apiCreatePurchase(payload) {
   auth_();
-  return once_('apiCreatePurchase', payload, function () { return apiCreatePurchase_(payload); });
+  return once_('apiCreatePurchase', payload, function () { return apiCreatePurchase_(payload); }, null, ONCE_FILE_SEC);
 }
 function apiCreatePurchase_(payload) {
   var info = vendorInfoMap_();
@@ -1111,7 +1112,7 @@ function checkSetup() {
  */
 function apiCreateRfq(payload) {
   auth_();
-  return once_('apiCreateRfq', payload, function () { return apiCreateRfq_(payload); });
+  return once_('apiCreateRfq', payload, function () { return apiCreateRfq_(payload); }, null, ONCE_FILE_SEC);
 }
 function apiCreateRfq_(payload) {
   var list = payload.template === 'list';
@@ -1151,7 +1152,7 @@ function apiCreateRfq_(payload) {
  */
 function apiCreateDirectQuote(payload) {
   auth_();
-  return once_('apiCreateDirectQuote', payload, function () { return apiCreateDirectQuote_(payload); });
+  return once_('apiCreateDirectQuote', payload, function () { return apiCreateDirectQuote_(payload); }, null, ONCE_FILE_SEC);
 }
 function apiCreateDirectQuote_(payload) {
   payload = payload || {};
@@ -1188,13 +1189,13 @@ function apiSetQuoteVendors(recordId, vendors) {
  */
 function apiReviseRfq(payload) {
   auth_();
-  return once_('apiReviseRfq', payload, function () { return apiReviseRfq_(payload); }, function () { return recStamp_((payload || {}).recordId); });
+  return once_('apiReviseRfq', payload, function () { return apiReviseRfq_(payload); }, function () { return recStamp_((payload || {}).recordId); }, ONCE_FILE_SEC);
 }
 function apiReviseRfq_(payload) {
   payload = payload || {};
   var found = findRecord_(payload.recordId, true), rec = found.rec;
   if (rec.kind !== '견적요청서') throw new Error('견적요청서 기록이 아닙니다.');
-  if (rec.spotFile) throw new Error('이미 견적 구매내역서를 만든 견적요청서는 고칠 수 없습니다. 새 소요제기로 만들어 주세요.');
+  if (spotLive_(rec)) throw new Error('이미 견적 구매내역서를 만든 견적요청서는 고칠 수 없습니다. 만든 견적 구매내역서를 지우면(기록 삭제 또는 파일 휴지통) 다시 고칠 수 있습니다.');
   var lines = (payload.items || []).filter(function (l) { return String(l.item || l.name || '').trim() && (Number(toNumber_(l.qty)) || 0) > 0; });
   if (!lines.length) throw new Error('견적요청서에 넣을 품목이 없습니다 (Item 과 수량을 적어 주세요).');
   var bad = lines.filter(function (l) { return !String(l.name || '').trim(); }).map(function (l) { return l.item; });
@@ -1262,7 +1263,7 @@ function fixedLinesFor_(lines) {
  */
 function apiCreateQuoteSheet(recordId, folderInput) {
   auth_();
-  return once_('apiCreateQuoteSheet', [recordId, folderInput], function () { return apiCreateQuoteSheet_(recordId, folderInput); }, function () { return recStamp_(recordId); });
+  return once_('apiCreateQuoteSheet', [recordId, folderInput], function () { return apiCreateQuoteSheet_(recordId, folderInput); }, function () { return recStamp_(recordId); }, ONCE_FILE_SEC);
 }
 function apiCreateQuoteSheet_(recordId, folderInput) {
   var found = findRecord_(recordId, true), rec = found.rec;
@@ -1529,6 +1530,12 @@ function apiMyRecords() {
   list.sort(function (a, b) { return String(b.id).localeCompare(String(a.id)); });
   var today = toDate_(new Date());
   list.forEach(function (r) { r.alert = recordAlert_(r, today); });
+  // 견적요청서: 만든 Spot 견적 구매내역서가 아직 있는지 (지웠으면 다시 만들기 · 수정 · 업체 바꾸기가 됨)
+  list.forEach(function (r) {
+    if (r.kind !== '견적요청서' || !r.spotFile) return;
+    var kids = list.filter(function (k) { return k.kind === '견적 구매내역서' && k.parent === r.id && !k.replacedBy; });
+    r.spotLive = kids.some(function (k) { if (!k.fileId) return true; try { return !DriveApp.getFileById(k.fileId).isTrashed(); } catch (e) { return false; } });
+  });
   return { me: who, records: list, archiveReady: !!prop_('ARCHIVE_SHEET_ID'), today: fmtDate_(today) };
 }
 
@@ -2012,6 +2019,29 @@ function completeLocked_(id, sh) {
  * ================================================================ */
 var SPOT_EXISTS = 'SPOT_EXISTS';
 /**
+ * 이 견적요청서로 만든 Spot 견적 구매내역서가 아직 살아 있는지: 진행 중(또는 완료) 기록이 있고 파일이 휴지통에 있지 않음.
+ *   기록을 지웠거나 파일을 휴지통으로 보냈으면 false → '이미 만들었습니다' 없이 새로 만들고, 견적요청서 수정 · 업체 바꾸기도 다시 됨
+ */
+function spotLive_(rec) {
+  if (!rec || !rec.spotFile) return false;
+  var alive = function (k) {
+    if (!k.fileId) return true;
+    try { return !DriveApp.getFileById(k.fileId).isTrashed(); } catch (e) { return false; }   // 지워졌거나 열 수 없음
+  };
+  var kids = recordSheet_().getDataRange().getValues().slice(1).map(rowToRecord_).filter(function (r) {
+    return r.id && r.kind === '견적 구매내역서' && r.parent === rec.id && !r.replacedBy;
+  });
+  if (kids.length) return kids.some(alive);
+  var aid = prop_('ARCHIVE_SHEET_ID');   // 완료한 경우
+  if (aid) {
+    try {
+      var sh = SpreadsheetApp.openById(aid).getSheetByName('완료기록');
+      if (sh && sh.getDataRange().getValues().slice(1).some(function (r) { return r[1] === '견적 구매내역서' && String(r[10] || '').indexOf('"parent":"' + rec.id + '"') >= 0 && String(r[10] || '').indexOf('"replacedBy"') < 0; })) return true;
+    } catch (e) { console.warn('완료기록 확인 실패: ' + e); }
+  }
+  return false;
+}
+/**
  * 하나 더 만든 Spot 견적 구매내역서: 같은 견적요청서로 만든 예전 기록은 '대체됨' (발주 마감 알림 · 구매 이력에서 빠짐),
  *   예전 파일 이름 앞에 (대체됨 yymmdd). 실패해도 새 파일은 그대로 → 안내만
  */
@@ -2228,7 +2258,8 @@ function apiQuoteDups(recordId) {
  */
 function apiCreateSpotPurchase(payload) {
   auth_();
-  return once_('apiCreateSpotPurchase', payload, function () { return apiCreateSpotPurchase_(payload); }, function () { return recStamp_((payload || {}).recordId); });
+  // 같은 요청 막기(once_)는 쓰지 않음: 다시 만들기는 사용자가 정하는 일이라 '이미 만들었습니다 → 하나 더 만들기' 확인으로 막음
+  return apiCreateSpotPurchase_(payload);
 }
 function apiCreateSpotPurchase_(payload) {
   var found = findRecord_(payload.recordId, true);
@@ -2236,7 +2267,8 @@ function apiCreateSpotPurchase_(payload) {
   var tid = prop_('SPOT_TEMPLATE_ID');
   if (!tid) throw new Error('스크립트 속성 SPOT_TEMPLATE_ID(Spot 견적 구매내역서 템플릿 시트 ID)를 설정해 주세요. README 참고.');
   // 이미 만든 파일이 있으면 한 번 더 확인 (화면이 again 으로 다시 보냄) · 다른 창에서 견적을 먼저 저장했으면 멈춤
-  if (found.rec.spotFile && !payload.again) throw new Error(SPOT_EXISTS + '|' + found.rec.spotFile + '|이 견적요청서로 이미 Spot 견적 구매내역서를 만들었습니다. 하나 더 만들려면 한 번 더 누르세요.');
+  var hadSpot = !!found.rec.spotFile;
+  if (hadSpot && !payload.again && spotLive_(found.rec)) throw new Error(SPOT_EXISTS + '|' + found.rec.spotFile + '|이 견적요청서로 이미 Spot 견적 구매내역서를 만들었습니다. 하나 더 만들려면 한 번 더 누르세요.');
   var base0 = payload.base === undefined ? null : String(payload.base || '');
   var quoteGuard = function (cur) { var was = cur.quote && cur.quote.savedAt; if (base0 !== null && was && String(was) !== base0) throw new Error(QUOTE_CONFLICT); };
   quoteGuard({ quote: found.rec.quote });
@@ -2296,6 +2328,6 @@ function apiCreateSpotPurchase_(payload) {
     rec = addRecord_({ fx: fx, kind: '견적 구매내역서', title: name, url: ss.getUrl(), fileId: ss.getId(), status: '작성', parent: found.rec.id, group: found.rec.group || found.rec.id,
       items: items.map(function (it) { return { item: it.item, qty: it.qty, needBy: fmtDate_(it.needBy), supplier: it.fixed ? it.fixed.vendor : selectedVendor_(it), deadline: (spotDeadline_(it) || {}).date || '' }; }) });
   });
-  if (payload.again && rec.id) warn += (warn ? '\n' : '') + replaceOldSpot_(found.rec.id, rec.id, ss.getUrl());
+  if (hadSpot && rec.id) warn += (warn ? '\n' : '') + replaceOldSpot_(found.rec.id, rec.id, ss.getUrl());   // 예전 기록(파일을 지운 것 포함)은 대체됨
   return { url: ss.getUrl(), name: name, id: ss.getId(), recordId: rec.id, savedAt: savedAt, warn: warn.replace(/^\n+|\n+$/g, '') };
 }

@@ -251,7 +251,7 @@ test('견적 저장 → Spot 견적 구매내역서, 계약+Spot 단가는 두 �
       newDataValidation: () => { const b = new Proxy({}, { get: (t, k) => () => (k === 'build' ? {} : b) }); return b; },
       newConditionalFormatRule: () => { const b = new Proxy({}, { get: (t, k) => () => (k === 'build' ? {} : b) }); return b; } },
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => ({ TEMPLATE_ID: 'tpl', SPOT_TEMPLATE_ID: 'spot', RFQ_TEMPLATE_ID: 'rfq' })[k] || null }) },
-    DriveApp: { getFileById: () => ({ makeCopy: n => (made.push(n), { getId: () => n }) }) },
+    DriveApp: { getFileById: id => ({ makeCopy: n => (made.push(n), { getId: () => n }), isTrashed: () => !!(globalThis.__trashedIds || {})[id], setName: () => {} }) },
     LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
     Session: { getActiveUser: () => ({ getEmail: () => 'me@ke.com' }), getEffectiveUser: () => ({ getEmail: () => 'me@ke.com' }) },
     Utilities: { formatDate: () => '261110-120000' },
@@ -289,6 +289,15 @@ test('견적 저장 → Spot 견적 구매내역서, 계약+Spot 단가는 두 �
   assert.throws(() => ctx.apiCreateSpotPurchase(again), /^Error: SPOT_EXISTS\|.*\|이 견적요청서로 이미/);
   assert.throws(() => ctx.apiCreateSpotPurchase(Object.assign({ again: true, base: 'old-save' }, again)), /다른 창/);
   const sp3 = ctx.apiCreateSpotPurchase(Object.assign({ again: true, base: sp.savedAt }, again));
+  // 만든 파일을 휴지통으로 보냈으면 again 없이도 새로 만들고, 예전 기록은 대체됨
+  const live = ctx.apiMyRecords().records.find(r => r.id === sp3.recordId);
+  globalThis.__trashedIds = { [live.fileId]: 1 };
+  const rfqNow = ctx.apiMyRecords().records.find(r => r.id === rfq.recordId);
+  assert.strictEqual(rfqNow.spotLive, false);
+  const sp4 = ctx.apiCreateSpotPurchase(Object.assign({ base: ctx.findRecord_(rfq.recordId, true).rec.quote.savedAt }, again));
+  assert.ok(sp4.url);
+  assert.strictEqual(ctx.apiMyRecords().records.find(r => r.id === sp3.recordId).status, '대체됨');
+  globalThis.__trashedIds = {};
   assert.ok(sp3.url);
   const old = ctx.apiMyRecords().records.find(r => r.id === sp.recordId);
   assert.deepStrictEqual([old.status, old.replacedBy], ['대체됨', sp3.recordId]);   // 예전 견적 구매내역서는 대체됨
