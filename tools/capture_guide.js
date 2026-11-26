@@ -162,7 +162,7 @@ const vendorsResp = () => { const info = L.vendorInfo_(VSHEET); return { vendors
   await pg.fill('#rfqBiz', 'Boeing'); await pg.fill('#rfqKind', 'Process'); await pg.fill('#rfqDue', '2026-11-20'); await pg.dispatchEvent('#rfqDue', 'change');
   await shot('rfqbox', '#rfqBox', { r1: '#spotTbl input[data-f="name"]', r5: '#btnDirect' });
   await pg.click('#btnRfq'); await pg.waitForTimeout(200);
-  await pg.click('.rp-opt[data-tpl="list"]'); await pg.fill('#rp2Kind', 'HW'); await pg.fill('#rp2Init', 'YWK'); await pg.dispatchEvent('#rp2Init', 'input');
+  await pg.click('.rp-opt[data-tpl="list"]'); await pg.waitForTimeout(100);
   await shot('rfqpick', '#rfqPick .modal-box', { r2: '.rp-opt[data-tpl="list"]' });
   await pg.click('#rpCancel');
   // 5. 진행 중

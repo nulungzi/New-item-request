@@ -2273,11 +2273,10 @@ function rp2AutoName() {
 function rpChoose(tpl) {
   rp.tpl = tpl;
   document.querySelectorAll('.rp-opt').forEach(function (b) { b.setAttribute('aria-checked', String(b.dataset.tpl === tpl)); });
-  $('rpName1').hidden = tpl !== 'month'; $('rpName2').hidden = tpl !== 'list';
+  $('rpName1').hidden = !tpl; $('rpName2').hidden = true;   // 양식과 상관없이 처음 화면에서 정한 제목 그대로
   $('rpOk').disabled = !tpl;
   $('rpNote').textContent = tpl === 'month' ? '양식 1 · 같은 자재는 한 줄로 합쳐 월별 칸에 수량' : tpl === 'list' ? '양식 2 · Need-by 마다 한 줄' : '양식을 하나 고르세요';
   $('rpMsg').textContent = '';
-  if (tpl === 'list' && !$('rp2Kind').value) setTimeout(function () { $('rp2Kind').focus(); }, 30);
 }
 function openRfqPick() {
   var pv = rpPreviews();
@@ -2297,12 +2296,10 @@ $('rpCancel').onclick = function () { $('rfqPick').hidden = true; };
 $('rfqPick').addEventListener('click', function (e) { if (e.target === this) this.hidden = true; });
 document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('rfqPick').hidden) $('rfqPick').hidden = true; });
 $('rpOk').onclick = function () {
-  var tpl = rp.tpl, title = (tpl === 'list' ? $('rpTitle2') : $('rpTitle1')).value.trim();
-  if (tpl === 'list' && (!$('rp2Kind').value.trim() || !$('rp2Init').value.trim())) { $('rpMsg').textContent = '물종과 이름 이니셜을 적어 주세요.'; (!$('rp2Kind').value.trim() ? $('rp2Kind') : $('rp2Init')).focus(); return; }
+  var tpl = rp.tpl, title = $('rpTitle1').value.trim();
   if (!title) { $('rpMsg').textContent = '파일 이름을 적어 주세요.'; return; }
   lsSet('rfqTpl', tpl);
-  if (tpl === 'list') { lsSet('rp2Kind', $('rp2Kind').value.trim()); lsSet('rp2Init', $('rp2Init').value.trim()); }
-  if (tpl === 'month' && title !== $('rfqTitle').value) { $('rfqTitle').value = title; state.rfqTitleEdited = title !== autoRfqTitle(); }
+  if (title !== $('rfqTitle').value) { $('rfqTitle').value = title; state.rfqTitleEdited = title !== autoRfqTitle(); }
   $('rfqPick').hidden = true;
   createRfq(tpl, title);
 };
@@ -3772,13 +3769,15 @@ function loadRecords() {
   if (!state.records && !state.recArchive) $('recList').innerHTML = skelCards(3);
   return call('apiMyRecords').then(function (d) {
     state.records = d.records;
-    $('recCount').textContent = d.records.length || '';
+    var groups = recGroups(d.records);   // 같은 소요제기에서 만든 파일(견적요청서 · 구매내역서 · 다시 만든 파일)은 하나로 셈
+    $('recCount').textContent = groups.length || '';
+    $('recCount').title = groups.length ? '소요제기 ' + groups.length + '건 (파일 ' + d.records.length + '개)' : '';
     setTimeout(renderToday, 0);
-    var urgent = d.records.filter(function (r) { return r.alert && r.alert.level; }).length;
+    var urgent = groups.filter(function (g) { return g.recs.some(function (r) { return r.alert && r.alert.level; }); }).length;
     var prevUrgent = $('recAlert').textContent;
     $('recAlert').textContent = urgent || '';
     if (urgent && String(urgent) !== prevUrgent) { $('recAlert').classList.remove('pop'); void $('recAlert').offsetWidth; $('recAlert').classList.add('pop'); }
-    $('recAlert').title = urgent ? '회신 기한·발주 마감이 가깝거나 지난 기록 ' + urgent + '건' : '';
+    $('recAlert').title = urgent ? '회신 기한·발주 마감이 가깝거나 지난 소요제기 ' + urgent + '건' : '';
     $('recMe').textContent = d.me ? d.me + ' 기록' : '';
     if ($('recMsg').querySelector('.load-err')) $('recMsg').innerHTML = '';
     if (!d.archiveReady) $('recMsg').innerHTML = '<span class="err">완료 보관 파일이 설정되지 않았습니다 (스크립트 속성 ARCHIVE_SHEET_ID).</span>';
@@ -4468,7 +4467,7 @@ var GUIDES = [
     points: ['양식 1 월별 수량 / 양식 2 목록형', '예전에 견적·구매한 업체 추천', '견적을 먼저 받았으면 견적요청서 없이 바로 입력'],
     steps: [
       { id: 'r1', img: 'rfqbox', t: 'Item name · 제목 · 회신 기한', d: '같은 자재는 Need-by가 달라도 한 줄로 모입니다. Item name은 꼭 적고 Description · QPL · UOM · Remark는 고칠 수 있습니다. 제목과 회신 기한(due)을 정합니다.' },
-      { id: 'r2', img: 'rfqpick', t: '양식 고르기', d: '견적요청서 만들기를 누르면 지금 품목으로 만든 두 양식의 예시가 나옵니다. 양식 1은 월별 수량, 양식 2는 Need-by마다 한 줄인 목록형입니다.' },
+      { id: 'r2', img: 'rfqpick', t: '양식 고르기', d: '견적요청서 만들기를 누르면 지금 품목으로 만든 두 양식의 예시가 나옵니다. 양식 1은 월별 수량, 양식 2는 Need-by마다 한 줄인 목록형입니다. 어느 양식이든 파일 이름 · 메일 제목은 처음 화면에서 정한 제목 그대로입니다 (여기서 고칠 수도 있음).' },
       { id: 'r3', img: 'draft', t: '받는 업체 · 담당자 고르기', d: '진행 중에서 메일 초안 만들기. 업체를 체크하면 담당자 전부, 담당자 n명을 펼치면 특정 담당자만 고릅니다. 모두 숨은 참조로 들어가고 받는 사람은 비워 둡니다. 메일 표에는 KE No(Item code)도 들어갑니다.' },
       { id: 'r6', img: 'draft', t: '추천 업체', d: '이 자재를 예전에 견적 냈거나 구매한 업체가 맨 위에 올라오고 최저가 n회 · 구매 n회 · 견적 n회가 붙습니다 (마우스를 올리면 회신율 · 평균 L/T). 추천 업체 모두 선택으로 한 번에 체크합니다. 자동으로 체크하지는 않습니다.' },
       { id: 'r4', img: 'draft', t: '임시보관함에 만들기', d: '바로 보내지 않고 Gmail 임시보관함에 초안을 만듭니다. 견적요청서 엑셀이 첨부되고 서명이 붙습니다. Gmail에서 확인한 뒤 직접 보냅니다.' },
